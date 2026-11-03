@@ -59,6 +59,9 @@ Longer-term combat balance, additional events and resources, more module types, 
 - Combat runs in real time. Pulse cannons have a 130° arc; railguns have a longer range and a 50° arc. Each shot starts at its muzzle and spends ammunition. A gunner at the weapon station improves its fire rate.
 - An engineer repairs a damaged module after walking to its station. A loader walks between an ammo source and a weapon to deliver ammunition.
 - The starting ship has a command core, two directional ion engines, and a pulse cannon. Engines, cannons, railguns, shield arrays, armor plating, and ammo holds can be added on the hangar grid. Modules must connect by an edge and cannot overlap.
+- During construction, a selected module stays in placement mode when the cursor is over an installed room. The preview and click snap to a nearby valid edge position, including below the ship. Without a selected catalog module, clicking a room inspects it.
+- Pirate ships are assembled from connected four-cell tetromino modules, with visible core, weapon, engine, and sometimes armor rooms. Arena sizing uses their actual tile count.
+- Asteroids are solid to both player and pirate ships. Move orders and pirate pursuit route around each asteroid with clearance for the ship's size; a ship that reaches an obstacle is stopped and steered along it.
 - A destroyed command core ends the run. Other destroyed modules stop providing their function until repaired. Metal pays for new modules, upgrades, repairs, and some encounter choices.
 - A generated branching map offers connected next sectors. Pirate and freighter destinations lead to arena combat; salvage and trader destinations offer noncombat choices. Resolving a destination advances the route, and a new chart appears after its last column.
 - Progress is stored in the browser's local storage. The game is a static site with no account or server dependency.

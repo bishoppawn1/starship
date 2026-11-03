@@ -124,6 +124,26 @@
     if(cells.some(([cx,cy])=>cx<0||cx>=GRID_W||cy<0||cy>=GRID_H||occupied.has(`${cx},${cy}`))) return false;
     return cells.some(([cx,cy])=>[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>occupied.has(`${cx+dx},${cy+dy}`)));
   }
+  function placementAt(type,x,y,rotation) {
+    if(canPlace(type,x,y,rotation))return {x,y,valid:true};
+    const occupied=occupancy();
+    if(!occupied.has(`${x},${y}`))return {x,y,valid:false};
+    const shape=rotatedGeometry(type,rotation).cells,bounds=shipBounds();
+    const outwardX=x+.5-bounds.cx,outwardY=y+.5-bounds.cy;
+    let best=null,bestScore=Infinity;
+    for(let cy=0;cy<GRID_H;cy++)for(let cx=0;cx<GRID_W;cx++){
+      if(!canPlace(type,cx,cy,rotation))continue;
+      const cells=shape.map(([dx,dy])=>[cx+dx,cy+dy]);
+      const nearest=Math.min(...cells.map(([px,py])=>Math.abs(px-x)+Math.abs(py-y)));
+      if(nearest!==1)continue;
+      const centerX=cells.reduce((sum,[px])=>sum+px+.5,0)/cells.length;
+      const centerY=cells.reduce((sum,[,py])=>sum+py+.5,0)/cells.length;
+      const direction=(centerX-x-.5)*outwardX+(centerY-y-.5)*outwardY;
+      const score=Math.hypot(centerX-x-.5,centerY-y-.5)-direction*.05;
+      if(score<bestScore){bestScore=score;best={x:cx,y:cy,valid:true};}
+    }
+    return best||{x,y,valid:false};
+  }
   function maxHp(module) { return MODULES[module.type].hp+(module.level-1)*25; }
   function selectedModule() { return save.modules.find((module)=>module.id===selectedModuleId) || null; }
   function activeModules(...types) { return save.modules.filter((module)=>types.includes(module.type)&&module.hp>0); }
@@ -164,7 +184,7 @@
   }
   function renderGrid() {
     const occupied=occupancy(),ghost=new Set();let valid=false;
-    if(selectedCatalog&&hoverCell){valid=canPlace(selectedCatalog,hoverCell.x,hoverCell.y,buildRotation);for(const [dx,dy] of rotatedGeometry(selectedCatalog,buildRotation).cells)ghost.add(`${hoverCell.x+dx},${hoverCell.y+dy}`);}
+    if(selectedCatalog&&hoverCell){const place=placementAt(selectedCatalog,hoverCell.x,hoverCell.y,buildRotation);valid=place.valid;for(const [dx,dy] of rotatedGeometry(selectedCatalog,buildRotation).cells)ghost.add(`${place.x+dx},${place.y+dy}`);}
     for(const cell of gridButtons){
       const x=+cell.dataset.x,y=+cell.dataset.y,key=`${x},${y}`,module=occupied.get(key);
       cell.className='grid-cell';cell.style.removeProperty('--module-color');cell.textContent='';
@@ -177,11 +197,12 @@
   }
   function onGridClick(x,y) {
     const existing=occupancy().get(`${x},${y}`);
-    if(existing){selectedModuleId=existing.id;selectedCatalog=null;renderAll();return;}
+    if(existing&&!selectedCatalog){selectedModuleId=existing.id;renderAll();return;}
     if(!selectedCatalog){toast('Select a module from the bay first.');return;}
-    if(!canPlace(selectedCatalog,x,y,buildRotation)){toast('Modules must fit and connect by an edge.');return;}
+    const place=placementAt(selectedCatalog,x,y,buildRotation);
+    if(!place.valid){toast('Modules must fit and connect by an edge.');return;}
     const def=MODULES[selectedCatalog];if(save.metal<def.cost){toast('Not enough metal.');return;}
-    const module={id:save.nextId++,type:selectedCatalog,x,y,rotation:buildRotation,hp:def.hp,level:1};
+    const module={id:save.nextId++,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,hp:def.hp,level:1};
     save.modules.push(module);save.metal-=def.cost;selectedModuleId=module.id;selectedCatalog=null;
     persist();log(`${def.name} installed.`);toast(`${def.name} installed · −${def.cost} metal`);renderAll();
   }
@@ -448,11 +469,25 @@
   }
 
   function shipRadius(){const b=shipBounds();return Math.max(28,Math.hypot(b.maxX-b.minX+1,b.maxY-b.minY+1)*9);}
+  const ENEMY_TETROMINOES = {
+    core: [[-1,-1],[0,-1],[-1,0],[0,0]],
+    weapon: [[1,-1],[2,-1],[3,-1],[2,0]],
+    engine: [[-2,-1],[-2,0],[-2,1],[-2,2]],
+    armor: [[-1,1],[0,1],[-1,2],[0,2]]
+  };
+  function enemyLayout(heavy){
+    const types=heavy?['core','weapon','engine','armor']:['core','weapon','engine'];
+    const modules=types.map((type)=>({type,cells:ENEMY_TETROMINOES[type]}));
+    const cells=modules.flatMap((module)=>module.cells);
+    const r=Math.ceil(Math.max(...cells.map(([x,y])=>Math.hypot((x+.5)*15,(y+.5)*15)))+9);
+    return {modules,r,cells:cells.length};
+  }
   function makeAsteroids(world,count,spawn,enemies){
     const rocks=[];
     for(let i=0;i<count*15&&rocks.length<count;i++){
       const rock={x:rand(85,world.w-85),y:rand(75,world.h-75),r:rand(18,38),spin:rand(0,TAU),points:Array.from({length:9},()=>rand(.72,1.17))};
-      if(distance(rock,spawn)<150||enemies.some((enemy)=>distance(rock,enemy)<125))continue;
+      if(distance(rock,spawn)<rock.r+spawn.r+35||enemies.some((enemy)=>distance(rock,enemy)<rock.r+enemy.r+30))continue;
+      if(rocks.some((other)=>distance(rock,other)<rock.r+other.r+25))continue;
       rocks.push(rock);
     }
     return rocks;
@@ -460,11 +495,11 @@
   function startBattle(kind){
     hideEvent();
     const count=kind==='rescue'?2:save.sector>3&&Math.random()<.35?2:1;
-    const cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),enemyCells=count*(kind==='rescue'?6:8);
+    const cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),layout=enemyLayout(kind!=='rescue'),enemyCells=count*layout.cells;
     const width=960+Math.min(420,cellCount*12+enemyCells*6),world={w:width,h:width*.625};
     const enemies=[];
-    for(let i=0;i<count;i++)enemies.push({x:world.w*.77+i*40,y:world.h*(count===1?.5:i===0?.31:.69),angle:Math.PI,hp:kind==='rescue'?70:94+save.sector*7,maxHp:kind==='rescue'?70:94+save.sector*7,r:kind==='rescue'?25:30,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),name:kind==='rescue'?'PIRATE SKIFF':'RAIDER'});
-    const player={x:world.w*.22,y:world.h*.5,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,selected:false,r:shipRadius(),thrusters:{}};
+    for(let i=0;i<count;i++)enemies.push({x:world.w*.77+i*40,y:world.h*(count===1?.5:i===0?.31:.69),angle:Math.PI,hp:kind==='rescue'?70:94+save.sector*7,maxHp:kind==='rescue'?70:94+save.sector*7,r:layout.r,modules:layout.modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),name:kind==='rescue'?'PIRATE SKIFF':'RAIDER'});
+    const player={x:world.w*.22,y:world.h*.5,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,path:[],selected:false,r:shipRadius(),thrusters:{}};
     battle={kind,world,player,enemies,asteroids:makeAsteroids(world,3+Math.ceil(cellCount/7)+count,player,enemies),projectiles:[],stars:Array.from({length:125},()=>({x:rand(0,world.w),y:rand(0,world.h),s:Math.random()<.17?2:1})),ammo:12+activeModules('cargo').length*6,maxAmmo:12+activeModules('cargo').length*6,shake:0};
     for(const module of save.modules)module.cooldown=rand(.25,.8);
     setMode('combat');$('combatWaveLabel').textContent=kind==='rescue'?'DEFEND THE FREIGHTER':'HOSTILE CONTACT';
@@ -486,6 +521,62 @@
     persist();renderAll();
   }
   function angleDifference(from,to){return Math.atan2(Math.sin(to-from),Math.cos(to-from));}
+  function clearSegment(a,b,radius,rocks){
+    const dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy;
+    return rocks.every((rock)=>{
+      const t=clamp(((rock.x-a.x)*dx+(rock.y-a.y)*dy)/(length||1),0,1);
+      return Math.hypot(a.x+dx*t-rock.x,a.y+dy*t-rock.y)>=rock.r+radius+5;
+    });
+  }
+  function safePoint(point,radius,rocks,world){
+    const result={x:clamp(point.x,radius+8,world.w-radius-8),y:clamp(point.y,radius+8,world.h-radius-8)};
+    for(let pass=0;pass<3;pass++)for(const rock of rocks){
+      const dx=result.x-rock.x,dy=result.y-rock.y,d=Math.hypot(dx,dy)||1,min=rock.r+radius+18;
+      if(d<min){result.x=clamp(rock.x+dx/d*min,radius+8,world.w-radius-8);result.y=clamp(rock.y+dy/d*min,radius+8,world.h-radius-8);}
+    }
+    return result;
+  }
+  function routeAroundRocks(start,goal,radius,rocks,world){
+    if(clearSegment(start,goal,radius,rocks))return [goal];
+    const nodes=[start,goal];
+    for(const rock of rocks)for(let i=0;i<16;i++){
+      const angle=i*TAU/16,clearance=rock.r+radius+22;
+      const point={x:rock.x+Math.cos(angle)*clearance,y:rock.y+Math.sin(angle)*clearance};
+      if(point.x<radius+8||point.x>world.w-radius-8||point.y<radius+8||point.y>world.h-radius-8)continue;
+      if(rocks.some((other)=>other!==rock&&distance(point,other)<other.r+radius+7))continue;
+      nodes.push(point);
+    }
+    const costs=nodes.map(()=>Infinity),previous=nodes.map(()=>-1),visited=new Set();costs[0]=0;
+    while(visited.size<nodes.length){
+      let current=-1;
+      for(let i=0;i<nodes.length;i++)if(!visited.has(i)&&(current<0||costs[i]<costs[current]))current=i;
+      if(current<0||!Number.isFinite(costs[current])||current===1)break;
+      visited.add(current);
+      for(let i=0;i<nodes.length;i++){
+        if(i===current||visited.has(i)||!clearSegment(nodes[current],nodes[i],radius,rocks))continue;
+        const cost=costs[current]+distance(nodes[current],nodes[i]);
+        if(cost<costs[i]){costs[i]=cost;previous[i]=current;}
+      }
+    }
+    if(!Number.isFinite(costs[1]))return [];
+    const path=[];for(let i=1;i!==0;i=previous[i])path.unshift(nodes[i]);
+    return path;
+  }
+  function resolveRockCollision(ship,rocks,world){
+    let collided=false;
+    for(let pass=0;pass<6;pass++)for(const rock of rocks){
+      let dx=ship.x-rock.x,dy=ship.y-rock.y,d=Math.hypot(dx,dy),min=rock.r+ship.r+5;
+      if(d<.001){dx=1;dy=0;d=1;}
+      if(d>=min)continue;
+      const nx=dx/d,ny=dy/d;ship.x=rock.x+nx*min;ship.y=rock.y+ny*min;collided=true;
+      if(Number.isFinite(ship.vx)){
+        const inward=ship.vx*nx+ship.vy*ny;
+        if(inward<0){ship.vx-=inward*nx;ship.vy-=inward*ny;}
+      }
+    }
+    ship.x=clamp(ship.x,ship.r+5,world.w-ship.r-5);ship.y=clamp(ship.y,ship.r+5,world.h-ship.r-5);
+    return collided;
+  }
   function engineThrusters(){
     const bounds=shipBounds();
     return activeModules('engine').map((module)=>{
@@ -507,11 +598,13 @@
     const mass=Math.max(2,cellCount*.3),inertia=mass*p.r*p.r*.42,lever=Math.max(20,p.r*.58);
     let desiredX=-p.vx*1.6,desiredY=-p.vy*1.6,heading=p.targetAngle;
     if(p.dest){
-      const dx=p.dest.x-p.x,dy=p.dest.y-p.y,dist=Math.hypot(dx,dy),speed=Math.hypot(p.vx,p.vy);
-      if(dist<22&&speed<12)p.dest=null;
+      if(p.path.length>1&&distance(p,p.path[0])<34)p.path.shift();
+      const waypoint=p.path[0]||p.dest;
+      const dx=waypoint.x-p.x,dy=waypoint.y-p.y,dist=Math.hypot(dx,dy),speed=Math.hypot(p.vx,p.vy);
+      if(p.path.length<=1&&dist<22&&speed<12){p.dest=null;p.path=[];}
       else{
-        desiredX=clamp(dx*.46-p.vx*1.65,-90,90);desiredY=clamp(dy*.46-p.vy*1.65,-90,90);
-        const magnitude=Math.hypot(desiredX,desiredY),factor=Math.min(1,90/(magnitude||1));desiredX*=factor;desiredY*=factor;
+        desiredX=clamp(dx*.38-p.vx*2.4,-55,55);desiredY=clamp(dy*.38-p.vy*2.4,-55,55);
+        const magnitude=Math.hypot(desiredX,desiredY),factor=Math.min(1,55/(magnitude||1));desiredX*=factor;desiredY*=factor;
         for(const rock of battle.asteroids){
           const rx=p.x-rock.x,ry=p.y-rock.y,d=Math.hypot(rx,ry)||1,clearance=rock.r+p.r+35;
           if(d<clearance){const strength=(clearance-d)/clearance*105;desiredX+=rx/d*strength;desiredY+=ry/d*strength;}
@@ -523,7 +616,7 @@
         }
       }
     }
-    const desiredTorque=clamp(inertia*(angleForAvailableTorque(p,heading,engines)*2.3-p.omega*2.2),-22000,22000);
+    const desiredTorque=clamp(inertia*(angleForAvailableTorque(p,heading,engines)*2-p.omega*3.6),-22000,22000);
     const desired=[mass*desiredX,mass*desiredY,desiredTorque/lever*1.25],coeff=engines.map((engine)=>{
       const direction=p.angle+engine.direction;
       return [Math.cos(direction)*engine.force,Math.sin(direction)*engine.force,engine.torque/lever*1.25];
@@ -542,12 +635,16 @@
       fx+=Math.cos(direction)*engine.force*throttle;fy+=Math.sin(direction)*engine.force*throttle;
       torque+=engine.torque*throttle;p.thrusters[engine.module.id]=throttle;
     }
-    p.vx=clamp((p.vx+fx/mass*dt)*Math.exp(-.035*dt),-190,190);
-    p.vy=clamp((p.vy+fy/mass*dt)*Math.exp(-.035*dt),-190,190);
-    p.omega=clamp((p.omega+torque/inertia*dt)*Math.exp(-.13*dt),-2.6,2.6);
+    p.vx=clamp((p.vx+fx/mass*dt)*Math.exp(-.16*dt),-85,85);
+    p.vy=clamp((p.vy+fy/mass*dt)*Math.exp(-.16*dt),-85,85);
+    p.omega=clamp((p.omega+torque/inertia*dt)*Math.exp(-.7*dt),-1.45,1.45);
     p.x+=p.vx*dt;p.y+=p.vy*dt;p.angle+=p.omega*dt;
     if(p.x<p.r+5){p.x=p.r+5;p.vx=Math.max(0,p.vx);}if(p.x>battle.world.w-p.r-5){p.x=battle.world.w-p.r-5;p.vx=Math.min(0,p.vx);}
     if(p.y<p.r+5){p.y=p.r+5;p.vy=Math.max(0,p.vy);}if(p.y>battle.world.h-p.r-5){p.y=battle.world.h-p.r-5;p.vy=Math.min(0,p.vy);}
+    if(resolveRockCollision(p,battle.asteroids,battle.world)&&p.dest){
+      const route=routeAroundRocks(p,p.dest,p.r,battle.asteroids,battle.world);
+      if(route.length)p.path=route;
+    }
   }
   function weaponWorld(module,player){
     const geom=rotatedGeometry(module.type,module.rotation),bounds=shipBounds(),[mx,my]=geom.muzzle;
@@ -590,10 +687,23 @@
     }
     for(const enemy of living){
       const dx=p.x-enemy.x,dy=p.y-enemy.y,dist=Math.hypot(dx,dy)||1;
-      if(dist>220){const [vx,vy]=avoidRocks(enemy,dx/dist,dy/dist);enemy.x=clamp(enemy.x+vx*enemy.speed*dt,enemy.r+5,b.world.w-enemy.r-5);enemy.y=clamp(enemy.y+vy*enemy.speed*dt,enemy.r+5,b.world.h-enemy.r-5);}
-      else{enemy.x=clamp(enemy.x+Math.cos(time*.001+enemy.phase)*enemy.speed*.32*dt,enemy.r+5,b.world.w-enemy.r-5);enemy.y=clamp(enemy.y+Math.sin(time*.001+enemy.phase)*enemy.speed*.32*dt,enemy.r+5,b.world.h-enemy.r-5);}
+      enemy.pathTimer-=dt;enemy.moving=dist>220;
+      if(enemy.moving){
+        if(enemy.pathTimer<=0||!enemy.path.length){
+          const goal=safePoint(p,enemy.r,b.asteroids,b.world);
+          enemy.path=routeAroundRocks(enemy,goal,enemy.r,b.asteroids,b.world);enemy.pathTimer=1.2;
+        }
+        if(enemy.path.length>1&&distance(enemy,enemy.path[0])<14)enemy.path.shift();
+        const waypoint=enemy.path[0];
+        if(waypoint){const vx=waypoint.x-enemy.x,vy=waypoint.y-enemy.y,length=Math.hypot(vx,vy)||1;enemy.x+=vx/length*enemy.speed*dt;enemy.y+=vy/length*enemy.speed*dt;}
+      }else{enemy.x+=Math.cos(time*.001+enemy.phase)*enemy.speed*.32*dt;enemy.y+=Math.sin(time*.001+enemy.phase)*enemy.speed*.32*dt;}
+      if(resolveRockCollision(enemy,b.asteroids,b.world))enemy.pathTimer=0;
       enemy.angle+=clamp(angleDifference(enemy.angle,Math.atan2(dy,dx)),-dt*2,dt*2);
-      enemy.cooldown-=dt;if(enemy.cooldown<=0&&dist<470){enemy.cooldown=rand(1.7,2.3);fireProjectile('enemy',enemy.x+Math.cos(enemy.angle)*enemy.r*.5,enemy.y+Math.sin(enemy.angle)*enemy.r*.5,p,7+save.sector*.65,270);}
+      enemy.cooldown-=dt;if(enemy.cooldown<=0&&dist<470){
+        enemy.cooldown=rand(1.7,2.3);
+        const cos=Math.cos(enemy.angle),sin=Math.sin(enemy.angle);
+        fireProjectile('enemy',enemy.x+60*cos+15*sin,enemy.y+60*sin-15*cos,p,7+save.sector*.65,270);
+      }
     }
     for(let i=b.projectiles.length-1;i>=0;i--){
       const shot=b.projectiles[i];shot.x+=shot.vx*dt;shot.y+=shot.vy*dt;shot.life-=dt;
@@ -608,24 +718,21 @@
     if(b.enemies.every((enemy)=>enemy.hp<=0)){finishBattle(true);return;}
     if(time-lastHudRefresh>280){lastHudRefresh=time;renderHud();renderInspector();refreshCrewStatus();}
   }
-  function avoidRocks(ship,vx,vy){
-    for(const rock of battle.asteroids){
-      const dx=rock.x-ship.x,dy=rock.y-ship.y,d=Math.hypot(dx,dy)||1,clearance=rock.r+ship.r+18,ahead=(vx*dx+vy*dy)/d;
-      if(ahead>0&&d<clearance+75){const side=vx*dy-vy*dx>=0?-1:1,strength=(clearance+75-d)/(clearance+75)*1.6;vx+=side*(-dy/d)*strength;vy+=side*(dx/d)*strength;}
-      if(d<clearance){const strength=(clearance-d)/clearance*1.8;vx-=dx/d*strength;vy-=dy/d*strength;}
-    }
-    const length=Math.hypot(vx,vy)||1;return [vx/length,vy/length];
-  }
-
   function drawEnemy(enemy){
     const g=ctx,r=enemy.r;
     g.save();g.translate(Math.round(enemy.x),Math.round(enemy.y));g.rotate(enemy.angle);
-    g.fillStyle='#3a2738';g.fillRect(-r,-r*.6,r*1.5,r*1.2);
-    g.fillStyle='#dd6b78';g.fillRect(-r*.5,-r*.42,r*1.1,r*.84);
-    g.fillStyle='#a9425b';g.fillRect(-r*.9,-r,r*.6,r*.42);g.fillRect(-r*.9,r*.58,r*.6,r*.42);
-    g.fillStyle='#f5a697';g.fillRect(r*.28,-r*.25,r*.65,r*.5);
-    g.fillStyle='#ffdfb0';g.fillRect(r*.82,-3,6,6);
-    g.fillStyle='#91a9bb';g.fillRect(-r-4,-5,6,10);
+    const colors={core:'#e08d9b',weapon:'#e7a36e',engine:'#9db6d3',armor:'#9b879e'};
+    for(const module of enemy.modules)for(const [x,y] of module.cells){
+      const px=x*15-7,py=y*15-7;
+      g.fillStyle='#251d31';g.fillRect(px-1,py-1,17,17);
+      g.fillStyle=colors[module.type];g.fillRect(px,py,15,15);
+      g.fillStyle='#3d3448';g.fillRect(px+2,py+2,11,11);
+      g.fillStyle=colors[module.type];g.fillRect(px+3,py+11,3,1);
+    }
+    g.fillStyle='#84d3df';g.fillRect(-4,-4,8,7);g.fillStyle='#e9f7ed';g.fillRect(-2,-3,4,2);
+    g.fillStyle='#e7a36e';g.fillRect(38,-19,15,9);g.fillStyle='#fff0ca';g.fillRect(51,-16,12,3);
+    g.fillStyle='#557e9b';g.fillRect(-38,-7,9,14);
+    if(enemy.moving){g.fillStyle='#70d4e8';g.fillRect(-47,-4,9,8);g.fillStyle='#f9c77d';g.fillRect(-51,-2,5,4);}
     g.restore();
     g.fillStyle='#081827';g.fillRect(enemy.x-25,enemy.y-r-16,50,6);
     g.fillStyle='#ec7b82';g.fillRect(enemy.x-24,enemy.y-r-15,48*enemy.hp/enemy.maxHp,4);
@@ -646,7 +753,7 @@
       ctx.fillStyle='#35475d';ctx.fillRect(-rock.r*.33,-rock.r*.2,rock.r*.36,rock.r*.27);ctx.fillRect(rock.r*.2,rock.r*.15,rock.r*.25,rock.r*.19);ctx.restore();
     }
     if(p.dest){
-      ctx.setLineDash([9,9]);ctx.strokeStyle='#7bdee3aa';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.dest.x,p.dest.y);ctx.stroke();ctx.setLineDash([]);
+      ctx.setLineDash([9,9]);ctx.strokeStyle='#7bdee3aa';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(p.x,p.y);for(const point of p.path)ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);
       ctx.strokeStyle='#80e2e4';ctx.strokeRect(p.dest.x-9,p.dest.y-9,18,18);
       ctx.beginPath();ctx.moveTo(p.dest.x,p.dest.y);ctx.lineTo(p.dest.x+Math.cos(p.targetAngle)*26,p.dest.y+Math.sin(p.targetAngle)*26);ctx.stroke();
     }
@@ -680,7 +787,10 @@
   }
   function orderMove(point){
     if(!battle)return;if(!battle.player.selected){toast('Select your ship first.');return;}
-    const p=battle.player;p.dest={x:clamp(point.x,p.r+8,battle.world.w-p.r-8),y:clamp(point.y,p.r+8,battle.world.h-p.r-8)};
+    const p=battle.player,goal=safePoint(point,p.r,battle.asteroids,battle.world);
+    const path=routeAroundRocks(p,goal,p.r,battle.asteroids,battle.world);
+    if(!path.length){toast('No clear route to that location.');return;}
+    p.dest=goal;p.path=path;
     $('combatHint').textContent='THRUSTERS STEERING TO WAYPOINT · RIGHT CLICK TO REDIRECT';
   }
   function rotateArrival(step){
