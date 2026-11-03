@@ -1,6 +1,6 @@
 # Starship // Drift
 
-A playable pixel art space adventure about building a modular ship, managing its crew, and surviving unpredictable encounters. Play it at [bishoppawn1.github.io/starship](https://bishoppawn1.github.io/starship/) once GitHub Pages is enabled for the repository.
+A playable pixel art space adventure about building a modular ship, managing its crew, and surviving unpredictable encounters. [Play Starship // Drift](https://bishoppawn1.github.io/starship/).
 
 ## Play
 
@@ -13,7 +13,7 @@ Open `index.html` in a browser, or serve this directory with any static file ser
 
 ## Publishing
 
-The [Pages workflow](.github/workflows/pages.yml) deploys the static game when `main` changes. In the repository's **Settings → Pages**, choose **GitHub Actions** as the publishing source to enable it. The game uses relative asset paths so it works under the `/starship/` project URL.
+The [Pages workflow](.github/workflows/pages.yml) deploys the static game when `main` changes. The game uses relative asset paths so it works under the `/starship/` project URL.
 
 - [Game specification](spec.md)
 - [Agent guide](agent.md)
