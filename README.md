@@ -6,10 +6,11 @@ A playable pixel art space adventure about building a modular ship, managing its
 
 Open `index.html` in a browser, or serve this directory with any static file server. No build step or dependencies are needed. Progress saves automatically in your browser.
 
-- In the hangar, select a polyomino module from the bay. Rotate with **Q / E** or the on-screen buttons, then click a free grid cell beside the ship to place it. Click an installed module to inspect, upgrade, or repair it using metal.
-- Assign Vega, Moss, and Iris to operate weapons, repair systems, deliver ammo, or stand by. Assignments take a short time to become active during combat.
-- Select **Jump to Next Signal** to find a random encounter. You may fight pirates, defend a freighter, salvage wreckage, or trade.
-- In combat, **left click your ship** to select it, **scroll** to set its arrival angle, and **right click** the arena to move. Q / E and the on-screen buttons also rotate the arrival angle. On touch screens, tap the ship and then tap a destination. Weapons fire automatically when hostiles are in range and ammunition is available.
+- In the hangar, select a polyomino room from the bay. Rotate with **Q / E** or the on-screen buttons, then click a free grid cell beside the ship to place it. Rooms have open floor and one or two pieces of pixel art equipment. Click an installed room to inspect, upgrade, or repair it using metal. Selecting a weapon displays its mount and firing arc.
+- Assign Vega, Moss, and Iris to operate weapons, repair systems, deliver ammo, or stand by. They walk through connected rooms to their stations. Gunners improve a weapon at its console, engineers repair at the damaged room, and loaders carry ammo from the core or an ammo hold to a weapon.
+- Open the **Sector Map** and choose one of the connected destinations. Routes branch through pirate, freighter distress, salvage, and trader encounters. The chart refreshes after its final column.
+- In combat, **left click your ship** to select it, **scroll** to set its desired arrival angle, and **right click** the arena to move. Q / E and the on-screen buttons also change the desired angle. On touch screens, tap the ship and then tap a destination. The ship takes time to turn: each engine applies force in its mounted direction and torque from its position. Engines fire only when the flight controller needs thrust.
+- Pulse cannons and railguns fire from their visible muzzles only when a target is within range and inside their firing arcs. They consume ammo.
 
 ## Publishing
 

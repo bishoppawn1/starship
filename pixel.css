@@ -1,0 +1,46 @@
+/* Crisp, hand-drawn pixels sit over the interactive construction grid. */
+.ship-grid-stack { position: relative; width: calc(12 * var(--cell)); height: calc(10 * var(--cell)); flex: none; }
+.ship-grid-stack .build-grid { position: absolute; inset: 0; }
+#hangarArt { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: pixelated; z-index: 2; }
+.grid-cell.occupied { background: #101f2d; box-shadow: none; border-color: #29405b; }
+.grid-cell.occupied:before, .grid-cell.occupied span { display: none; }
+.grid-cell.occupied.selected { outline: 0; }
+.grid-cell.ghost { box-shadow: inset 0 0 0 2px var(--module-color); }
+.module-inspector .inspector-sub { line-height: 1.55; }
+.inspector-detail { color: #f4c780; font-size: 10px; line-height: 1.45; letter-spacing: .04em; margin: 0 0 8px; }
+.flight-telemetry { margin: 0 0 14px; padding: 11px; background: #0a1c2c; border: 1px solid #416278; color: #9de1e4; font-size: 10px; line-height: 1.8; letter-spacing: .08em; }
+
+.map-screen { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.sector-map-wrap { position: relative; flex: 1; min-height: 440px; border: 2px solid #4c7184; overflow: hidden; background: #081422; box-shadow: inset 7px 7px #050d18, inset -7px -7px #050d18; }
+.map-content { position: relative; width: 100%; height: 100%; min-height: inherit; }
+.sector-map-wrap:after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .2; background: repeating-linear-gradient(0deg, transparent 0 5px, #7bb9c5 5px 6px); }
+.sector-map-stars { position: absolute; inset: 0; opacity: .7; background-image: radial-gradient(circle, #64899b 1px, transparent 1px), radial-gradient(circle, #9cc8cb 1px, transparent 1px); background-size: 53px 61px, 109px 97px; background-position: 8px 11px, 44px 37px; }
+.map-links { position: absolute; width: 100%; height: 100%; inset: 0; overflow: visible; }
+.map-links line { stroke: #3e596d; stroke-width: 2; stroke-dasharray: 5 6; }
+.map-links line.active { stroke: #8fdce1; stroke-width: 3; stroke-dasharray: 0; }
+.map-links line.visited { stroke: #83d3aa; stroke-dasharray: 0; }
+.sector-map { position: absolute; inset: 0; }
+.map-node { position: absolute; transform: translate(-50%,-50%); width: 106px; min-height: 67px; padding: 7px; text-align: center; background: #142338; color: #92a7b8; border: 2px solid #40576d; box-shadow: 4px 4px #030a14; z-index: 1; }
+.map-node strong, .map-node small, .map-node span { display: block; }
+.map-node span { font-size: 16px; line-height: 17px; }
+.map-node strong { font-size: 9px; letter-spacing: .08em; margin-top: 3px; }
+.map-node small { font-size: 8px; margin-top: 3px; color: #68849a; }
+.map-node.available { color: #e9f6f3; background: #1a3b4a; border-color: #86e0df; box-shadow: 4px 4px #16444c, 0 0 0 3px #7cc9cc33; animation: mapPulse 1.5s steps(2,end) infinite; }
+.map-node.available:hover { background: #2b5861; transform: translate(-50%,-50%) scale(1.05); }
+.map-node.current { color: #0a1a24; background: #f3bf68; border-color: #fff0bb; box-shadow: 4px 4px #775733; }
+.map-node.visited { color: #9dd7b5; border-color: #537766; }
+.map-node:disabled { cursor: default; opacity: 1; }
+@keyframes mapPulse { 50% { box-shadow: 4px 4px #16444c, 0 0 0 5px #7cc9cc55; } }
+
+.arena-wrap canvas { image-rendering: pixelated; }
+.event-visual { border-width: 2px; box-shadow: inset 6px 6px #081726, inset -6px -6px #081726; }
+.event-visual span { font-family: monospace; image-rendering: pixelated; }
+
+@media (max-width: 720px) {
+  .sector-map-wrap { min-height: 370px; overflow-x: auto; }
+  .map-content { min-width: 690px; }
+  .map-node { width: 80px; min-height: 58px; padding: 4px 2px; }
+  .map-node span { font-size: 13px; }
+  .map-node strong { font-size: 7px; }
+  .map-node small { font-size: 7px; }
+}
