@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#090f1d">
+    <meta name="description" content="Build a ship from polyomino modules and survive a pixel-art space adventure.">
+    <title>Starship // Drift</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="game.js" defer></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">✦</span><div><strong>STARSHIP</strong><span>// DRIFT</span></div></div>
+        <div class="topbar-stats">
+          <div class="top-stat"><span>SECTOR</span><strong id="sectorDisplay">01</strong></div>
+          <div class="top-stat metal-stat"><span>METAL</span><strong id="metalDisplay">0</strong></div>
+          <div class="top-stat"><span>HULL</span><strong id="hullDisplay">100%</strong></div>
+        </div>
+        <div class="top-actions"><button id="resetButton" class="text-button" type="button" title="Start a new run">NEW RUN</button><button id="jumpButton" class="primary-button" type="button">JUMP TO NEXT SIGNAL <span aria-hidden="true">↗</span></button></div>
+      </header>
+
+      <main class="main-layout">
+        <aside class="side-panel left-panel">
+          <div class="panel-heading"><span class="eyebrow">01 // LOADOUT</span><h2 id="leftTitle">MODULE BAY</h2></div>
+          <div id="hangarTools">
+            <p class="muted small">Select a module, rotate it, then place it beside your ship.</p>
+            <div id="catalog" class="catalog"></div>
+            <div class="tool-note"><span class="note-icon">↻</span><div><strong>ROTATE MODULE</strong><span>Q / E or the controls below</span></div></div>
+            <div class="rotation-controls"><button id="buildRotateLeft" type="button" aria-label="Rotate module counterclockwise">↶</button><span id="buildRotationLabel">0°</span><button id="buildRotateRight" type="button" aria-label="Rotate module clockwise">↷</button></div>
+          </div>
+          <div id="combatTools" hidden>
+            <p class="muted small">Select your ship, set its arrival angle, and issue a move order.</p>
+            <div class="instruction-card"><span>01</span><div><strong>SELECT SHIP</strong><small>Left click your ship</small></div></div>
+            <div class="instruction-card"><span>02</span><div><strong>SET ROTATION</strong><small>Mouse wheel or Q / E</small></div></div>
+            <div class="instruction-card"><span>03</span><div><strong>MOVE</strong><small>Right click the arena</small></div></div>
+            <p class="muted tiny">On touch screens, tap your ship and then tap a destination.</p>
+            <div class="tool-note"><span class="note-icon">↻</span><div><strong>ARRIVAL ROTATION</strong><span id="combatRotationLabel">0°</span></div></div>
+            <div class="rotation-controls"><button id="combatRotateLeft" type="button" aria-label="Rotate ship counterclockwise">↶</button><span>15° / STEP</span><button id="combatRotateRight" type="button" aria-label="Rotate ship clockwise">↷</button></div>
+            <button id="selectShipButton" class="outline-button full-width" type="button">SELECT MY SHIP</button>
+          </div>
+          <div class="left-footer"><span class="signal-dot"></span><span id="leftStatus">DOCKED // SYSTEMS READY</span></div>
+        </aside>
+
+        <section class="stage-panel">
+          <div class="stage-heading"><div><span class="eyebrow" id="stageEyebrow">HANGAR // SHIPYARD</span><h1 id="stageTitle">BUILD YOUR SHIP</h1></div><div class="stage-tag" id="stageTag">GRID 12 × 10</div></div>
+          <div id="hangarScreen" class="hangar-screen">
+            <div class="grid-wrap"><div class="grid-corner corner-tl"></div><div class="grid-corner corner-tr"></div><div class="grid-corner corner-bl"></div><div class="grid-corner corner-br"></div><div id="buildGrid" class="build-grid" role="grid" aria-label="Ship construction grid"></div></div>
+            <div class="stage-bottom"><span id="placementHint">SELECT A MODULE TO EXPAND YOUR SHIP</span><span>CELLS CONNECT BY EDGES</span></div>
+          </div>
+          <div id="combatScreen" class="combat-screen" hidden>
+            <div class="arena-wrap"><canvas id="combatCanvas" width="960" height="600" aria-label="Space combat arena"></canvas><div class="arena-overlay top-left"><span class="signal-dot danger"></span><span id="combatWaveLabel">HOSTILE CONTACT</span></div><div class="arena-overlay top-right" id="enemyCountLabel">1 HOSTILE</div></div>
+            <div class="stage-bottom"><span id="combatHint">SELECT YOUR SHIP TO GIVE A MOVE ORDER</span><span id="arenaSizeLabel">ARENA 960 × 600</span></div>
+          </div>
+        </section>
+
+        <aside class="side-panel right-panel">
+          <div class="panel-heading"><span class="eyebrow">02 // COMMAND</span><h2>SHIP STATUS</h2></div>
+          <div id="shipStats" class="ship-stats"></div>
+          <div class="section-divider"><span>SELECTED MODULE</span></div>
+          <div id="moduleInspector" class="module-inspector"></div>
+          <div class="section-divider"><span>CREW ASSIGNMENTS</span></div>
+          <div id="crewList" class="crew-list"></div>
+          <div class="section-divider"><span>CAPTAIN'S LOG</span></div>
+          <div id="captainsLog" class="captains-log" aria-live="polite"></div>
+        </aside>
+      </main>
+      <footer class="footer"><span>STARSHIP // DRIFT <span class="footer-muted">v0.1</span></span><span id="footerStatus">A LONG WAY FROM HOME</span><span>LOCAL SAVE ENABLED <span class="signal-dot"></span></span></footer>
+    </div>
+
+    <div id="eventOverlay" class="event-overlay" hidden><div class="event-card" role="dialog" aria-modal="true" aria-labelledby="eventTitle"><div class="event-topline"><span class="eyebrow" id="eventType">INCOMING TRANSMISSION</span><span class="event-cross">✦</span></div><div class="event-visual" id="eventVisual" aria-hidden="true"><span>✦</span></div><h2 id="eventTitle">SIGNAL DETECTED</h2><p id="eventBody"></p><div id="eventChoices" class="event-choices"></div></div></div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>

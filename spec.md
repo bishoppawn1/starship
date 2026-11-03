@@ -49,4 +49,13 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 
 ## Open design choices
 
-The exact combat pacing, event structure, additional resources, module roster, crew controls, and progression rules are still to be decided. Implement these incrementally without treating an early prototype choice as a permanent rule unless it is documented here.
+Longer-term combat balance, additional events and resources, more module types, deeper crew controls, and progression beyond the current sector loop are still to be decided. Develop these incrementally and record new rules here.
+
+## Current playable version
+
+- Combat runs in real time. Working pulse cannons automatically target nearby enemies and spend ammunition. An assigned gunner improves their fire rate.
+- An assigned engineer repairs damaged modules during combat, and an assigned loader restores ammunition. Changing assignments during combat has a short travel delay.
+- The starting ship has a command core, ion engine, and pulse cannon. New engines, cannons, shield arrays, armor plating, and ammo holds can be added on the hangar grid. Modules must connect by an edge and cannot overlap.
+- A destroyed command core ends the run. Other destroyed modules stop providing their function until repaired. Metal pays for new modules, upgrades, repairs, and some encounter choices.
+- Pirate and freighter encounters lead to arena combat; salvage and trader encounters offer noncombat choices. Victories provide metal and advance to the next sector.
+- Progress is stored in the browser's local storage. The game is a static site with no account or server dependency.
