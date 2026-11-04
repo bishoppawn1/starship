@@ -17,6 +17,7 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 
 - Ships are assembled from polyomino-shaped modules on a grid. Module shapes and placement determine the ship's layout and overall footprint.
 - Each module is primarily walkable floor. One or two cells contain its system equipment or crew interaction station. Connected modules have openings for crew to pass through.
+- Ship rooms use detailed pixel art with visible floor panels, hull plating, doors, consoles, weapon mounts, engine nozzles, and crew. The assembled ship is rendered as one crisp sprite so its pixel details turn with the hull during flight.
 - Modules have distinct functions, such as weapons and engines. Additional systems can be added as the design develops.
 - The ship layout affects what the ship can do in combat and how much space it needs in an arena.
 - Players can upgrade systems, primarily by spending **metal**.
@@ -26,6 +27,7 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 - Combat can involve the player's ship against one or multiple enemy ships.
 - Battles take place in an arena whose size scales with the sizes of the participating ships, leaving room to maneuver.
 - Arenas contain randomly generated obstacles such as asteroids. Obstacles should create tactical choices without making the arena unusable.
+- Pirate ships and asteroids use pixel sprites that rotate without smoothing, matching the player's ship rather than appearing as simple geometric placeholders.
 - Damage to ship systems matters: a damaged weapon, engine, or other module should affect its function until repaired.
 - Each weapon fires from a visible mount. Its facing, range, and firing arc determine which targets it can hit. Selecting a weapon shows its art and firing arc.
 

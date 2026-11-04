@@ -32,7 +32,8 @@
 .map-node:disabled { cursor: default; opacity: 1; }
 @keyframes mapPulse { 50% { box-shadow: 4px 4px #16444c, 0 0 0 5px #7cc9cc55; } }
 
-.arena-wrap canvas { image-rendering: pixelated; }
+.arena-wrap { display: flex; align-items: center; justify-content: center; }
+.arena-wrap canvas { flex: none; width: auto; height: auto; image-rendering: pixelated; }
 .event-visual { border-width: 2px; box-shadow: inset 6px 6px #081726, inset -6px -6px #081726; }
 .event-visual span { font-family: monospace; image-rendering: pixelated; }
 
