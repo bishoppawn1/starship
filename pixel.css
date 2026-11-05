@@ -101,3 +101,26 @@
 .quit-card .title-emblem { margin-top: 27px; }
 @media(max-width:860px){.title-layout{grid-template-columns:1fr;gap:30px;padding:32px}.title-display{max-width:520px}.title-copy h1{font-size:clamp(42px,9vw,68px)}}
 @media(max-width:540px){.title-screen{padding:14px}.title-heading,.title-footer{padding:12px;font-size:8px}.title-layout{padding:25px 20px}.title-copy h1{font-size:clamp(36px,10vw,54px)}.title-actions{max-width:none}.title-display-footer{font-size:7px}.title-signal{font-size:8px}}
+
+/* The module card catalog belongs to dockside trading. */
+.market-summary { margin: 14px 0 10px; color: var(--gold); font-size: 9px; line-height: 1.5; letter-spacing: .08em; }
+.market-filters { display: flex; gap: 5px; }
+.market-filters button, .market-actions button { border: 1px solid #4b6c7c; background: #182f41; color: #d9e9e8; padding: 7px; font: inherit; font-size: 9px; }
+.market-filters button[aria-pressed="true"], .market-actions button[aria-pressed="true"] { color: #112333; background: var(--cyan); }
+.market-filters button { flex: 1; }
+.market-catalog { max-height: 440px; overflow-y: auto; padding-right: 4px; margin-top: 10px; }
+.market-catalog .catalog-item { grid-template-columns: 35px minmax(0,1fr); cursor: default; align-items: start; padding: 10px 8px; }
+.market-catalog .catalog-item strong { font-size: 10px; line-height: 1.4; }
+.market-catalog .catalog-item small { line-height: 1.5; }
+.market-description { min-width: 0; }
+.market-catalog .weapon-spec { color: #d6c89f; }
+.market-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.market-actions button { cursor: pointer; }
+.market-actions button:disabled { opacity: .45; cursor: default; }
+.trader-services { display: grid; gap: 7px; margin: 12px 0; }
+.trader-services button, #leaveTrader, #revisitTrader { font-size: 9px; white-space: normal; }
+#revisitTrader { margin-top: 12px; }
+#traderTools .tool-note { margin-top: 15px; }
+@media(max-width:720px) { .market-catalog { max-height: 340px; } }
+
+.market-catalog { scrollbar-width: thin; scrollbar-color: #486778 #0d1b2b; }

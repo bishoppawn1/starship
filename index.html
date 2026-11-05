@@ -51,13 +51,25 @@
 
       <main class="main-layout">
         <aside class="side-panel left-panel">
-          <div class="panel-heading"><span class="eyebrow">01 // LOADOUT</span><h2 id="leftTitle">MODULE BAY</h2></div>
+          <div class="panel-heading"><span class="eyebrow">01 // LOADOUT</span><h2 id="leftTitle">SHIP COMMAND</h2></div>
           <div id="hangarTools">
-            <p class="muted small">Install modules from your hold. Traders sell new parts; metal upgrades and repairs installed systems.</p>
-            <div id="catalog" class="catalog"></div>
+            <p class="muted small">Your ship is ready for the next jump. Select a room to inspect its systems, adjust a weapon, upgrade, or repair.</p>
+            <div class="instruction-card"><span>◆</span><div><strong>INSPECT SYSTEMS</strong><small>Click a room on your ship</small></div></div>
+            <div class="instruction-card"><span>↗</span><div><strong>EXPLORE THE SECTOR</strong><small>Choose a connected beacon</small></div></div>
+            <div class="instruction-card"><span>⌂</span><div><strong>REFIT AT TRADERS</strong><small>Buy parts and install them while docked</small></div></div>
+            <button id="shipMapButton" class="outline-button full-width" type="button">PLOT A COURSE ↗</button>
+            <button id="revisitTrader" class="primary-button full-width" type="button" hidden>DOCK AT TRADER ◆</button>
+          </div>
+          <div id="traderTools" hidden>
+            <p class="muted small">Buy parts for your hold, then rotate and install them on the ship. Uninstalled parts stay in your hold when you leave.</p>
+            <div id="marketSummary" class="market-summary"></div>
+            <div id="marketFilters" class="market-filters" aria-label="Market categories"><button type="button" data-filter="all" aria-pressed="true">ALL</button><button type="button" data-filter="weapons" aria-pressed="false">WEAPONS</button><button type="button" data-filter="systems" aria-pressed="false">SYSTEMS</button></div>
+            <div id="catalog" class="catalog market-catalog"></div>
             <div class="tool-note"><span class="note-icon">↻</span><div><strong>ROTATE MODULE</strong><span>Q / E or the controls below</span></div></div>
             <div class="rotation-controls"><button id="buildRotateLeft" type="button" aria-label="Rotate module counterclockwise">↶</button><span id="buildRotationLabel">0°</span><button id="buildRotateRight" type="button" aria-label="Rotate module clockwise">↷</button></div>
             <button id="buildWeaponFacing" class="outline-button full-width" type="button" hidden>MOUNT: RIGHT ↻</button>
+            <div class="trader-services"><button id="traderRepair" class="outline-button full-width" type="button">FIELD REPAIRS · ◆ 15</button><button id="traderSurvey" class="outline-button full-width" type="button">SELL SURVEY DATA · +12</button></div>
+            <button id="leaveTrader" class="primary-button full-width" type="button">LEAVE TRADER →</button>
           </div>
           <div id="combatTools" hidden>
             <p class="muted small">Select your ship, set its arrival angle, and issue a move order.</p>
@@ -81,10 +93,10 @@
         </aside>
 
         <section class="stage-panel">
-          <div class="stage-heading"><div><span class="eyebrow" id="stageEyebrow">HANGAR // SHIPYARD</span><h1 id="stageTitle">BUILD YOUR SHIP</h1></div><div class="stage-tag" id="stageTag">GRID 12 × 10</div></div>
+          <div class="stage-heading"><div><span class="eyebrow" id="stageEyebrow">HANGAR // SHIPYARD</span><h1 id="stageTitle">YOUR STARSHIP</h1></div><div class="stage-tag" id="stageTag">GRID 12 × 10</div></div>
           <div id="hangarScreen" class="hangar-screen">
             <div class="grid-wrap"><div class="grid-corner corner-tl"></div><div class="grid-corner corner-tr"></div><div class="grid-corner corner-bl"></div><div class="grid-corner corner-br"></div><div class="ship-grid-stack"><div id="buildGrid" class="build-grid" role="grid" aria-label="Ship construction grid"></div><canvas id="hangarArt" width="288" height="240" aria-hidden="true"></canvas></div></div>
-            <div class="stage-bottom"><span id="placementHint">SELECT A MODULE TO EXPAND YOUR SHIP</span><span>CELLS CONNECT BY EDGES</span></div>
+            <div class="stage-bottom"><span id="placementHint">CLICK A ROOM TO INSPECT · VISIT A TRADER TO REFIT</span><span>CELLS CONNECT BY EDGES</span></div>
           </div>
           <div id="mapScreen" class="map-screen" hidden>
             <div class="sector-map-wrap"><div class="map-content"><div class="sector-map-stars"></div><svg id="mapLinks" class="map-links" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true"></svg><div id="sectorMap" class="sector-map" aria-label="Sector route map"></div></div></div>

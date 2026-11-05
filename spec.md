@@ -21,7 +21,7 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 - Modules have distinct functions, such as weapons and engines. Additional systems can be added as the design develops.
 - The ship layout affects what the ship can do in combat and how much space it needs in an arena.
 - Players can upgrade systems, primarily by spending **metal**.
-- New modules come from limited trader stock and enter the player's hold. Installing a held module costs no extra metal; upgrades and repairs still spend metal.
+- New modules come from limited trader stock and enter the player's hold. The catalog cards, purchases, rotation controls, and installation grid are available while docked at a trader. The normal ship view provides inspection, weapon settings, upgrades, repairs, and navigation without the placement catalog. Installing a held module costs no extra metal; uninstalled parts stay in the hold until the next trader visit.
 - Ion engines mount at the outer hull. Their exhaust side must face connected open space, with a clear strip directly behind the engine and a second clear cell behind its central nozzle. Later construction cannot fill those cells. Weapon mounts also need an exposed outside cell.
 - Rooms remain walkable interiors with small control panels. Hull plating and structural ribs occupy a separate border outside the rooms; engine nozzles and weapon barrels sit on that exterior border and rotate with the ship.
 
@@ -33,8 +33,8 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 - Pirate ships and asteroids use pixel sprites that rotate without smoothing, matching the player's ship rather than appearing as simple geometric placeholders.
 - Damage to ship systems matters: a damaged weapon, engine, or other module should affect its function until repaired.
 - Each weapon fires from a visible mount. Its facing, range, and firing arc determine which targets it can hit. Selecting a weapon shows its art and firing arc, clipped at the first hull cell in each direction. Hull shadows never resume on the other side of the ship; disabled rooms still block fire.
-- In the hangar, each weapon has a saved range limit from 30 arena units up to its type’s maximum (420 for pulse cannons, 580 for railguns). Targeting, overlays, and projectile travel all respect that limit.
-- Pulse cannon mounts can face either of the two exposed sides of their corner cell, independently of room rotation. Players choose the mount direction before installation or switch it in the installed cannon’s inspector. Railguns keep their fixed barrel direction.
+- In the hangar, each weapon has a saved range limit from 30 arena units up to its type’s maximum (220–650 units across the 20 designs; 420 for pulse cannons and 580 for railguns). Targeting, overlays, and projectile travel all respect that limit.
+- Corner-mounted weapons, including pulse cannons, can face either of the two exposed sides of their corner cell, independently of room rotation. Players choose the mount direction before installation or switch it in the installed cannon’s inspector. Railguns and other long-barrel weapons keep their fixed barrel direction.
 - Construction rejects weapons with no unobstructed direction from their firing arc to open space, and rejects additions that completely enclose an installed weapon’s firing arc. A mount cannot be switched into a completely blocked direction. Partially blocked arcs remain usable in their clear directions.
 
 ## Ship movement controls
@@ -65,13 +65,40 @@ Longer-term combat balance, additional events and resources, more module types, 
 
 ## Current playable version
 
-- Combat runs in real time. Pulse cannons have a 130° arc; railguns have a longer range and a 50° arc. Each shot starts at its muzzle and spends ammunition. A gunner at the weapon station improves its fire rate.
+- Combat runs in real time with exactly 20 purchasable weapon designs. Weapons differ in range, arc, damage, reload time, ammunition per trigger, projectile speed, and effects. Salvos share one trigger's ammo cost. Every shot starts at its muzzle, respects the firing arc and configured travel limit, and is blocked by hull cells. Guided missiles can steer after launch; piercing rounds hit each ship at most once. Splash hits deal 55% damage to neighboring ships, and Tesla arcs deal 50% to one nearby ship with a clear path. Slowing and burning expire after their stated durations. A gunner at any weapon station improves its fire rate.
 - An engineer repairs a damaged module after walking to its station. A loader walks between an ammo source and a weapon to deliver ammunition.
-- The starting ship has a command core, two directional ion engines, and a pulse cannon. It begins with one spare armor module. Engines, cannons, railguns, shield arrays, armor plating, and ammo holds can be bought from traders and installed on the hangar grid. Modules must connect by an edge and cannot overlap or block reserved exhaust and mount space.
-- During construction, a selected module stays in placement mode when the cursor is over an installed room. The preview and click snap to a nearby valid edge position, including below the ship. Without a selected catalog module, clicking a room inspects it.
+- The starting ship has a command core, two mirrored directional ion engines, and two mirrored pulse cannons facing forward. Its occupied cells and external mounts are symmetric above and below the centerline, and its engine pair has equal opposite turning torque. An untouched legacy starter save gains the mirrored cannon automatically; customized or damaged ships are preserved. It begins with one spare armor module. All 20 weapons, engines, shield arrays, armor plating, and ammo holds can be bought and installed at traders. Each new trader stocks five distinct weapons and two support-system types; returning traders keep their remaining stock. Older saved markets gain missing weapon and support offers once, retaining sold-out quantities and original prices. Modules must connect by an edge and cannot overlap or block reserved exhaust and mount space.
+- During construction, a selected module stays in placement mode when the cursor is over an installed room. The preview and click snap to a nearby valid edge position, including below the ship. Without a selected catalog module, clicking a room inspects it. Leaving a trader clears placement mode. A trader at the current beacon can be reopened with **Dock at Trader** from the ship view.
 - Pirate ships are assembled from connected four-cell tetromino modules, with visible core, weapon, engine, and sometimes armor rooms. Arena sizing uses their actual tile count.
 - Asteroids are solid to both player and pirate ships. Move orders and pirate pursuit route around each asteroid with clearance for the ship's size; a ship that reaches an obstacle is stopped and steered along it.
 - A destroyed command core ends the run. Other destroyed modules stop providing their function until repaired. Metal pays traders for new modules and pays for upgrades, repairs, and some encounter choices.
 - A generated sector chart has connected, revisitable beacons and a dedicated exit. Pirate and freighter destinations lead to arena combat; salvage, anomalies, derelicts, outposts, and traders offer other choices. Completed sites remain on the chart. A new chart appears only when the player chooses **Go to Next Sector** at the exit.
 - Progress is stored in the browser's local storage. The game is a static site with no account or server dependency.
 - The game opens at a title menu. **Continue Game** loads the local run when its command core is intact; **New Game** replaces it after confirmation. The in-game **Main Menu** action saves and returns to the title screen. **Quit Game** ends the browser session at a closing screen with a path back to the menu; an unfinished battle is abandoned and can be attempted again from its chart beacon.
+
+## Weapon roster
+
+All ranges below are maximum arena units. Corner mounts offer two facing choices; fixed mounts follow room rotation.
+
+| Weapon | Range | Arc | Role |
+| --- | ---: | ---: | --- |
+| Pulse Cannon | 420 | 130° | General-purpose pulse fire |
+| Railgun | 580 | 50° | Pierces two ships; fixed barrel |
+| Autocannon | 360 | 110° | Fast accurate shells |
+| Gatling Battery | 310 | 100° | Three-round burst |
+| Flak Battery | 280 | 150° | Five explosive shells |
+| Scatter Cannon | 220 | 140° | Seven close-range pellets |
+| Plasma Cannon | 390 | 100° | Slow explosive plasma |
+| Ion Blaster | 400 | 120° | Halves movement for 3 seconds |
+| Laser Repeater | 450 | 110° | Rapid high-speed laser bolts |
+| Heavy Laser | 540 | 45° | Heavy focused bolt; fixed barrel |
+| Missile Rack | 560 | 100° | Guided explosive missile |
+| Swarm Launcher | 440 | 140° | Four guided rockets |
+| Torpedo Tube | 650 | 35° | Heavy unguided explosion; fixed barrel |
+| Siege Cannon | 600 | 30° | Maximum single-shell damage; fixed barrel |
+| Disruptor | 340 | 125° | Area pulse reduces movement to 30% for 2 seconds |
+| Tesla Coil | 300 | 150° | Chains to a nearby enemy |
+| Cryo Projector | 260 | 140° | Reduces movement to 40% for 4 seconds |
+| Inferno Projector | 230 | 130° | Burns for 5 damage per second over 4 seconds |
+| Proton Lance | 620 | 25° | Pierces three ships; fixed barrel |
+| Gauss Repeater | 510 | 55° | Two slugs, each piercing two ships; fixed barrel |
