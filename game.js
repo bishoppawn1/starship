@@ -16,12 +16,12 @@
     shield: '#bfa6f1', armor: '#9aadc0', cargo: '#e5ca84'
   };
   const MODULES = {
-    core: { name: 'Command Core', short: 'C', color: C.core, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 170, cost: 0, description: 'A walkable bridge with one command console.' },
-    engine: { name: 'Ion Engine', short: 'E', color: C.engine, shape: [[0,0],[0,1],[0,2]], station: [0,1], hp: 80, cost: 35, thrust: 270, description: 'Hull-mounted engine. Keep two exterior cells clear behind its nozzle.' },
+    core: { name: 'Command Core', short: 'C', color: C.core, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 170, cost: 0, description: 'Piloting station and reactor control. Staff a pilot here to enable engine evasion.' },
+    engine: { name: 'Ion Engine', short: 'E', color: C.engine, shape: [[0,0],[0,1],[0,2]], station: [0,1], hp: 80, cost: 35, thrust: 270, description: 'Powered directional thruster. An operator boosts thrust; a pilot enables evasion. Keep the exhaust clear.' },
     weapon: { name: 'Pulse Cannon', short: 'W', color: C.weapon, shape: [[0,0],[1,0],[1,1]], station: [1,1], mount: [1,0], muzzle: [2,.5], hp: 75, cost: 45, range: 420, arc: 130, damage: 14, reload: 1.2, ammo: 1, description: 'A crewed pulse cannon with a 130° forward firing arc.' },
     railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range damage through a narrow 50° firing arc.' },
-    shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:32, recharge:7, description: 'A light, rechargeable barrier around the whole ship.' },
-    focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:80, recharge:15, arc:105, description: 'A stronger shield that covers a 105° sector in its facing direction.' },
+    shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:32, recharge:7, description: 'Full-hull shield layers. Two power bars per layer; a crew operator speeds recharge.' },
+    focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:80, recharge:15, arc:105, description: 'Fast-recharging shield layers covering a 105° sector. Two power bars per layer.' },
     armor: { name: 'Armor Plating', short: 'A', color: C.armor, shape: [[0,0],[1,0],[0,1]], station: null, hp: 115, cost: 20, description: 'Open, durable floor that can absorb damage.' },
     cargo: { name: 'Ammo Hold', short: 'M', color: C.cargo, shape: [[0,0],[1,0],[2,0]], station: [1,0], hp: 65, cost: 25, description: 'Adds ammo capacity and a loading point for crew.' }
   };
@@ -100,7 +100,7 @@
     { id: 'moss', name: 'MOSS', initial: 'M', color: '#8fddb5', task: 'repair', x: 6.5, y: 4.5 },
     { id: 'iris', name: 'IRIS', initial: 'I', color: '#c4acf1', task: 'load', x: 5.5, y: 5.5 }
   ];
-  const TASKS = { gun: 'Operate weapons', shield: 'Operate shields', repair: 'Repair systems', load: 'Deliver ammo', idle: 'Stand by' };
+  const TASKS = { pilot:'Pilot ship', engine:'Operate engines', gun: 'Operate weapons', shield: 'Operate shields', repair: 'Repair systems', load: 'Deliver ammo', idle: 'Stand by' };
   const EVENT_TYPES = {
     pirate: { name: 'PIRATES', icon: '⚔' }, rescue: { name: 'DISTRESS', icon: '◇' },
     salvage: { name: 'SALVAGE', icon: '✧' }, trader: { name: 'TRADER', icon: '◆' },
@@ -111,10 +111,44 @@
   };
 
   function traderStock(){
-    const shuffle=(types)=>{const pool=[...types];for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}return pool;};
-    return [...shuffle(WEAPON_TYPES).slice(0,5),...SHIELD_TYPES,...shuffle(['engine','armor','cargo']).slice(0,1)]
-      .map((type)=>({type,qty:1+Number(Math.random()<.25),price:MODULES[type].cost+Math.floor(rand(-5,11))}));
+    const stock=[];
+    for(let i=0;i<5;i++){
+      const type=WEAPON_TYPES[Math.floor(Math.random()*WEAPON_TYPES.length)],existing=stock.find((offer)=>offer.type===type);
+      if(existing)existing.qty++;else stock.push({type,qty:1,price:Math.max(1,MODULES[type].cost+Math.floor(rand(-5,11)))});
+    }
+    const supports=[...SHIELD_TYPES,['engine','armor','cargo'][Math.floor(Math.random()*3)]];
+    for(const type of supports)stock.push({type,qty:1+Number(Math.random()<.25),price:Math.max(1,MODULES[type].cost+Math.floor(rand(-5,11)))});
+    return stock;
   }
+  function crewAppearance(person){
+    const original=CREW.find((member)=>member.id===person.id),name=person.name||original?.name||'CREW';
+    return {name,initial:person.initial||original?.initial||name[0],color:person.color||original?.color||'#b7cbe0'};
+  }
+  function traderRecruits(){
+    const names=['NOVA','ORION','JUNO','ASH','ROOK','SABLE','LYRA','FINCH','SOL','PIPER','KAI','EMBER'];
+    const colors=['#efc27c','#8fddb5','#c4acf1','#81cee4','#ea9baf'];
+    const pool=[...names],offers=[];
+    for(let i=0,count=1+Number(Math.random()<.5);i<count;i++){
+      const name=pool.splice(Math.floor(Math.random()*pool.length),1)[0];
+      offers.push({id:`recruit-${i}`,name,initial:name[0],color:colors[Math.floor(Math.random()*colors.length)],price:40+Math.floor(Math.random()*16),hired:false});
+    }
+    return offers;
+  }
+  function buyRecruit(id){
+    if(mode!=='trade'||!tradeNode)return false;
+    const recruit=tradeNode.recruits?.find((offer)=>offer.id===id);
+    if(!recruit||recruit.hired||save.metal<recruit.price)return false;
+    const core=save.modules.find((module)=>module.type==='core'),point=moduleStation(core);
+    save.nextCrewId??=1;let crewId;do{crewId=`crew-${save.nextCrewId++}`;}while(save.crew.some((person)=>person.id===crewId));
+    save.metal-=recruit.price;recruit.hired=true;
+    save.crew.push({id:crewId,name:recruit.name,initial:recruit.initial,color:recruit.color,task:'idle',...point});
+    persist();log(`${recruit.name} joined the crew.`);renderAll();toast(`${recruit.name} recruited · assign a job in the crew panel`);return true;
+  }
+  function recruitCards(){
+    if(!['all','crew'].includes(marketFilter))return '';
+    return (tradeNode.recruits||[]).map((person)=>`<div class="catalog-item recruit-offer"><span class="crew-avatar" style="--crew-color:${person.color}">${person.initial}</span><div><strong>${person.name} · CREW</strong><small>Can pilot, operate engines, shields or weapons, repair, or deliver ammo.</small><div class="market-actions"><button type="button" data-recruit="${person.id}" ${person.hired||save.metal<person.price?'disabled':''}>${person.hired?'RECRUITED':`RECRUIT ◆ ${person.price}`}</button></div></div></div>`).join('');
+  }
+
   function makeMap(base) {
     const pool=['pirate','rescue','salvage','anomaly','derelict','relay','minefield','lifeboat','pirate','rescue'];
     for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
@@ -124,7 +158,7 @@
       const type=col===2&&row===1?'trader':col===4&&row===1?'outpost':pool.pop();
       if(variantOffsets[type]===undefined)variantOffsets[type]=Math.floor(Math.random()*3);
       const variant=(variantOffsets[type]+(usedVariants[type]||0))%3;usedVariants[type]=(usedVariants[type]||0)+1;
-      nodes.push({id:`${col}-${row}`,col,row,mapX:80+col*168+rand(-16,16),mapY:110+row*190+rand(-31,31),type,variant,links:[],stockVersion:type==='trader'?3:undefined,stock:type==='trader'?traderStock():undefined});
+      nodes.push({id:`${col}-${row}`,col,row,mapX:80+col*168+rand(-16,16),mapY:110+row*190+rand(-31,31),type,variant,links:[],stockVersion:type==='trader'?4:undefined,stock:type==='trader'?traderStock():undefined});
     }
     nodes.push({id:'5-1',col:5,row:1,mapX:920,mapY:300,type:'exit',links:[]});
     const byId=new Map(nodes.map((node)=>[node.id,node]));
@@ -138,8 +172,60 @@
     for(let col=1;col<=4;col++)for(let row=0;row<2;row++)if(Math.random()<.55)connect(`${col}-${row}`,`${col}-${row+1}`);
     return {version:2,base,nodes,current:'0-1',visited:['0-1'],resolved:['0-1']};
   }
+  function systemMaxPower(module){
+    const def=MODULES[module.type],level=module.level||1;
+    if(module.type==='engine')return 2+level-1;
+    if(def.shield||module.type==='shield')return level*2;
+    if(def.range)return def.damage>=24||def.family==='rail'||def.family==='missile'?2:1;
+    return 0;
+  }
+  function reactorCapacity(data=save){return 8+2*((data.reactorLevel||1)-1);}
+  function requestedPower(module){return clamp(Number.isFinite(module.power)?module.power:systemMaxPower(module),0,systemMaxPower(module));}
+  function powerUsed(){return save.modules.reduce((sum,module)=>sum+requestedPower(module),0);}
+  function usablePower(module){
+    const maximum=systemMaxPower(module);if(!maximum||module.hp<=0)return 0;
+    return Math.min(requestedPower(module),Math.ceil(maximum*module.hp/maxHp(module)));
+  }
+  function systemPower(module){const maximum=systemMaxPower(module);return maximum?usablePower(module)/maximum:module.hp>0?1:0;}
+  function normalizeSystems(data,legacy=false){
+    if(!Number.isInteger(data.reactorLevel)||data.reactorLevel<1){
+      const demand=data.modules.reduce((sum,module)=>sum+systemMaxPower(module),0);
+      data.reactorLevel=legacy?Math.max(1,1+Math.ceil((demand-8)/2)):1;
+    }
+    let left=reactorCapacity(data);
+    for(const module of data.modules){module.power=Math.min(requestedPower(module),left);left-=module.power;}
+  }
+  function setSystemPower(id,amount){
+    const module=save.modules.find((part)=>part.id===id);if(!module||!Number.isFinite(amount))return false;
+    amount=clamp(Math.round(amount),0,systemMaxPower(module));
+    if(amount-requestedPower(module)>reactorCapacity()-powerUsed())return false;
+    module.power=amount;persist();renderAll();return true;
+  }
+  function upgradeReactor(){
+    const cost=40+20*((save.reactorLevel||1)-1);
+    if(!['hangar','trade'].includes(mode)||save.metal<cost)return false;
+    save.metal-=cost;save.reactorLevel=(save.reactorLevel||1)+1;persist();renderAll();toast('Reactor upgraded · +2 power');return true;
+  }
+  function evasionChance(){
+    const core=save.modules.find((module)=>module.type==='core');
+    if(!core||core.hp<=0||!crewAtStation('pilot',core))return 0;
+    const engines=activeModules('engine'),power=engines.reduce((sum,module)=>sum+usablePower(module),0);
+    if(!power)return 0;
+    return Math.min(.45,.05+power*.03+engines.reduce((sum,module)=>sum+Math.min(1,crewAtStation('engine',module))*.05,0));
+  }
+  function renderSystems(){
+    const panel=$('systemsPanel'),scrollTop=panel.querySelector?.('.power-rows')?.scrollTop||0;
+    const available=reactorCapacity()-powerUsed(),cost=40+20*((save.reactorLevel||1)-1);
+    $('systemsPanel').innerHTML=`<div class="reactor-summary"><strong>REACTOR ${powerUsed()} / ${reactorCapacity()}</strong><span>${available} AVAILABLE · ${Math.round(evasionChance()*100)}% EVADE</span></div><button id="upgradeReactor" type="button" ${!['hangar','trade'].includes(mode)||save.metal<cost?'disabled':''}>UPGRADE REACTOR +2 · ◆ ${cost}</button><div class="power-rows">${save.modules.filter((module)=>systemMaxPower(module)).map((module)=>{
+      const max=systemMaxPower(module),assigned=requestedPower(module),usable=usablePower(module);
+      return `<div class="power-row"><span title="Grid ${module.x}, ${module.y}">${MODULES[module.type].name} <small>(${module.x}, ${module.y})</small></span><div class="power-controls"><button type="button" data-power="${module.id}" data-step="-1" aria-label="Decrease ${MODULES[module.type].name} power" ${assigned<=0?'disabled':''}>−</button><span class="power-bars" aria-label="${usable} usable power, ${assigned} allocated, ${max} maximum">${Array.from({length:max},(_,i)=>`<i class="${i<usable?'powered':i<assigned?'damaged':''}"></i>`).join('')}</span><button type="button" data-power="${module.id}" data-step="1" aria-label="Increase ${MODULES[module.type].name} power" ${assigned>=max||available<=0?'disabled':''}>+</button></div></div>`;
+    }).join('')}</div><small>Allocate power with − / +. Damage removes usable bars. Engines need a pilot for evasion; shields need two bars per layer.</small>`;
+    const rows=panel.querySelector?.('.power-rows');if(rows)rows.scrollTop=scrollTop;
+    $('upgradeReactor').addEventListener('click',upgradeReactor);
+    $('systemsPanel').querySelectorAll('[data-power]').forEach((button)=>button.addEventListener('click',()=>{const module=save.modules.find((part)=>part.id===+button.dataset.power);setSystemPower(module.id,requestedPower(module)+ +button.dataset.step);}));
+  }
   function newSave() {
-    return {
+    const data={
       metal: 90, sector: 1, wins: 0, nextId: 6, starterLayoutVersion:2, weaponFootprintsVersion:2, inventory:{armor:1}, passengers:0, ammoCrates:0,
       modules: [
         { id: 1, type: 'core', x: 5, y: 4, rotation: 0, hp: 170, level: 1 },
@@ -148,9 +234,10 @@
         { id: 4, type: 'weapon', x: 6, y: 3, rotation: 0, hp: 75, level: 1 },
         { id: 5, type: 'weapon', x: 6, y: 5, rotation: 1, weaponFacing:1, hp: 75, level: 1 }
       ],
-      crew: CREW.map(({id,task,x,y}) => ({id,task,x,y})),
+      crew: CREW.map(({id,name,initial,color,task,x,y}) => ({id,name,initial,color,task,x,y})),
       map: makeMap(1)
     };
+    normalizeSystems(data);return data;
   }
   function migrateStarter(data) {
     if(data.starterLayoutVersion===2)return;
@@ -178,6 +265,9 @@
       }
       migrateStarter(data);migrateWeaponFootprints(data);
       data.nextId = Math.max(data.nextId || 1, ...data.modules.map((module) => module.id + 1));
+      data.nextCrewId=Number.isInteger(data.nextCrewId)?data.nextCrewId:1;
+      for(const person of data.crew){Object.assign(person,crewAppearance(person));if(!TASKS[person.task])person.task='idle';if(!Number.isFinite(person.x)||!Number.isFinite(person.y))Object.assign(person,moduleStation(data.modules.find((module)=>module.type==='core')));}
+      normalizeSystems(data,true);
       return data;
     } catch (_) { return null; }
   }
@@ -185,6 +275,7 @@
   const storedSave = loadSave();
   let save = storedSave || newSave(), hasSave = !!storedSave, screen = 'menu', mode = 'hangar', selectedCatalog = null, selectedModuleId = 1;
   let movingModuleId=null, refittingFootprint=false;
+  const buildView={x:0,y:0};
   let tradeNode=null, marketFilter='all';
   let buildRotation = 0, buildWeaponFacing = 0, hoverCell = null, battle = null, eventOpen = false, pendingNodeId = null;
   let toastTimer = null, lastFrame = performance.now(), lastHudRefresh = 0;
@@ -263,7 +354,7 @@
   }
   function weaponHasEscape(module,cells) {
     if(MODULES[module.type].hullPass)return true;
-    const mount=weaponGeometry(module),limit=Math.hypot(GRID_W,GRID_H)+2;
+    const mount=weaponGeometry(module),limit=hullEscapeLimit(mount,cells);
     return weaponAngles(module,cells).some((angle)=>hullRay(mount,angle,cells,limit)>=limit);
   }
   function weaponsHaveClearArc(modules) {
@@ -303,10 +394,25 @@
     return occupied;
   }
   function shipBounds() {
-    const cells = save.modules.flatMap(moduleCells), xs=cells.map(([x])=>x), ys=cells.map(([,y])=>y);
-    const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+    for(const module of save.modules)for(const [x,y] of moduleCells(module)){minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);}
     return {minX,maxX,minY,maxY,cx:(minX+maxX+1)/2,cy:(minY+maxY+1)/2};
   }
+  function hullEscapeLimit(origin,cells){
+    let limit=2;for(const [x,y] of cells)limit=Math.max(limit,Math.hypot(x-origin.x,y-origin.y)+3);return limit;
+  }
+  function shipArtFrame(){
+    const b=shipBounds(),x=b.minX-2,y=b.minY-2,w=b.maxX-b.minX+5,h=b.maxY-b.minY+5;
+    const scale=Math.min(SPRITE_SCALE,8192/(w*TILE),8192/(h*TILE),Math.sqrt(16000000/(w*h*TILE*TILE)));
+    return {x,y,w,h,scale};
+  }
+  function sizeArtCanvas(canvas,frame){
+    const w=Math.max(1,Math.ceil(frame.w*TILE*frame.scale)),h=Math.max(1,Math.ceil(frame.h*TILE*frame.scale));
+    if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
+  }
+  function panBuild(dx,dy){buildView.x+=dx;buildView.y+=dy;hoverCell=null;renderGrid();}
+  function centerBuildView(redraw=true){const b=shipBounds();buildView.x=Math.floor(b.cx-GRID_W/2);buildView.y=Math.floor(b.cy-GRID_H/2);hoverCell=null;if(redraw)renderGrid();}
+
   function moduleClearance(module){
     if(module.type==='engine'){
       const [dx,dy]=[[1,0],[0,1],[-1,0],[0,-1]][module.rotation],cells=moduleCells(module);
@@ -323,34 +429,49 @@
     return [];
   }
   function exteriorCells(blocked){
-    const outside=new Set(),queue=[];
-    for(let y=0;y<GRID_H;y++)for(let x=0;x<GRID_W;x++){
-      if(x!==0&&y!==0&&x!==GRID_W-1&&y!==GRID_H-1)continue;
-      const key=`${x},${y}`;if(!blocked.has(key)){outside.add(key);queue.push([x,y]);}
-    }
-    for(let i=0;i<queue.length;i++){
-      const [x,y]=queue[i];for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
-        const nx=x+dx,ny=y+dy,key=`${nx},${ny}`;
-        if(nx<0||nx>=GRID_W||ny<0||ny>=GRID_H||outside.has(key)||blocked.has(key))continue;
-        outside.add(key);queue.push([nx,ny]);
+    // Flood horizontal empty spans instead of a finite grid or every empty cell.
+    const rows=new Map(),memo=new Map();
+    for(const key of blocked){const [x,y]=key.split(',').map(Number);if(!rows.has(y))rows.set(y,[]);rows.get(y).push(x);}
+    for(const row of rows.values())row.sort((a,b)=>a-b);
+    const span=(x,y)=>{
+      const row=rows.get(y)||[];let lo=0,hi=row.length;
+      while(lo<hi){const mid=(lo+hi)>>1;if(row[mid]<x)lo=mid+1;else hi=mid;}
+      return {y,left:lo?row[lo-1]+1:-Infinity,right:lo<row.length?row[lo]-1:Infinity};
+    };
+    return {has(key){
+      if(blocked.has(key))return false;
+      const [x,y]=key.split(',').map(Number),queue=[span(x,y)],seen=new Set();let outside=false;
+      for(let i=0;i<queue.length;i++){
+        const part=queue[i],id=`${part.y}:${part.left}:${part.right}`;if(seen.has(id))continue;seen.add(id);
+        if(memo.has(id)){if(memo.get(id)){outside=true;break;}continue;}
+        if(!Number.isFinite(part.left)||!Number.isFinite(part.right)){outside=true;break;}
+        for(const ny of [part.y-1,part.y+1]){
+          let start=part.left;
+          for(const wall of rows.get(ny)||[]){
+            if(wall<start)continue;if(wall>part.right)break;
+            if(wall>start)queue.push(span(start,ny));start=wall+1;
+          }
+          if(start<=part.right)queue.push(span(start,ny));
+        }
       }
-    }
-    return outside;
+      for(const id of seen)memo.set(id,outside);return outside;
+    }};
   }
+
   function hasClearMount(module){
     const occupied=occupancy(),reserved=new Set(save.modules.filter((other)=>other.id!==module.id).flatMap(moduleClearance).map(([x,y])=>`${x},${y}`));
     const outside=exteriorCells(new Set(occupied.keys()));
-    return moduleClearance(module).every(([x,y])=>x>=0&&x<GRID_W&&y>=0&&y<GRID_H&&!occupied.has(`${x},${y}`)&&!reserved.has(`${x},${y}`)&&outside.has(`${x},${y}`));
+    return moduleClearance(module).every(([x,y])=>!occupied.has(`${x},${y}`)&&!reserved.has(`${x},${y}`)&&outside.has(`${x},${y}`));
   }
   function canPlaceFootprint(type,x,y,rotation,footprint=null) {
     const occupied=occupancy(),candidate={type,x,y,rotation,weaponFacing:buildWeaponFacing,footprint},cells=moduleCells(candidate);
-    if(cells.some(([cx,cy])=>cx<0||cx>=GRID_W||cy<0||cy>=GRID_H||occupied.has(`${cx},${cy}`)))return false;
+    if(cells.some(([cx,cy])=>occupied.has(`${cx},${cy}`)))return false;
     const reserved=new Set(save.modules.flatMap(moduleClearance).map(([cx,cy])=>`${cx},${cy}`));
     if(cells.some(([cx,cy])=>reserved.has(`${cx},${cy}`)))return false;
     if(!cells.some(([cx,cy])=>[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>occupied.has(`${cx+dx},${cy+dy}`))))return false;
     const blocked=new Set([...occupied.keys(),...cells.map(([cx,cy])=>`${cx},${cy}`)]);
     const clearance=moduleClearance(candidate);
-    if(clearance.some(([cx,cy])=>cx<0||cx>=GRID_W||cy<0||cy>=GRID_H||blocked.has(`${cx},${cy}`)))return false;
+    if(clearance.some(([cx,cy])=>blocked.has(`${cx},${cy}`)))return false;
     const outside=exteriorCells(blocked);
     return clearance.every(([cx,cy])=>outside.has(`${cx},${cy}`));
   }
@@ -361,7 +482,9 @@
     const shape=placementGeometry(type,rotation).cells,bounds=shipBounds();
     const outwardX=x+.5-bounds.cx,outwardY=y+.5-bounds.cy;
     let best=null,bestScore=Infinity;
-    for(let cy=0;cy<GRID_H;cy++)for(let cx=0;cx<GRID_W;cx++){
+    const anchors=new Set();
+    for(const [dx,dy] of shape)for(const [nx,ny] of [[1,0],[-1,0],[0,1],[0,-1]])anchors.add(`${x+nx-dx},${y+ny-dy}`);
+    for(const anchor of anchors){const [cx,cy]=anchor.split(',').map(Number);
       if(!canPlace(type,cx,cy,rotation))continue;
       const cells=shape.map(([dx,dy])=>[cx+dx,cy+dy]);
       const nearest=Math.min(...cells.map(([px,py])=>Math.abs(px-x)+Math.abs(py-y)));
@@ -376,7 +499,7 @@
   }
   function maxHp(module) { return MODULES[module.type].hp+(module.level-1)*25; }
   function selectedModule() { return save.modules.find((module)=>module.id===selectedModuleId) || null; }
-  function activeModules(...types) { return save.modules.filter((module)=>types.includes(module.type)&&module.hp>0); }
+  function activeModules(...types) { return save.modules.filter((module)=>types.includes(module.type)&&module.hp>0&&systemPower(module)>0); }
   function hullRatio() { return save.modules.reduce((sum,module)=>sum+module.hp,0)/save.modules.reduce((sum,module)=>sum+maxHp(module),0); }
   function currentMapNode() { return save.map.nodes.find((node)=>node.id===save.map.current); }
   function availableNodes() { return currentMapNode()?.links || []; }
@@ -390,16 +513,21 @@
 
   function createGrid() {
     const grid=$('buildGrid');
-    for(let y=0;y<GRID_H;y++) for(let x=0;x<GRID_W;x++) {
+    for(let y=0;y<GRID_H;y++)for(let x=0;x<GRID_W;x++){
       const cell=document.createElement('button');cell.type='button';cell.className='grid-cell';cell.setAttribute('role','gridcell');
       cell.dataset.x=x;cell.dataset.y=y;
-      cell.addEventListener('mouseenter',()=>{hoverCell={x,y};renderGrid();});
-      cell.addEventListener('focus',()=>{hoverCell={x,y};renderGrid();});
-      cell.addEventListener('click',()=>onGridClick(x,y));
+      const point=()=>({x:+cell.dataset.x,y:+cell.dataset.y});
+      cell.addEventListener('mouseenter',()=>{hoverCell=point();renderGrid();});
+      cell.addEventListener('focus',()=>{hoverCell=point();renderGrid();});
+      cell.addEventListener('click',()=>{const p=point();onGridClick(p.x,p.y);});
       grid.append(cell);gridButtons.push(cell);
     }
     grid.addEventListener('mouseleave',()=>{hoverCell=null;renderGrid();});
+    grid.addEventListener('wheel',(event)=>{event.preventDefault();if(event.deltaX||event.shiftKey)panBuild(Math.sign(event.deltaX||event.deltaY)*3,0);else panBuild(0,Math.sign(event.deltaY)*3);},{passive:false});
+    document.querySelectorAll('[data-pan]').forEach((button)=>button.addEventListener('click',()=>{const [x,y]=button.dataset.pan.split(',').map(Number);panBuild(x,y);}));
+    $('centerBuild').addEventListener('click',()=>centerBuildView());
   }
+
   function weaponBehavior(type){
     const d=MODULES[type],rules=[];
     if(d.burstInterval)rules.push(`${d.salvo} rounds · ${d.burstInterval}s apart`);
@@ -436,13 +564,15 @@
     if(mode!=='trade'||!tradeNode){$('catalog').innerHTML='';return;}
     $('marketFilters').querySelectorAll('button').forEach((button)=>button.setAttribute('aria-pressed',String(button.dataset.filter===marketFilter)));
     const stock=tradeNode.stock||[],types=BUYABLE.filter((type)=>stock.some((item)=>item.type===type)||(save.inventory[type]||0)>0);
-    const visible=types.filter((type)=>marketFilter==='all'||(marketFilter==='shields'?SHIELD_TYPES.includes(type):(marketFilter==='weapons')===!!MODULES[type].range))
+    const visible=types.filter((type)=>marketFilter==='all'||(marketFilter==='crew'?false:marketFilter==='shields'?SHIELD_TYPES.includes(type):(marketFilter==='weapons')===!!MODULES[type].range))
       .sort((a,b)=>Number(SHIELD_TYPES.includes(b))-Number(SHIELD_TYPES.includes(a)));
-    $('marketSummary').textContent=`${stock.filter((item)=>item.qty>0).length} OFFERS · ${WEAPON_TYPES.length} WEAPON DESIGNS`;
-    $('catalog').innerHTML=visible.map((type)=>{
+    $('marketSummary').textContent=`${stock.filter((item)=>item.qty>0).length} PART OFFERS · ${(tradeNode.recruits||[]).filter((person)=>!person.hired).length} CREW FOR HIRE`;
+    const partCards=visible.map((type)=>{
       const def=MODULES[type],held=save.inventory[type]||0,item=stock.find((entry)=>entry.type===type);
       return `<div class="catalog-item ${selectedCatalog===type?'active':''}">${miniShape(type)}<div class="market-description"><strong>${def.name.toUpperCase()}</strong><small>${def.description}</small>${def.range?`<small class="weapon-fit">${footprintBadge(type)}</small><small class="weapon-spec">${def.damage} DMG × ${def.salvo||1} · ${def.reload}s · ${def.range} RANGE · ${def.arc}°${def.guidance?' LAUNCH · AUTO TRACK':''} · ${def.ammo?`${def.ammo} AMMO / TRIGGER`:'NO AMMO'}</small>`:''}<small class="weapon-rules">${def.range?weaponBehavior(type):''}</small><small>${held} IN HOLD${item?` · ${item.qty} IN STOCK`:''}</small><div class="market-actions">${item?`<button type="button" data-buy="${type}" ${item.qty<1||save.metal<item.price?'disabled':''}>${item.qty?`BUY ◆ ${item.price}`:'SOLD OUT'}</button>`:''}${held?`<button type="button" data-install="${type}" aria-pressed="${selectedCatalog===type}">${selectedCatalog===type?'CANCEL':'INSTALL HELD'}</button>`:''}</div></div></div>`;
-    }).join('')||'<p class="muted small">No parts in this category at this trader.</p>';
+    }).join('');
+    $('catalog').innerHTML=(partCards+recruitCards())||'<p class="muted small">No offers in this category at this trader.</p>';
+    $('catalog').querySelectorAll('[data-recruit]').forEach((button)=>button.addEventListener('click',()=>buyRecruit(button.dataset.recruit)));
     $('catalog').querySelectorAll('[data-buy]').forEach((button)=>button.addEventListener('click',()=>buyTraderItem(button.dataset.buy)));
     $('catalog').querySelectorAll('[data-install]').forEach((button)=>button.addEventListener('click',()=>{movingModuleId=null;selectedCatalog=selectedCatalog===button.dataset.install?null:button.dataset.install;selectedModuleId=null;renderAll();}));
     paintWeaponThumbnails($('catalog'));
@@ -452,7 +582,8 @@
     const occupied=occupancy(),ghost=new Set(),reserved=new Map();let valid=false;
     for(const module of save.modules)for(const [rx,ry] of moduleClearance(module))reserved.set(`${rx},${ry}`,module.type);
     if(selectedCatalog&&hoverCell){const place=placementAt(selectedCatalog,hoverCell.x,hoverCell.y,buildRotation);valid=place.valid;for(const [dx,dy] of placementGeometry(selectedCatalog,buildRotation).cells)ghost.add(`${place.x+dx},${place.y+dy}`);}
-    for(const cell of gridButtons){
+    for(const [index,cell] of gridButtons.entries()){
+      cell.dataset.x=buildView.x+index%GRID_W;cell.dataset.y=buildView.y+Math.floor(index/GRID_W);
       const x=+cell.dataset.x,y=+cell.dataset.y,key=`${x},${y}`,module=occupied.get(key);
       cell.className='grid-cell';cell.style.removeProperty('--module-color');cell.textContent='';
       if(module){cell.classList.add('occupied');if(module.id===selectedModuleId)cell.classList.add('selected');cell.style.setProperty('--module-color',MODULES[module.type].color);cell.setAttribute('aria-label',`${MODULES[module.type].name}, level ${module.level}, ${Math.ceil(module.hp)} health`);}
@@ -463,6 +594,7 @@
     $('placementHint').textContent=mode!=='trade'?'CLICK A ROOM TO INSPECT · VISIT A TRADER TO REFIT':selectedCatalog?(hoverCell?(valid?(movingModuleId!==null?'CLICK TO MOVE ROOM':'CLICK TO INSTALL HELD MODULE'):'ROOMS NEED OPEN HULL SPACE AND CLEAR EXHAUST'):'HOVER OVER THE GRID TO INSTALL MODULE'):'CLICK A ROOM TO INSPECT OR MOVE · INSTALL STORED PARTS';
     $('buildWeaponFacing').hidden=!selectedCatalog||MODULES[selectedCatalog].mountFacings!==2;
     $('buildWeaponFacing').textContent=`MOUNT: ${['RIGHT','DOWN','LEFT','UP'][(buildRotation+(buildWeaponFacing?3:0))%4]} ↻`;
+    $('buildCoordinates').textContent=`X ${buildView.x}…${buildView.x+GRID_W-1} · Y ${buildView.y}…${buildView.y+GRID_H-1}`;
     drawHangar();
   }
   function onGridClick(x,y) {
@@ -481,7 +613,7 @@
       selectedModuleId=module.id;movingModuleId=null;selectedCatalog=null;persist();renderAll();toast('Room moved');return;
     }
     const def=MODULES[selectedCatalog];if((save.inventory[selectedCatalog]||0)<1){toast('Buy this module from a trader first.');return;}
-    const module={id:save.nextId++,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing,hp:def.hp,level:1};
+    const module={id:save.nextId++,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing,hp:def.hp,level:1,power:Math.min(systemMaxPower({type:selectedCatalog,level:1}),Math.max(0,reactorCapacity()-powerUsed()))};
     save.modules.push(module);save.inventory[selectedCatalog]--;selectedModuleId=module.id;selectedCatalog=null;
     persist();log(`${def.name} installed from the hold.`);toast(`${def.name} installed`);renderAll();
   }
@@ -496,10 +628,10 @@
     if(!module){$('moduleInspector').innerHTML='<div class="empty-inspector">Click a ship room to inspect its station, firing arc, upgrade, or repair it.</div>';return;}
     const def=MODULES[module.type],maximum=maxHp(module),ratio=module.hp/maximum,upgradeCost=25*module.level+(module.type==='core'?10:0),repairCost=Math.ceil((maximum-module.hp)/10)*3;
     const direction=['RIGHT','DOWN','LEFT','UP'][(module.rotation+(MODULES[module.type].mountFacings===2&&module.weaponFacing===1?3:0))%4];
-    const shieldInfo=def.shield?`<div class="inspector-detail">${def.shield==='wide'?'FULL HULL COVERAGE':`${def.arc}° FOCUSED ARC · ${direction}`} · ${Math.round(battle?.shields?.[module.id]?.charge??def.capacity*(1+.35*(module.level-1)))} / ${Math.round(def.capacity*(1+.35*(module.level-1)))} CHARGE</div>`:null;
-    const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · RANGE ${weaponRange(module)} · ${direction} · ${def.ammo?`${def.ammo} AMMO / TRIGGER`:'NO AMMO'}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · ${Math.round(def.thrust*(1+.2*(module.level-1)))} FORCE</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
+    const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° FOCUSED ARC · ${direction}`} · ${Math.floor(battle?.shields?.[module.id]?.charge??shieldStats(module).layers)} / ${shieldStats(module).layers} LAYERS · ${shieldStats(module).recharge.toFixed(1)}s RECHARGE</div>`:null;
+    const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · RANGE ${weaponRange(module)} · ${direction} · ${def.ammo?`${def.ammo} AMMO / TRIGGER`:'NO AMMO'}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
     const rangeControl=def.range?`<div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div><div class="weapon-rules">${weaponBehavior(module.type)}</div><label class="weapon-range" for="weaponRange">RANGE LIMIT <input id="weaponRange" type="number" min="30" max="${def.range}" step="1" value="${weaponRange(module)}" ${!['hangar','trade'].includes(mode)?'disabled':''}><span>MAX ${def.range}</span></label>${def.mountFacings===2?`<button id="rotateWeapon" class="outline-button full-width" type="button" ${!['hangar','trade'].includes(mode)?'disabled':''}>TURN MOUNT 90° ↻</button>`:''}`:'';
-    $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}${rangeControl}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>UPGRADE<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
+    $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}<div class="inspector-detail">${systemMaxPower(module)?`POWER ${usablePower(module)} / ${systemMaxPower(module)} · ALLOCATED ${requestedPower(module)}`:module.type==='core'?'PILOTING STATION · REACTOR CONTROL':'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>UPGRADE<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
     paintWeaponThumbnails($('moduleInspector'));
     if(module.footprint&&mode==='trade')$('refitFootprint').addEventListener('click',()=>beginModuleMove(true));
     if(mode==='trade')$('moveModule').addEventListener('click',()=>{
@@ -521,17 +653,18 @@
     $('repairModule').addEventListener('click',()=>{if(repairCost===0||save.metal<repairCost||mode==='combat')return;save.metal-=repairCost;module.hp=maximum;persist();log(`${def.name} repaired.`);toast(`${def.name} repaired`);renderAll();});
   }
   function renderCrew(){
-    $('crewList').innerHTML=CREW.map((template)=>{
-      const person=save.crew.find((member)=>member.id===template.id),route=crewRoutes[person.id];
-      const moving=route?.path?.length&&distance(person,route.path[0])>.08;
+    $('crewList').innerHTML=save.crew.map((person)=>{
+      const template=crewAppearance(person),route=crewRoutes[person.id],moving=route?.path?.length&&distance(person,route.path[0])>.08;
       return `<div class="crew-card"><div class="crew-top"><span class="crew-avatar" style="--crew-color:${template.color}">${template.initial}</span><strong>${template.name}</strong><small>${moving?'WALKING':'AT STATION'}</small></div><select data-crew="${person.id}" aria-label="${template.name} assignment">${Object.entries(TASKS).map(([value,label])=>`<option value="${value}" ${person.task===value?'selected':''}>${label}</option>`).join('')}</select></div>`;
     }).join('');
     $('crewList').querySelectorAll('select').forEach((select)=>select.addEventListener('change',()=>{
       const person=save.crew.find((member)=>member.id===select.dataset.crew);person.task=select.value;delete crewRoutes[person.id];
-      persist();log(`${CREW.find((member)=>member.id===person.id).name} assigned to ${TASKS[person.task].toLowerCase()}.`);renderCrew();
+      persist();log(`${crewAppearance(person).name} assigned to ${TASKS[person.task].toLowerCase()}.`);renderCrew();
     }));
   }
+
   function renderHud(){
+    renderSystems();
     $('sectorDisplay').textContent=String(save.sector).padStart(2,'0');$('metalDisplay').textContent=save.metal;$('hullDisplay').textContent=`${Math.round(hullRatio()*100)}%`;
     $('jumpButton').disabled=mode==='combat'||eventOpen;
     $('jumpButton').textContent=mode==='combat'?'IN COMBAT':mode==='map'?'RETURN TO SHIP':'OPEN SECTOR MAP ↗';
@@ -567,7 +700,7 @@
     g.closePath();g.fill();g.stroke();
   }
   function drawCrewSprite(g,person,size=TILE){
-    const template=CREW.find((member)=>member.id===person.id),x=Math.round(person.x*size),y=Math.round(person.y*size);
+    const template=crewAppearance(person),x=Math.round(person.x*size),y=Math.round(person.y*size);
     g.fillStyle='#091421';g.fillRect(x-5,y-7,10,13);
     g.fillStyle='#53677c';g.fillRect(x-4,y-6,8,4);
     g.fillStyle=template.color;g.fillRect(x-3,y-6,6,3);g.fillRect(x-4,y-2,8,6);
@@ -728,9 +861,9 @@
       g.clearRect(0,0,44,24);g.translate(10,12);drawWeaponSprite(g,thumbnail.dataset.weapon);
     });
   }
-  function drawInterior(g,showSelection=false,thrusters={}){
-    g.setTransform(SPRITE_SCALE,0,0,SPRITE_SCALE,0,0);
-    g.clearRect(0,0,GRID_W*TILE,GRID_H*TILE);
+  function drawInterior(g,showSelection=false,thrusters={},view=shipArtFrame()){
+    g.imageSmoothingEnabled=false;g.setTransform(view.scale,0,0,view.scale,-view.x*TILE*view.scale,-view.y*TILE*view.scale);
+    g.clearRect(view.x*TILE,view.y*TILE,view.w*TILE,view.h*TILE);
     const occupied=occupancy();
     drawHullShell(g,occupied);
     if(showSelection){
@@ -793,7 +926,7 @@
     return {valid:place.valid,module:{level:1,hp:MODULES[selectedCatalog].hp,...original,footprint:refittingFootprint?null:original?.footprint,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing}};
   }
   function drawHangar(){
-    drawInterior(hangarCtx,true);
+    drawInterior(hangarCtx,true,{},{x:buildView.x,y:buildView.y,w:GRID_W,h:GRID_H,scale:SPRITE_SCALE});
     const preview=placementPreview();if(!preview)return;
     const g=hangarCtx,module=preview.module,color=preview.valid?'rgba(111,235,196,.22)':'rgba(255,101,111,.25)';
     if(MODULES[module.type].range)drawWeaponArc(g,module,TILE,color,[...save.modules.filter((part)=>part.id!==movingModuleId),module]);
@@ -821,14 +954,20 @@
   }
   function crewGoal(person,route){
     const core=save.modules.find((module)=>module.type==='core');
+    if(person.task==='pilot')return {module:core,point:moduleStation(core)};
+    if(person.task==='engine'){
+      const engines=save.modules.filter((module)=>module.type==='engine'&&module.hp>0);
+      const module=engines.reduce((best,candidate)=>!best||distance(person,moduleStation(candidate))<distance(person,moduleStation(best))?candidate:best,null)||core;
+      return {module,point:moduleStation(module)};
+    }
     if(person.task==='gun'){
-      const weapons=activeModules(...WEAPON_TYPES);
+      const weapons=save.modules.filter((module)=>WEAPON_TYPES.includes(module.type)&&module.hp>0);
       if(!weapons.length)return {module:core,point:moduleStation(core)};
       const module=weapons.reduce((best,candidate)=>distance(person,moduleStation(candidate))<distance(person,moduleStation(best))?candidate:best,weapons[0]);
       return {module,point:moduleStation(module)};
     }
     if(person.task==='shield'){
-      const shields=activeModules('shield','focusShield');
+      const shields=save.modules.filter((module)=>SHIELD_TYPES.includes(module.type)&&module.hp>0);
       if(!shields.length)return {module:core,point:moduleStation(core)};
       const module=shields.reduce((best,candidate)=>distance(person,moduleStation(candidate))<distance(person,moduleStation(best))?candidate:best,shields[0]);
       return {module,point:moduleStation(module)};
@@ -878,7 +1017,7 @@
     $('leftTitle').textContent=next==='trade'?'TRADER MARKET':next==='hangar'?'SHIP COMMAND':next==='combat'?'TACTICAL CONTROL':'NAVIGATION';
     $('stageEyebrow').textContent=next==='trade'?'WAYFARER // DOCKSIDE REFIT':next==='hangar'?'HANGAR // SYSTEMS ONLINE':next==='combat'?'LIVE ENCOUNTER // COMBAT':'NAVIGATION // ROUTE CHART';
     $('stageTitle').textContent=next==='trade'?'TRADE & REFIT':next==='hangar'?'YOUR STARSHIP':next==='combat'?(battle?.kind==='rescue'?'FREIGHTER DEFENSE':'PIRATE INTERCEPT'):'CHOOSE YOUR COURSE';
-    $('stageTag').textContent=shipView?'GRID 12 × 10':next==='combat'?`${battle?.enemies.length||0} HOSTILES`:`SECTOR ${String(save.sector).padStart(2,'0')}`;
+    $('stageTag').textContent=shipView?'UNBOUNDED HULL':next==='combat'?`${battle?.enemies.length||0} HOSTILES`:`SECTOR ${String(save.sector).padStart(2,'0')}`;
     renderHud();if(next==='map')renderMap();if(shipView){renderGrid();drawHangar();}if(next==='combat')fitArenaCanvas();
   }
   function renderMap(){
@@ -933,17 +1072,12 @@
     target.hp=Math.max(1,target.hp-amount);return target;
   }
   function upgradeTraderStock(node){
-    node.stock??=[];
+    node.stock??=traderStock();
     for(const type of SHIELD_TYPES)if(!node.stock.some((item)=>item.type===type))node.stock.push({type,qty:1,price:MODULES[type].cost});
-    if(node.stockVersion===3)return;
-    let weapons=node.stock.filter((item)=>MODULES[item.type].range).length,systems=node.stock.length-weapons;
-    for(const item of traderStock()){
-      if(node.stock.some((old)=>old.type===item.type))continue;
-      if(MODULES[item.type].range?weapons>=5:systems>=SHIELD_TYPES.length+1)continue;
-      node.stock.push(item);if(MODULES[item.type].range)weapons++;else systems++;
-    }
-    node.stockVersion=3;
+    if(!Array.isArray(node.recruits))node.recruits=traderRecruits();
+    node.stockVersion=4;
   }
+
   function openTrader(node){
     upgradeTraderStock(node);persist();hideEvent();setMode('trade');tradeNode=node;marketFilter='all';renderAll();
   }
@@ -968,7 +1102,8 @@
   }
   function eventScene(node,title,body,choices){const info=EVENT_TYPES[node.type];showEvent({type:`BEACON // ${info.name}`,icon:info.icon,title,body,choices});}
   function openMapEvent(id){
-    if(!availableNodes().includes(id)||!activeModules('engine').length)return;
+    if(!availableNodes().includes(id))return;
+    if(!activeModules('engine').length){toast('Power and repair an engine before jumping.');return;}
     pendingNodeId=id;const node=save.map.nodes.find((item)=>item.id===id);
     const firstVisit=!save.map.resolved.includes(id);
     if(!firstVisit||['trader','outpost','exit'].includes(node.type)){
@@ -1103,7 +1238,7 @@
     const available=canContinue();
     $('menuContinue').disabled=!available;
     $('menuSaveStatus').textContent=available?`SAVED GAME // SECTOR ${String(save.sector).padStart(2,'0')} · ${save.metal} METAL`:hasSave?'LAST SHIP LOST // START A NEW GAME':'NO SAVED GAME // BEGIN A NEW JOURNEY';
-    const menuCanvas=$('menuShip');menuCanvas.width=GRID_W*TILE*SPRITE_SCALE;menuCanvas.height=GRID_H*TILE*SPRITE_SCALE;
+    const menuCanvas=$('menuShip');sizeArtCanvas(menuCanvas,shipArtFrame());
     const g=menuCanvas.getContext('2d');g.imageSmoothingEnabled=false;drawInterior(g);
   }
   function showMainMenu(){
@@ -1112,7 +1247,7 @@
   }
   function showGame(){
     screen='playing';$('mainMenu').hidden=true;$('quitScreen').hidden=true;$('appShell').hidden=false;
-    setMode('hangar');renderAll();
+    centerBuildView(false);setMode('hangar');renderAll();
   }
   function startNewGame(){
     save=newSave();battle=null;pendingNodeId=null;eventOpen=false;$('eventOverlay').hidden=true;
@@ -1231,7 +1366,7 @@
     hideEvent();
     const count=kind==='rescue'?2:save.sector>3&&Math.random()<.35?2:1;
     const cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),layout=enemyLayout(kind!=='rescue'),enemyCells=count*layout.cells;
-    const width=960+Math.min(420,cellCount*12+enemyCells*6),world={w:width,h:width*5/6};
+    const width=Math.max(960+cellCount*12+enemyCells*6,shipRadius()*6+400),world={w:width,h:width*5/6};
     const enemies=[];
     for(let i=0;i<count;i++){
       const modules=layout.modules.map((room)=>({...room,hp:room.hp+(room.type==='core'?save.sector*4:0),maxHp:room.maxHp+(room.type==='core'?save.sector*4:0)}));
@@ -1322,7 +1457,7 @@
     const bounds=shipBounds();
     return activeModules('engine').map((module)=>{
       const cells=moduleCells(module),cx=cells.reduce((sum,[x])=>sum+x+.5,0)/cells.length,cy=cells.reduce((sum,[,y])=>sum+y+.5,0)/cells.length;
-      const direction=module.rotation*Math.PI/2,force=MODULES.engine.thrust*(1+.2*(module.level-1));
+      const direction=module.rotation*Math.PI/2,force=MODULES.engine.thrust*(1+.2*(module.level-1))*(usablePower(module)/2)*(1+.25*Math.min(1,crewAtStation('engine',module)));
       const rx=(cx-bounds.cx)*COMBAT_TILE,ry=(cy-bounds.cy)*COMBAT_TILE;
       return {module,rx,ry,direction,force,torque:(rx*Math.sin(direction)-ry*Math.cos(direction))*force};
     });
@@ -1393,7 +1528,7 @@
     return {x:player.x+lx*cos-ly*sin,y:player.y+lx*sin+ly*cos,direction:player.angle+mount.direction};
   }
   function missileLaunch(weapon){
-    const mount=weaponGeometry(weapon),cells=save.modules.flatMap(moduleCells),limit=Math.hypot(GRID_W,GRID_H)+2;
+    const mount=weaponGeometry(weapon),cells=save.modules.flatMap(moduleCells),limit=hullEscapeLimit(mount,cells);
     const angle=weaponAngles(weapon,cells,true).filter((angle)=>hullRay(mount,angle,cells,limit)>=limit)
       .sort((a,b)=>Math.abs(angleDifference(mount.direction,a))-Math.abs(angleDifference(mount.direction,b)))[0];
     if(angle===undefined)return null;
@@ -1556,20 +1691,20 @@
     const entry=-b-Math.sqrt(discriminant);
     return entry>=0?entry:Infinity;
   }
+  function shieldStats(module){return {layers:Math.floor(usablePower(module)/2),recharge:(module.type==='focusShield'?2:3)/(1+.4*Math.min(1,crewAtStation('shield',module)))};}
   function shieldState(module){
-    if(!battle)return null;
-    battle.shields??={};
-    return battle.shields[module.id]??=( {charge:MODULES[module.type].capacity*(1+.35*(module.level-1)),delay:0,flash:0} );
+    if(!battle)return null;const layers=shieldStats(module).layers;
+    battle.shields??={};const state=battle.shields[module.id]??={charge:layers,delay:0,flash:0};
+    state.charge=Math.min(state.charge,layers);return state;
   }
   function shieldCovers(module,player,angle){
-    if(MODULES[module.type].shield==='wide')return true;
-    return Math.abs(angleDifference(player.angle+module.rotation*Math.PI/2,angle))<=MODULES[module.type].arc*Math.PI/360;
+    return module.type==='shield'||Math.abs(angleDifference(player.angle+module.rotation*Math.PI/2,angle))<=MODULES[module.type].arc*Math.PI/360;
   }
   function shieldInterception(shot,dx,dy,player,limit){
     let best=null;
-    for(const module of activeModules('shield','focusShield')){
-      const state=shieldState(module);if(state.charge<=0)continue;
-      const radius=player.r+(module.type==='focusShield'?23:17),entry=rayCircle(shot,dx,dy,player,radius);
+    for(const module of activeModules(...SHIELD_TYPES)){
+      if(shieldState(module).charge<1-1e-7)continue;
+      const entry=rayCircle(shot,dx,dy,player,player.r+(module.type==='focusShield'?23:17));
       if(entry>limit||entry>=best?.distance)continue;
       const angle=Math.atan2(shot.y+dy*entry-player.y,shot.x+dx*entry-player.x);
       if(shieldCovers(module,player,angle))best={distance:entry,angle};
@@ -1577,20 +1712,18 @@
     return best;
   }
   function absorbShields(amount,angle){
-    const player=battle.player;
-    for(const module of activeModules('focusShield','shield').sort((a,b)=>Number(a.type==='shield')-Number(b.type==='shield'))){
-      if(amount<=0||!shieldCovers(module,player,angle))continue;
-      const state=shieldState(module),absorbed=Math.min(amount,state.charge);
-      if(absorbed<=0)continue;
-      state.charge-=absorbed;state.delay=1.7;state.flash=.22;amount-=absorbed;
+    for(const module of activeModules(...SHIELD_TYPES).sort((a,b)=>Number(a.type==='shield')-Number(b.type==='shield'))){
+      const state=shieldState(module);
+      if(state.charge<1-1e-7||!shieldCovers(module,battle.player,angle))continue;
+      state.charge=Math.max(0,state.charge-1);state.delay=.5;state.flash=.22;return 0;
     }
     return amount;
   }
   function updateShields(dt){
-    for(const module of activeModules('shield','focusShield')){
-      const state=shieldState(module),def=MODULES[module.type],capacity=def.capacity*(1+.35*(module.level-1));
+    for(const module of save.modules.filter((part)=>SHIELD_TYPES.includes(part.type))){
+      const state=shieldState(module),stats=shieldStats(module),waiting=Math.min(state.delay,dt);
       state.delay=Math.max(0,state.delay-dt);state.flash=Math.max(0,state.flash-dt);
-      if(state.delay===0)state.charge=Math.min(capacity,state.charge+def.recharge*(1+.2*(module.level-1))*(1+.5*crewAtStation('shield',module))*dt);
+      state.charge=Math.min(stats.layers,state.charge+(dt-waiting)/stats.recharge);
     }
   }
   function damagePlayer(amount,point=null){
@@ -1630,7 +1763,7 @@
       if(weapon.cooldown>0||b.ammo<def.ammo)continue;
       const target=living.filter((enemy)=>weaponCanTarget(weapon,p,enemy)).sort((a,c)=>distance(a,mount)-distance(c,mount))[0];
       if(target){
-        b.ammo-=def.ammo;weapon.cooldown=def.reload/(1+crewAtStation('gun',weapon)*.4)/(1+(weapon.level-1)*.22);
+        b.ammo-=def.ammo;weapon.cooldown=def.reload/Math.max(.01,systemPower(weapon))/(1+crewAtStation('gun',weapon)*.4)/(1+(weapon.level-1)*.22);
         fireWeapon(weapon,p,target);
       }
     }
@@ -1662,7 +1795,7 @@
         if(shot.delay>1e-7)continue;shot.delay=0;
         // A burst follows the weapon's current mount, not its old position.
         const weapon=shot.emitter,target=shot.burstTarget;
-        if(!save.modules.includes(weapon)||weapon.hp<=0||!(target?.hp>0)||target.modules?.some((room)=>room.type==='core'&&room.hp===0)||!weaponCanTarget(weapon,p,target)){b.projectiles.splice(i,1);continue;}
+        if(!save.modules.includes(weapon)||weapon.hp<=0||systemPower(weapon)<=0||!(target?.hp>0)||target.modules?.some((room)=>room.type==='core'&&room.hp===0)||!weaponCanTarget(weapon,p,target)){b.projectiles.splice(i,1);continue;}
         const def=MODULES[weapon.type],mount=weaponWorld(weapon,p),launch=def.guidance?missileLaunch(weapon):null;
         if(def.guidance&&!launch){b.projectiles.splice(i,1);continue;}
         const aim=Math.atan2(target.y-mount.y,target.x-mount.x),half=def.arc*Math.PI/360;
@@ -1678,6 +1811,10 @@
       }
       const dx=shot.vx/speed,dy=shot.vy/speed;
       const travel=Math.min(speed*step,shot.remaining,shot.launchRemaining>0?shot.launchRemaining:Infinity);
+      if(shot.owner==='enemy'&&!shot.evasionChecked&&rayCircle(shot,dx,dy,p,p.r+25)<=travel){
+        shot.evasionChecked=true;shot.evaded=Math.random()<evasionChance();
+        if(shot.evaded)(b.effects??=[]).push({x:p.x,y:p.y-p.r-20,text:'MISS',color:'#9ce5df',time:.6,duration:.6});
+      }
       let stop=travel,hit=false,target=null,hitRock=null,hitRoom=null,shielded=false,shieldAngle=0;
       if(shot.owner==='player'&&!shot.hullPass){
         const blocked=hullRay(worldToHull(shot,p),Math.atan2(dy,dx)-p.angle,save.modules.flatMap(moduleCells),travel/COMBAT_TILE)*COMBAT_TILE;
@@ -1687,13 +1824,13 @@
         const entry=rayCircle(shot,dx,dy,rock,rock.r*.87);
         if(entry<=stop){stop=entry;hit=true;hitRock=rock;}
       }
-      const targets=shot.owner==='player'?b.enemies.filter((enemy)=>enemyAlive(enemy)&&!shot.hitIds.has(enemy)):[p];
+      const targets=shot.owner==='player'?b.enemies.filter((enemy)=>enemyAlive(enemy)&&!shot.hitIds.has(enemy)):(shot.evaded?[]:[p]);
       for(const candidate of targets){
         const contact=shot.owner==='player'?rayEnemyRoom(shot,dx,dy,candidate,stop):{distance:rayCircle(shot,dx,dy,candidate,candidate.r*.82),room:null};
         const entry=contact.distance;
         if(entry<stop||(!hit&&entry<=stop)){stop=entry;hit=true;target=candidate;hitRock=null;hitRoom=contact.room;}
       }
-      if(shot.owner==='enemy'){
+      if(shot.owner==='enemy'&&!shot.evaded){
         const shield=shieldInterception(shot,dx,dy,p,stop);
         if(shield&&(shield.distance<stop||(!hit&&shield.distance<=stop))){
           stop=shield.distance;hit=true;target=p;hitRock=null;shielded=true;shieldAngle=shield.angle;
@@ -1763,21 +1900,16 @@
     if(enemy.burnTime>0){g.fillStyle='#f5a267';g.fillRect(enemy.x-16,enemy.y-r-6,5,5);}
   }
   function drawShields(player){
-    for(const module of activeModules('shield','focusShield')){
-      const state=shieldState(module),def=MODULES[module.type],maximum=def.capacity*(1+.35*(module.level-1));
-      if(state.charge<=0)continue;
-      const focused=def.shield==='focused',radius=player.r+(focused?23:17);
-      const center=player.angle+module.rotation*Math.PI/2,span=focused?def.arc*Math.PI/180:TAU;
-      const count=focused?25:60,opacity=.23+.52*(state.charge/maximum)+(state.flash>0?.22:0);
-      ctx.save();ctx.globalAlpha=Math.min(1,opacity);ctx.fillStyle=focused?'#92f9e9':'#b9a3f7';
-      for(let i=0;i<count;i++){
-        const angle=center-span/2+(i+.5)*span/count;
-        ctx.save();ctx.translate(player.x+Math.cos(angle)*radius,player.y+Math.sin(angle)*radius);ctx.rotate(angle+Math.PI/2);
-        ctx.fillRect(-4,-1,8,3);ctx.restore();
+    for(const module of activeModules(...SHIELD_TYPES)){
+      const state=shieldState(module),stats=shieldStats(module);if(!stats.layers)continue;
+      const focused=module.type==='focusShield',center=player.angle+module.rotation*Math.PI/2,span=focused?MODULES[module.type].arc*Math.PI/180:TAU;
+      for(let layer=0;layer<stats.layers;layer++){
+        ctx.save();ctx.globalAlpha=state.charge>=layer+1-1e-7?.55:.13;ctx.strokeStyle=focused?'#92f9e9':'#b9a3f7';ctx.lineWidth=state.flash>0?3:2;
+        ctx.beginPath();ctx.arc(player.x,player.y,player.r+17+layer*6+(focused?6:0),center-span/2,center+span/2);ctx.stroke();ctx.restore();
       }
-      ctx.restore();
     }
   }
+
   function drawProjectile(g,shot){
     const speed=Math.hypot(shot.vx,shot.vy),color=shot.color||(shot.owner==='player'?'#ffdb92':'#fc828a');
     g.save();g.translate(shot.x,shot.y);g.rotate(Math.atan2(shot.vy,shot.vx));
@@ -1829,17 +1961,18 @@
     }
     for(const enemy of b.enemies)if(enemyAlive(enemy))drawEnemy(enemy);
     if(p.selected){ctx.strokeStyle='#88e5e5';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();ctx.arc(p.x,p.y,p.r+13,0,TAU);ctx.stroke();ctx.setLineDash([]);}
-    drawInterior(spriteCtx,false,p.thrusters);
-    const bounds=shipBounds(),minX=Math.max(0,bounds.minX-2),minY=Math.max(0,bounds.minY-2);
-    const maxX=Math.min(GRID_W-1,bounds.maxX+2),maxY=Math.min(GRID_H-1,bounds.maxY+2);
+    const art=shipArtFrame();sizeArtCanvas(shipSprite,art);drawInterior(spriteCtx,false,p.thrusters,art);
+    const bounds=shipBounds(),minX=bounds.minX-2,minY=bounds.minY-2;
+    const maxX=bounds.maxX+2,maxY=bounds.maxY+2;
     const width=maxX-minX+1,height=maxY-minY+1;
     ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);
-    ctx.drawImage(shipSprite,minX*TILE*SPRITE_SCALE,minY*TILE*SPRITE_SCALE,width*TILE*SPRITE_SCALE,height*TILE*SPRITE_SCALE,(minX-bounds.cx)*COMBAT_TILE,(minY-bounds.cy)*COMBAT_TILE,width*COMBAT_TILE,height*COMBAT_TILE);
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(shipSprite,(minX-art.x)*TILE*art.scale,(minY-art.y)*TILE*art.scale,width*TILE*art.scale,height*TILE*art.scale,(minX-bounds.cx)*COMBAT_TILE,(minY-bounds.cy)*COMBAT_TILE,width*COMBAT_TILE,height*COMBAT_TILE);
     ctx.restore();
     drawShields(p);
     for(const effect of b.effects||[]){
       ctx.globalAlpha=effect.time/effect.duration;ctx.fillStyle=effect.color;
-      if(effect.to){ctx.strokeStyle=effect.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(effect.x,effect.y);ctx.lineTo(effect.to.x,effect.to.y);ctx.stroke();}
+      if(effect.text){ctx.font='14px monospace';ctx.fillText(effect.text,effect.x,effect.y-(1-effect.time/effect.duration)*15);}
+      else if(effect.to){ctx.strokeStyle=effect.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(effect.x,effect.y);ctx.lineTo(effect.to.x,effect.to.y);ctx.stroke();}
       else if(effect.pulse){ctx.strokeStyle=effect.color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(effect.x,effect.y,effect.r*(1-effect.time/effect.duration),0,TAU);ctx.stroke();}
       else {const radius=effect.r*(1-effect.time/effect.duration);for(let i=0;i<12;i++){const angle=i*TAU/12;ctx.fillRect(effect.x+Math.cos(angle)*radius-3,effect.y+Math.sin(angle)*radius-3,6,6);}}
       ctx.globalAlpha=1;
@@ -1875,6 +2008,7 @@
   }
   function orderMove(point){
     if(!battle)return;if(!battle.player.selected){toast('Select your ship first.');return;}
+    if(!activeModules('engine').length){toast('Power and repair an engine to move.');return;}
     const p=battle.player,goal=safePoint(point,p.r,battle.asteroids,battle.world);
     const path=routeAroundRocks(p,goal,p.r,battle.asteroids,battle.world);
     if(!path.length){toast('No clear route to that location.');return;}
@@ -1889,8 +2023,9 @@
     $('combatHint').textContent='SHIP TURNING UNDER ENGINE THRUST';
   }
   function refreshCrewStatus(){
+    const force=$('engineForce'),module=selectedModule();if(force&&module?.type==='engine')force.textContent=Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0);
     $('crewList').querySelectorAll('.crew-card').forEach((card,index)=>{
-      const person=save.crew.find((member)=>member.id===CREW[index].id),route=crewRoutes[person.id];
+      const person=save.crew[index],route=crewRoutes[person.id];
       const moving=route?.path?.length&&distance(person,route.path[0])>.08;
       card.querySelector('small').textContent=moving?'WALKING':'AT STATION';
     });
@@ -1901,7 +2036,7 @@
       if(!eventOpen)updateCrew(dt);
       if(mode==='combat'&&battle){updateBattle(dt,time);drawArena(time);}
       if(mode==='hangar'||mode==='trade')drawHangar();
-      if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();}
+      if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();if(mode!=='combat')renderSystems();}
     }
     requestAnimationFrame(frame);
   }
@@ -1938,6 +2073,7 @@
       if(event.target instanceof HTMLSelectElement||event.target instanceof HTMLInputElement)return;
       if(screen==='menu'){if(event.key==='Escape')$('menuConfirm').hidden=true;return;}
       if(screen!=='playing')return;
+      if(['hangar','trade'].includes(mode)&&event.key.startsWith('Arrow')){const pan={ArrowLeft:[-3,0],ArrowRight:[3,0],ArrowUp:[0,-3],ArrowDown:[0,3]}[event.key];if(pan){event.preventDefault();panBuild(...pan);return;}}
       if(event.key.toLowerCase()==='q'){if(mode==='combat')rotateArrival(-1);else if(mode==='trade')rotateBuild(-1);}
       if(event.key.toLowerCase()==='e'){if(mode==='combat')rotateArrival(1);else if(mode==='trade')rotateBuild(1);}
       if(event.key==='Escape'&&mode==='trade'&&!eventOpen){selectedCatalog=null;movingModuleId=null;renderAll();}

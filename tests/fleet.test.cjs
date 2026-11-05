@@ -9,7 +9,7 @@ function game(){
   const context=new Proxy({}, {get:(target,key)=>target[key]??(()=>{}),set:(target,key,value)=>(target[key]=value,true)});
   const element=()=>({getContext:()=>context,style:{},classList:{add(){},remove(){}},addEventListener(){},querySelectorAll:()=>[],setAttribute(){},replaceChildren(){}});
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
-    globalThis.game={MODULES,WEAPON_TYPES,newSave,migrateStarter,traderStock,moduleCells,weaponGeometry,weaponHasEscape,
+    globalThis.game={MODULES,SHIELD_TYPES,shieldStats,WEAPON_TYPES,newSave,migrateStarter,traderStock,moduleCells,weaponGeometry,weaponHasEscape,
       weaponsHaveClearArc,engineThrusters,upgradeTraderStock,openTrader,buyTraderItem,onGridClick,setMode,renderCatalog,crewGoal,
       weaponCanTarget,weaponWorld,fireWeapon,fireProjectile,weaponImpact,updateBattle,
       enemyLayout,enemyAlive,rayEnemyRoom,hurtEnemy,enemySystemEfficiency,
@@ -72,10 +72,10 @@ test('exactly 20 distinct weapons support all room rotations, crew stations, and
   assert.equal(signatures.size,20);
 });
 
-test('trader offers five weapons and both shield types, and every weapon can be stocked',()=>{
+test('trader offers five weapon units with possible repeats, both shields, and broad roster coverage',()=>{
   const g=game(),seen=new Set();
   for(let i=0;i<200;i++){
-    const stock=g.traderStock();assert.equal(stock.length,8);assert.equal(stock.filter((item)=>g.MODULES[item.type].range).length,5);
+    const stock=g.traderStock();assert.ok(stock.length<=8);assert.equal(stock.filter((item)=>g.MODULES[item.type].range).reduce((sum,item)=>sum+item.qty,0),5);
     assert.ok(stock.some((item)=>item.type==='shield'));assert.ok(stock.some((item)=>item.type==='focusShield'));
     for(const item of stock)if(g.MODULES[item.type].range)seen.add(item.type);
   }
@@ -126,11 +126,11 @@ test('salvos stay inside the mounted firing arc even when the target is near an 
 });
 
 
-test('older trader markets gain varied offers once without restocking sold items',()=>{
+test('older traders retain weapon selection and sold items while gaining shields and recruits',()=>{
   const g=game(),node={stock:[{type:'weapon',qty:0,price:45},{type:'engine',qty:0,price:35}]};
-  g.upgradeTraderStock(node);assert.equal(node.stock.length,8);assert.equal(node.stock[0].qty,0);assert.equal(node.stock[1].qty,0);
+  g.upgradeTraderStock(node);assert.equal(node.stock.length,2+g.SHIELD_TYPES.length);assert.ok(node.recruits.length>=1);assert.equal(node.stock[0].qty,0);assert.equal(node.stock[1].qty,0);
   const before=JSON.stringify(node.stock);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node.stock),before);
-  assert.equal(node.stock.filter((item)=>g.MODULES[item.type].range).length,5);
+  assert.equal(node.stock.filter((item)=>g.MODULES[item.type].range).length,1);
 });
 
 test('every weapon is included in automatic combat fire and spends its own trigger ammo cost',()=>{
@@ -164,7 +164,7 @@ test('a swept player projectile damages the first pirate room it crosses',()=>{
   assert.equal(engine.hp,26);assert.equal(core.hp,64);
 });
 
-test('focused shields cover one arc with more charge than a full-hull shield',()=>{
+test('focused layers cover one arc and recharge faster than full-hull layers',()=>{
   const g=game(),save=g.newSave();
   save.modules.push({id:20,type:'shield',x:1,y:1,rotation:0,level:1,hp:85});
   save.modules.push({id:21,type:'focusShield',x:8,y:6,rotation:0,level:1,hp:75});
@@ -174,10 +174,11 @@ test('focused shields cover one arc with more charge than a full-hull shield',()
   const back=g.shieldInterception({x:300,y:500},1,0,player,300);
   assert.ok(front.distance<back.distance,'the focused barrier extends ahead of the wide shell');
   assert.equal(g.absorbShields(50,0),0);
-  assert.equal(battle.shields[21].charge,30);
-  assert.equal(g.absorbShields(50,Math.PI),18);
+  assert.equal(battle.shields[21].charge,0);
+  assert.equal(g.absorbShields(50,Math.PI),0);
+  assert.equal(g.absorbShields(50,Math.PI),50);
   assert.equal(battle.shields[20].charge,0);
-  g.updateShields(2);assert.ok(battle.shields[21].charge>30);
+  g.updateShields(2.5);assert.equal(battle.shields[21].charge,1);assert.ok(battle.shields[20].charge<1);
 });
 
 test('enemy shots hit the shield barrier before they can damage a room',()=>{
@@ -188,7 +189,7 @@ test('enemy shots hit the shield barrier before they can damage a room',()=>{
   g.fireProjectile('enemy',700,500,b.player,20,300,300);
   g.updateBattle(.5,0);
   assert.equal(save.modules[0].hp,hullBefore);
-  assert.equal(b.shields[21].charge,60);
+  assert.equal(b.shields[21].charge,0);
   assert.equal(b.projectiles.length,0);
 });
 

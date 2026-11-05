@@ -63,7 +63,7 @@
           <div id="traderTools" hidden>
             <p class="muted small">Buy parts, then rotate and install them. Select an installed room and choose MOVE ROOM to rearrange it for free. Esc cancels placement; uninstalled parts stay in your hold.</p>
             <div id="marketSummary" class="market-summary"></div>
-            <div id="marketFilters" class="market-filters" aria-label="Market categories"><button type="button" data-filter="all" aria-pressed="true">ALL</button><button type="button" data-filter="weapons" aria-pressed="false">WEAPONS</button><button type="button" data-filter="systems" aria-pressed="false">SYSTEMS</button><button type="button" data-filter="shields" aria-pressed="false">SHIELDS</button></div>
+            <div id="marketFilters" class="market-filters" aria-label="Market categories"><button type="button" data-filter="all" aria-pressed="true">ALL</button><button type="button" data-filter="weapons" aria-pressed="false">WEAPONS</button><button type="button" data-filter="systems" aria-pressed="false">SYSTEMS</button><button type="button" data-filter="shields" aria-pressed="false">SHIELDS</button><button type="button" data-filter="crew" aria-pressed="false">CREW</button></div>
             <div id="catalog" class="catalog market-catalog"></div>
             <div class="tool-note"><span class="note-icon">↻</span><div><strong>ROTATE MODULE</strong><span>Q / E or the controls below</span></div></div>
             <div class="rotation-controls"><button id="buildRotateLeft" type="button" aria-label="Rotate module counterclockwise">↶</button><span id="buildRotationLabel">0°</span><button id="buildRotateRight" type="button" aria-label="Rotate module clockwise">↷</button></div>
@@ -93,10 +93,11 @@
         </aside>
 
         <section class="stage-panel">
-          <div class="stage-heading"><div><span class="eyebrow" id="stageEyebrow">HANGAR // SHIPYARD</span><h1 id="stageTitle">YOUR STARSHIP</h1></div><div class="stage-tag" id="stageTag">GRID 12 × 10</div></div>
+          <div class="stage-heading"><div><span class="eyebrow" id="stageEyebrow">HANGAR // SHIPYARD</span><h1 id="stageTitle">YOUR STARSHIP</h1></div><div class="stage-tag" id="stageTag">UNBOUNDED HULL</div></div>
           <div id="hangarScreen" class="hangar-screen">
+            <div class="build-navigation" aria-label="Shipyard navigation"><button type="button" data-pan="-4,0" aria-label="Pan shipyard left">←</button><button type="button" data-pan="0,-4" aria-label="Pan shipyard up">↑</button><button id="centerBuild" type="button">CENTER SHIP</button><button type="button" data-pan="0,4" aria-label="Pan shipyard down">↓</button><button type="button" data-pan="4,0" aria-label="Pan shipyard right">→</button><span id="buildCoordinates"></span></div>
             <div class="grid-wrap"><div class="grid-corner corner-tl"></div><div class="grid-corner corner-tr"></div><div class="grid-corner corner-bl"></div><div class="grid-corner corner-br"></div><div class="ship-grid-stack"><div id="buildGrid" class="build-grid" role="grid" aria-label="Ship construction grid"></div><canvas id="hangarArt" width="288" height="240" aria-hidden="true"></canvas></div></div>
-            <div class="stage-bottom"><span id="placementHint">CLICK A ROOM TO INSPECT · VISIT A TRADER TO REFIT</span><span>CELLS CONNECT BY EDGES</span></div>
+            <div class="stage-bottom"><span id="placementHint">CLICK A ROOM TO INSPECT · VISIT A TRADER TO REFIT</span><span>SCROLL / ARROW KEYS TO PAN · NO HULL LIMIT</span></div>
           </div>
           <div id="mapScreen" class="map-screen" hidden>
             <div class="sector-map-wrap"><div class="map-content"><div class="sector-map-stars"></div><svg id="mapLinks" class="map-links" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true"></svg><div id="sectorMap" class="sector-map" aria-label="Sector route map"></div></div></div>
@@ -110,7 +111,7 @@
 
         <aside class="side-panel right-panel">
           <div class="panel-heading"><span class="eyebrow">02 // COMMAND</span><h2>SHIP STATUS</h2></div>
-          <div id="shipStats" class="ship-stats"></div>
+          <div id="shipStats" class="ship-stats"></div><div class="section-divider"><span>SYSTEM POWER</span></div><div id="systemsPanel" class="systems-panel"></div>
           <div class="section-divider"><span>SELECTED MODULE</span></div>
           <div id="moduleInspector" class="module-inspector"></div>
           <div class="section-divider"><span>CREW ASSIGNMENTS</span></div>

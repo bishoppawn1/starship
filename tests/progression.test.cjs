@@ -13,7 +13,7 @@ function game() {
   };
   let source = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
   source = source.replace('  init();\n})();', `
-    globalThis.game = {newSave,makeMap,canPlace,moduleClearance,
+    globalThis.game = {MODULES,newSave,makeMap,canPlace,moduleClearance,
       setSave(value) { save = value; },getSave() { return save; }};
   })();`);
   vm.runInNewContext(source, sandbox);
@@ -48,8 +48,9 @@ test('sector charts stay connected and include reachable limited-stock traders',
     assert.ok(map.nodes.some(node => node.type === 'outpost'));
     assert.ok(map.nodes.some(node => node.type === 'lifeboat'));
     for (const node of map.nodes.filter(node => node.type === 'trader')) {
-      assert.equal(node.stock.length, 8);
-      assert.equal(new Set(node.stock.map(item => item.type)).size, 8);
+      assert.ok(node.stock.length<=8);
+      assert.equal(node.stock.filter(item=>g.MODULES[item.type].range).reduce((sum,item)=>sum+item.qty,0),5);
+      assert.equal(new Set(node.stock.map(item => item.type)).size, node.stock.length);
       assert.ok(node.stock.every(item => item.qty > 0 && item.price > 0));
     }
   }

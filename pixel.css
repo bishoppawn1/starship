@@ -1,6 +1,6 @@
 /* Crisp, hand-drawn pixels sit over the interactive construction grid. */
 .ship-grid-stack { position: relative; width: calc(12 * var(--cell)); height: calc(10 * var(--cell)); flex: none; }
-.ship-grid-stack .build-grid { position: absolute; inset: 0; }
+.ship-grid-stack .build-grid { position: absolute; inset: 0; margin:0; }
 #hangarArt { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; image-rendering: auto; z-index: 2; }
 .grid-cell.occupied { background: #101f2d; box-shadow: none; border-color: #29405b; }
 .grid-cell.occupied:before, .grid-cell.occupied span { display: none; }
@@ -139,3 +139,30 @@
 #refitFootprint { font-size: 9px; margin: 0 0 8px; white-space: normal; }
 
 .weapon-rules { color: #c9bc9f; font-size: 9px; line-height: 1.6; margin: 6px 0; }
+
+.build-navigation { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 10px; }
+.build-navigation button { background:#172e40; border:1px solid #426174; color:var(--cyan); padding:8px 12px; font:inherit; font-size:10px; }
+.build-navigation span { margin-left:auto; font-size:10px; color:var(--muted); }
+
+.market-filters { flex-wrap:wrap; }
+.market-filters button { flex:1 1 55px; }
+.recruit-offer .crew-avatar { margin:4px; width:30px; height:30px; }
+
+.systems-panel { background:#111f31; border:1px solid #30475b; padding:10px; font-size:10px; }
+.reactor-summary { display:flex; flex-direction:column; gap:5px; margin-bottom:8px; color:var(--green); }
+.reactor-summary span,.systems-panel small { color:var(--muted); font-size:9px; line-height:1.5; }
+.systems-panel button { border:1px solid #48677b; background:#1a3345; color:var(--text); padding:5px 7px; font:inherit; font-size:9px; }
+.power-rows { max-height:240px; overflow-y:auto; margin:8px 0; }
+.power-row { border-top:1px solid #293e50; padding:6px 0; display:flex; flex-direction:column; gap:5px; }
+.power-controls { display:flex; align-items:center; gap:7px; }
+.power-bars { display:flex; gap:3px; }
+.power-bars i { width:11px; height:15px; background:#25384a; border:1px solid #3a5367; }
+.power-bars i.powered { background:#80d6a1; border-color:#b2f0c4; }
+.power-bars i.damaged { background:#b05a60; border-color:#e58a8e; }
+
+@media(min-width:1051px) {
+  .main-layout { height:calc(100vh - 110px); min-height:650px; flex:none; }
+  .side-panel { height:100%; overflow-y:auto; }
+  .side-panel > * { flex-shrink:0; }
+  .stage-panel { height:100%; min-height:0; }
+}
