@@ -419,7 +419,7 @@
   }
   function footprintBadge(type,footprint=null){
     const cells=(footprint||MODULES[type]).shape,width=Math.max(...cells.map(([x])=>x))+1,height=Math.max(...cells.map(([,y])=>y))+1;
-    return `<span class="footprint-diagram" style="width:${width*7}px;height:${height*7}px" aria-label="${cells.length} cell footprint">${cells.map(([x,y])=>`<i style="left:${x*7}px;top:${y*7}px"></i>`).join('')}</span><span>${cells.length} CELLS · ${width} × ${height}${footprint?' · SAVED ROOM':''}</span>`;
+    return `<span class="footprint-diagram" style="width:${width*7}px;height:${height*7}px" aria-label="${cells.length} cell footprint">${cells.map(([x,y])=>`<i style="left:${x*7}px;top:${y*7}px"></i>`).join('')}</span><span>${cells.length} CELL${cells.length===1?'':'S'} · ${width} × ${height}${footprint?' · SAVED ROOM':''}</span>`;
   }
   function miniShape(type) {
     if(MODULES[type].range)return `<canvas class="weapon-thumbnail" width="176" height="96" data-weapon="${type}" role="img" aria-label="${MODULES[type].name} weapon"></canvas>`;
@@ -664,7 +664,7 @@
     if(MODULES[module.type].muzzle){
       const mount=weaponGeometry(module);
       g.save();g.translate(mount.x*TILE,mount.y*TILE);g.rotate(mount.direction);
-      drawWeaponSprite(g,module.type,module.hp>0,module.flash||0);g.restore();
+      drawWeaponSprite(g,module.type,module.hp>0,module.hp>0?(module.flash||0):0);g.restore();
     }
   }
   function drawWeaponSprite(g,type,active=true,flash=0){
