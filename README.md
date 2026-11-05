@@ -2,7 +2,7 @@
 
 A playable pixel art space adventure about building a modular ship, managing its crew, and surviving unpredictable encounters. [Play Starship // Drift](https://bishoppawn1.github.io/starship/).
 
-Ships, crew, equipment, pirates, and asteroids are drawn as detailed pixel sprites. During combat the assembled ship rotates as a single sprite, keeping its artwork crisp at every heading.
+Ships, crew, equipment, pirates, and asteroids are drawn as detailed pixel sprites. Weapons use slim steel barrels and red receiver panels, and ship interiors use muted metal tones. During combat, high-resolution artwork rotates as a single image on a display-density canvas, keeping the pixel details intact without coarse stepping at different headings.
 
 ## Play
 
@@ -27,4 +27,4 @@ The [Pages workflow](.github/workflows/pages.yml) deploys the static game when `
 
 ## Gameplay checks
 
-Run `node --test tests/*.test.cjs` to verify starter symmetry and save migration, trader-only purchases and installation, all 20 weapons, combat effects, construction clearance, sector connectivity, hull shadows, and projectile range. No packages are required.
+Run `node --test tests/*.test.cjs` to verify starter symmetry and save migration, trader-only purchases and installation, all 20 weapons, combat effects, construction clearance, sector connectivity, hull shadows, projectile range, and display-density rendering with correct mouse coordinates. No packages are required.

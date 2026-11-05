@@ -17,20 +17,20 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 
 - Ships are assembled from polyomino-shaped modules on a grid. Module shapes and placement determine the ship's layout and overall footprint.
 - Each module is primarily walkable floor. One or two cells contain its system equipment or crew interaction station. Connected modules have openings for crew to pass through.
-- Ship rooms use detailed pixel art with visible floor panels, hull plating, doors, consoles, weapon mounts, engine nozzles, and crew. The assembled ship is rendered as one crisp sprite so its pixel details turn with the hull during flight.
+- Ship rooms use detailed pixel art with visible floor panels, hull plating, doors, consoles, weapon mounts, engine nozzles, and crew. The assembled ship is drawn into a high-resolution source sprite so its pixel details rotate with the hull as one continuous piece of artwork. The arena renders at the display’s pixel density with smooth sampling at transformed edges, rather than snapping rotations onto an enlarged pixel grid. The source art retains deliberately placed pixel details.
 - Modules have distinct functions, such as weapons and engines. Additional systems can be added as the design develops.
 - The ship layout affects what the ship can do in combat and how much space it needs in an arena.
 - Players can upgrade systems, primarily by spending **metal**.
 - New modules come from limited trader stock and enter the player's hold. The catalog cards, purchases, rotation controls, and installation grid are available while docked at a trader. The normal ship view provides inspection, weapon settings, upgrades, repairs, and navigation without the placement catalog. Installing a held module costs no extra metal; uninstalled parts stay in the hold until the next trader visit.
 - Ion engines mount at the outer hull. Their exhaust side must face connected open space, with a clear strip directly behind the engine and a second clear cell behind its central nozzle. Later construction cannot fill those cells. Weapon mounts also need an exposed outside cell.
-- Rooms remain walkable interiors with small control panels. Hull plating and structural ribs occupy a separate border outside the rooms; engine nozzles and weapon barrels sit on that exterior border and rotate with the ship.
+- Rooms remain walkable interiors with small control panels. Hull plating and structural ribs occupy a separate border outside the rooms; engine nozzles and weapon barrels sit on that exterior border and rotate with the ship. Weapons use slender barrel silhouettes, charcoal outlines, neutral steel highlights, and muted red receiver panels. Barrel layouts distinguish cannon, rail, laser, rotary, scatter, missile, and energy families. Ship floors and hull plating use muted warm-gray and olive-gray metals; colored lights remain small accents. Trader cards and weapon inspectors show the actual weapon sprite.
 
 ## Encounters and combat
 
 - Combat can involve the player's ship against one or multiple enemy ships.
 - Battles take place in an arena whose size scales with the sizes of the participating ships, leaving room to maneuver.
 - Arenas contain randomly generated obstacles such as asteroids. Obstacles should create tactical choices without making the arena unusable.
-- Pirate ships and asteroids use pixel sprites that rotate without smoothing, matching the player's ship rather than appearing as simple geometric placeholders.
+- Pirate ships and asteroids use detailed source sprites and the same smooth, display-density rotation as the player’s ship. Canvas resizing preserves world dimensions and mouse targeting coordinates.
 - Damage to ship systems matters: a damaged weapon, engine, or other module should affect its function until repaired.
 - Each weapon fires from a visible mount. Its facing, range, and firing arc determine which targets it can hit. Selecting a weapon shows its art and firing arc, clipped at the first hull cell in each direction. Hull shadows never resume on the other side of the ship; disabled rooms still block fire.
 - In the hangar, each weapon has a saved range limit from 30 arena units up to its type’s maximum (220–650 units across the 20 designs; 420 for pulse cannons and 580 for railguns). Targeting, overlays, and projectile travel all respect that limit.
