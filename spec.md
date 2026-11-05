@@ -29,7 +29,10 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 - Arenas contain randomly generated obstacles such as asteroids. Obstacles should create tactical choices without making the arena unusable.
 - Pirate ships and asteroids use pixel sprites that rotate without smoothing, matching the player's ship rather than appearing as simple geometric placeholders.
 - Damage to ship systems matters: a damaged weapon, engine, or other module should affect its function until repaired.
-- Each weapon fires from a visible mount. Its facing, range, and firing arc determine which targets it can hit. Selecting a weapon shows its art and firing arc.
+- Each weapon fires from a visible mount. Its facing, range, and firing arc determine which targets it can hit. Selecting a weapon shows its art and firing arc, clipped at the first hull cell in each direction. Hull shadows never resume on the other side of the ship; disabled rooms still block fire.
+- In the hangar, each weapon has a saved range limit from 30 arena units up to its type’s maximum (420 for pulse cannons, 580 for railguns). Targeting, overlays, and projectile travel all respect that limit.
+- Pulse cannon mounts can face either of the two exposed sides of their corner cell, independently of room rotation. Players choose the mount direction before installation or switch it in the installed cannon’s inspector. Railguns keep their fixed barrel direction.
+- Construction rejects weapons with no unobstructed direction from their firing arc to open space, and rejects additions that completely enclose an installed weapon’s firing arc. A mount cannot be switched into a completely blocked direction. Partially blocked arcs remain usable in their clear directions.
 
 ## Ship movement controls
 
