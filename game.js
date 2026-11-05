@@ -40,8 +40,8 @@
     {id:'swarm',name:'Swarm Launcher',color:'#a8d6a8',range:440,arc:140,damage:7,reload:2.2,ammo:3,speed:280,cost:82,salvo:4,spread:26,guidance:3.2,splash:18,family:'missile',description:'Four nimble guided rockets overwhelm a target.'},
     {id:'torpedo',name:'Torpedo Tube',color:'#e4aa90',range:650,arc:35,damage:48,reload:4.3,ammo:4,speed:190,cost:110,fixed:true,length:3,splash:75,family:'missile',description:'Heavy unguided torpedoes cause a broad explosion.'},
     {id:'siege',name:'Siege Cannon',color:'#bca692',range:600,arc:30,damage:55,reload:5,ammo:4,speed:340,cost:120,fixed:true,length:4,splash:42,family:'cannon',description:'Slow-loading siege shells deliver massive damage.'},
-    {id:'disruptor',name:'Disruptor',color:'#b8e87e',range:340,arc:125,damage:11,reload:1.8,ammo:0,speed:520,cost:74,slow:.3,slowDuration:2,splash:45,family:'energy',description:'An area pulse cuts enemy movement to thirty percent.'},
-    {id:'tesla',name:'Tesla Coil',color:'#abafff',range:300,arc:150,damage:15,reload:1.8,ammo:0,speed:950,cost:80,chain:110,family:'energy',description:'Electric hits jump to a nearby ship for half damage.'},
+    {id:'disruptor',name:'Disruptor',color:'#b8e87e',range:340,arc:155,damage:5,reload:1.8,ammo:0,speed:520,cost:74,ion:.8,ionDuration:2,systemPulse:80,family:'energy',description:'A broad pulse reduces nearby systems’ efficiency by twenty percent for two seconds.'},
+    {id:'tesla',name:'Tesla Coil',color:'#abafff',range:300,arc:150,damage:6,reload:1.8,ammo:0,speed:950,cost:80,chainSystems:3,chainRange:110,chainFalloff:.7,family:'energy',description:'A light electrical hit bounces through up to three more systems on the same ship, weakening with each jump.'},
     {id:'cryo',name:'Cryo Projector',color:'#a2eaf0',range:260,arc:140,damage:8,reload:.9,ammo:1,speed:300,cost:54,slow:.4,slowDuration:4,family:'plasma',description:'Cold bursts slow pursuers for four seconds.'},
     {id:'inferno',name:'Inferno Projector',color:'#f39a64',range:230,arc:130,damage:6,reload:1,ammo:1,speed:290,cost:57,burn:5,burnDuration:4,family:'plasma',description:'Incendiary hits burn for five damage per second.'},
     {id:'proton',name:'Proton Lance',color:'#f0df82',range:620,arc:25,damage:24,reload:2.8,ammo:0,speed:950,cost:98,fixed:true,length:4,hullPass:true,family:'energy',description:'A narrow lance passes safely through your own hull sections, stopping at the first enemy ship.'},
@@ -53,6 +53,7 @@
     if(fixed){MODULES[id].shape=Array.from({length},(_,x)=>[x,0]);MODULES[id].mount=[length-1,0];MODULES[id].muzzle=[length,.5];MODULES[id].station=[0,0];}
   }
   const WEAPON_TYPES=Object.keys(MODULES).filter((type)=>MODULES[type].range);
+  const SHIELD_TYPES=Object.keys(MODULES).filter((type)=>type==='shield'||MODULES[type].shield);
   const BUYABLE = ['engine',...WEAPON_TYPES,'shield','armor','cargo'];
   const CREW = [
     { id: 'vega', name: 'VEGA', initial: 'V', color: '#f4bd77', task: 'gun', x: 5.5, y: 4.5 },
@@ -69,7 +70,7 @@
 
   function traderStock(){
     const shuffle=(types)=>{const pool=[...types];for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}return pool;};
-    return [...shuffle(WEAPON_TYPES).slice(0,5),...shuffle(['engine','shield','armor','cargo']).slice(0,2)]
+    return [...shuffle(WEAPON_TYPES).slice(0,5),...SHIELD_TYPES,...shuffle(['engine','armor','cargo']).slice(0,1)]
       .map((type)=>({type,qty:1+Number(Math.random()<.25),price:MODULES[type].cost+Math.floor(rand(-5,11))}));
   }
   function makeMap(base) {
@@ -363,7 +364,8 @@
     if(mode!=='trade'||!tradeNode){$('catalog').innerHTML='';return;}
     $('marketFilters').querySelectorAll('button').forEach((button)=>button.setAttribute('aria-pressed',String(button.dataset.filter===marketFilter)));
     const stock=tradeNode.stock||[],types=BUYABLE.filter((type)=>stock.some((item)=>item.type===type)||(save.inventory[type]||0)>0);
-    const visible=types.filter((type)=>marketFilter==='all'||(marketFilter==='weapons')===!!MODULES[type].range);
+    const visible=types.filter((type)=>marketFilter==='all'||(marketFilter==='shields'?SHIELD_TYPES.includes(type):(marketFilter==='weapons')===!!MODULES[type].range))
+      .sort((a,b)=>Number(SHIELD_TYPES.includes(b))-Number(SHIELD_TYPES.includes(a)));
     $('marketSummary').textContent=`${stock.filter((item)=>item.qty>0).length} OFFERS · ${WEAPON_TYPES.length} WEAPON DESIGNS`;
     $('catalog').innerHTML=visible.map((type)=>{
       const def=MODULES[type],held=save.inventory[type]||0,item=stock.find((entry)=>entry.type===type);
@@ -833,12 +835,13 @@
     target.hp=Math.max(1,target.hp-amount);return target;
   }
   function upgradeTraderStock(node){
-    if(node.stockVersion===2)return;
     node.stock??=[];
+    for(const type of SHIELD_TYPES)if(!node.stock.some((item)=>item.type===type))node.stock.push({type,qty:1,price:MODULES[type].cost});
+    if(node.stockVersion===2)return;
     let weapons=node.stock.filter((item)=>MODULES[item.type].range).length,systems=node.stock.length-weapons;
     for(const item of traderStock()){
       if(node.stock.some((old)=>old.type===item.type))continue;
-      if(MODULES[item.type].range?weapons>=5:systems>=2)continue;
+      if(MODULES[item.type].range?weapons>=5:systems>=SHIELD_TYPES.length+1)continue;
       node.stock.push(item);if(MODULES[item.type].range)weapons++;else systems++;
     }
     node.stockVersion=2;
@@ -1178,12 +1181,13 @@
       fireProjectile('player',mount.x+Math.cos(angle)*.01,mount.y+Math.sin(angle)*.01,target,def.damage+(weapon.level-1)*5,def.speed,weaponRange(weapon),{
         angle,target:def.guidance?target:null,guidance:def.guidance||0,launchRemaining:launch?.clearance||0,
         color:def.color,family:def.family,splash:def.splash||0,pierce:def.pierce||0,chain:def.chain||0,hullPass:!!def.hullPass,
-        ion:def.ion||0,ionDuration:def.ionDuration||0,
+        ion:def.ion||0,ionDuration:def.ionDuration||0,systemPulse:def.systemPulse||0,
+        chainSystems:def.chainSystems||0,chainRange:def.chainRange||0,chainFalloff:def.chainFalloff||0,
         slow:def.slow||0,slowDuration:def.slowDuration||0,burn:def.burn||0,burnDuration:def.burnDuration||0
       });
     }
   }
-  function systemEfficiency(module){return module?.ionTime>0?module.ionFactor:1;}
+  function systemEfficiency(module){return module?.hp===0?0:module?.ionTime>0?module.ionFactor:1;}
   function enemySystemEfficiency(enemy,type){
     const systems=(enemy.modules||[]).filter((module)=>module.type===type);
     return systems.length?systems.reduce((sum,module)=>sum+systemEfficiency(module),0)/systems.length:1;
@@ -1194,6 +1198,48 @@
     const systems=(enemy.modules||[]).filter((module)=>module.type!=='armor');
     const struck=systems.sort((a,b)=>Math.min(...a.cells.map(([cx,cy])=>Math.hypot(cx+.5-x,cy+.5-y)))-Math.min(...b.cells.map(([cx,cy])=>Math.hypot(cx+.5-x,cy+.5-y))))[0];
     if(struck){struck.ionFactor=Math.min(systemEfficiency(struck),shot.ion);struck.ionTime=Math.max(struck.ionTime||0,shot.ionDuration);}
+  }
+  function enemyRoomPoint(enemy,room){
+    const cells=room.cells,x=cells.reduce((sum,[cx])=>sum+cx,0)/cells.length*ENEMY_TILE,y=cells.reduce((sum,[,cy])=>sum+cy,0)/cells.length*ENEMY_TILE;
+    const cos=Math.cos(enemy.angle),sin=Math.sin(enemy.angle);
+    return {x:enemy.x+x*cos-y*sin,y:enemy.y+x*sin+y*cos};
+  }
+  function enemyRoomDistance(enemy,room,point){
+    const cos=Math.cos(enemy.angle),sin=Math.sin(enemy.angle),dx=point.x-enemy.x,dy=point.y-enemy.y;
+    const x=(dx*cos+dy*sin)/ENEMY_TILE,y=(-dx*sin+dy*cos)/ENEMY_TILE;
+    return Math.min(...room.cells.map(([cx,cy])=>Math.hypot(Math.max(0,Math.abs(x-cx)-.5),Math.max(0,Math.abs(y-cy)-.5))))*ENEMY_TILE;
+  }
+  function liveEnemySystems(enemy){return (enemy.modules||[]).filter((room)=>room.type!=='armor'&&room.hp!==0);}
+  function disruptSystems(shot){
+    (battle.effects??=[]).push({x:shot.x,y:shot.y,r:shot.systemPulse,color:shot.color,time:.4,duration:.4,pulse:true});
+    for(const enemy of battle.enemies){
+      if(enemy.hp<=0||enemy.modules?.some((room)=>room.type==='core'&&room.hp===0))continue;
+      for(const room of liveEnemySystems(enemy))if(enemyRoomDistance(enemy,room,shot)<=shot.systemPulse){
+        room.ionFactor=Math.min(systemEfficiency(room),shot.ion);room.ionTime=Math.max(room.ionTime||0,shot.ionDuration);
+      }
+    }
+  }
+  function damageWeaponSystem(target,room,damage,point){
+    room.maxHp??=room.hp??40;room.hp??=room.maxHp;
+    const before=room.hp;hurtEnemy(target,damage,room,point);
+    // Preserve system damage on layouts that also track aggregate ship health.
+    if(room.hp===before)room.hp=Math.max(0,before-damage);
+    if(room.type==='core'&&room.hp===0&&target.hp>0)hurtEnemy(target,target.hp);
+  }
+  function teslaImpact(shot,target,hitRoom){
+    let room=hitRoom&&hitRoom.hp!==0?hitRoom:liveEnemySystems(target).sort((a,b)=>enemyRoomDistance(target,a,shot)-enemyRoomDistance(target,b,shot))[0];
+    if(!room){hurtEnemy(target,shot.damage);return;}
+    let point={x:shot.x,y:shot.y},damage=shot.damage;
+    const visited=new Set();
+    for(let hop=0;room&&hop<=shot.chainSystems;hop++){
+      const to=enemyRoomPoint(target,room);visited.add(room);
+      (battle.effects??=[]).push({x:point.x,y:point.y,to,color:shot.color,time:.3,duration:.3});
+      damageWeaponSystem(target,room,damage,to);
+      if(target.hp<=0||target.modules?.some((part)=>part.type==='core'&&part.hp===0))break;
+      point=to;damage*=shot.chainFalloff;
+      room=liveEnemySystems(target).filter((part)=>!visited.has(part)&&distance(enemyRoomPoint(target,part),point)<=shot.chainRange)
+        .sort((a,b)=>distance(enemyRoomPoint(target,a),point)-distance(enemyRoomPoint(target,b),point))[0];
+    }
   }
   function damageAsteroid(rock,damage){
     rock.maxHp??=rock.r*2;rock.hp=Math.max(0,(rock.hp??rock.maxHp)-damage);
@@ -1209,7 +1255,17 @@
     target.hp=Math.max(0,target.hp-amount);
     if(target.hp===0){log(`${target.name} destroyed.`);toast(`${target.name} destroyed`);}
   }
-  function weaponImpact(shot,target,hitRock=null) {
+  function weaponImpact(shot,target,hitRock=null,hitRoom=null) {
+    if(shot.chainSystems&&target){teslaImpact(shot,target,hitRoom);return;}
+    if(shot.systemPulse){
+      disruptSystems(shot);
+      if(target){
+        const room=hitRoom||liveEnemySystems(target).sort((a,b)=>enemyRoomDistance(target,a,shot)-enemyRoomDistance(target,b,shot))[0];
+        if(room)damageWeaponSystem(target,room,shot.damage,shot);else hurtEnemy(target,shot.damage);
+      }
+      if(hitRock)damageAsteroid(hitRock,shot.damage);
+      return;
+    }
     const affected=target?[target]:[];
     if(shot.splash){
       (battle.effects??=[]).push({x:shot.x,y:shot.y,r:shot.splash,color:shot.color,time:.35,duration:.35});
@@ -1413,6 +1469,7 @@
     for(const effect of b.effects||[]){
       ctx.globalAlpha=effect.time/effect.duration;ctx.fillStyle=effect.color;
       if(effect.to){ctx.strokeStyle=effect.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(effect.x,effect.y);ctx.lineTo(effect.to.x,effect.to.y);ctx.stroke();}
+      else if(effect.pulse){ctx.strokeStyle=effect.color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(effect.x,effect.y,effect.r*(1-effect.time/effect.duration),0,TAU);ctx.stroke();}
       else {const radius=effect.r*(1-effect.time/effect.duration);for(let i=0;i<12;i++){const angle=i*TAU/12;ctx.fillRect(effect.x+Math.cos(angle)*radius-3,effect.y+Math.sin(angle)*radius-3,6,6);}}
       ctx.globalAlpha=1;
     }
