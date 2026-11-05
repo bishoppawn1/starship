@@ -16,12 +16,12 @@
     shield: '#bfa6f1', armor: '#9aadc0', cargo: '#e5ca84'
   };
   const MODULES = {
-    core: { name: 'Command Core', short: 'C', color: C.core, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 170, cost: 0, description: 'Piloting station and reactor control. Staff a pilot here to enable engine evasion.' },
+    core: { name: 'Command Core', short: 'C', color: C.core, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 170, cost: 0, description: 'Command console and shared power source. Staff a pilot here to enable engine evasion.' },
     engine: { name: 'Ion Engine', short: 'E', color: C.engine, shape: [[0,0],[0,1],[0,2]], station: [0,1], hp: 80, cost: 35, thrust: 270, description: 'Powered directional thruster. An operator boosts thrust; a pilot enables evasion. Keep the exhaust clear.' },
     weapon: { name: 'Pulse Cannon', short: 'W', color: C.weapon, shape: [[0,0],[1,0],[1,1]], station: [1,1], mount: [1,0], muzzle: [2,.5], hp: 75, cost: 45, range: 420, arc: 130, damage: 14, reload: 1.2, ammo: 1, description: 'A crewed pulse cannon with a 130° forward firing arc.' },
     railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range damage through a narrow 50° firing arc.' },
-    shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:32, recharge:7, description: 'Full-hull shield layers. Two power bars per layer; a crew operator speeds recharge.' },
-    focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:80, recharge:15, arc:105, description: 'Fast-recharging shield layers covering a 105° sector. Two power bars per layer.' },
+    shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:100, recharge:10, description: 'A 100-strength full-hull shield. Shared power and a crew operator improve recharge.' },
+    focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:160, recharge:16, arc:105, description: 'A 160-strength shield covering a 105° sector, with faster recharge.' },
     armor: { name: 'Armor Plating', short: 'A', color: C.armor, shape: [[0,0],[1,0],[0,1]], station: null, hp: 115, cost: 20, description: 'Open, durable floor that can absorb damage.' },
     cargo: { name: 'Ammo Hold', short: 'M', color: C.cargo, shape: [[0,0],[1,0],[2,0]], station: [1,0], hp: 65, cost: 25, description: 'Adds ammo capacity and a loading point for crew.' }
   };
@@ -172,58 +172,44 @@
     for(let col=1;col<=4;col++)for(let row=0;row<2;row++)if(Math.random()<.55)connect(`${col}-${row}`,`${col}-${row+1}`);
     return {version:2,base,nodes,current:'0-1',visited:['0-1'],resolved:['0-1']};
   }
-  function systemMaxPower(module){
-    const def=MODULES[module.type],level=module.level||1;
-    if(module.type==='engine')return 2+level-1;
-    if(def.shield||module.type==='shield')return level*2;
-    if(def.range)return def.damage>=24||def.family==='rail'||def.family==='missile'?2:1;
-    return 0;
+  function commandCore(data=save){return data.modules.find((module)=>module.type==='core');}
+  function systemDemand(module){const def=MODULES[module.type];return module.type==='engine'||def.range||SHIELD_TYPES.includes(module.type)?2:0;}
+  function coreOutput(data=save){const core=commandCore(data);return core?.hp>0?8+2*((core.powerLevel||1)-1):0;}
+  function poweredSystems(data=save){return data.modules.filter((module)=>module.hp>0&&systemDemand(module));}
+  function sharedPower(data=save){const count=poweredSystems(data).length;return count?Math.min(2,coreOutput(data)/count):0;}
+  function powerUsed(){return poweredSystems().length*sharedPower();}
+  function systemSupply(module){return module.hp>0&&systemDemand(module)?sharedPower():0;}
+  function systemPower(module){return systemDemand(module)?systemSupply(module)/2:module.hp>0?1:0;}
+  function normalizeSystems(data){
+    const core=commandCore(data);
+    if(core&&(!Number.isInteger(core.powerLevel)||core.powerLevel<1))core.powerLevel=Number.isInteger(data.reactorLevel)&&data.reactorLevel>0?data.reactorLevel:1;
+    delete data.reactorLevel;
+    for(const module of data.modules)delete module.power;
   }
-  function reactorCapacity(data=save){return 8+2*((data.reactorLevel||1)-1);}
-  function requestedPower(module){return clamp(Number.isFinite(module.power)?module.power:systemMaxPower(module),0,systemMaxPower(module));}
-  function powerUsed(){return save.modules.reduce((sum,module)=>sum+requestedPower(module),0);}
-  function usablePower(module){
-    const maximum=systemMaxPower(module);if(!maximum||module.hp<=0)return 0;
-    return Math.min(requestedPower(module),Math.ceil(maximum*module.hp/maxHp(module)));
-  }
-  function systemPower(module){const maximum=systemMaxPower(module);return maximum?usablePower(module)/maximum:module.hp>0?1:0;}
-  function normalizeSystems(data,legacy=false){
-    if(!Number.isInteger(data.reactorLevel)||data.reactorLevel<1){
-      const demand=data.modules.reduce((sum,module)=>sum+systemMaxPower(module),0);
-      data.reactorLevel=legacy?Math.max(1,1+Math.ceil((demand-8)/2)):1;
-    }
-    let left=reactorCapacity(data);
-    for(const module of data.modules){module.power=Math.min(requestedPower(module),left);left-=module.power;}
-  }
-  function setSystemPower(id,amount){
-    const module=save.modules.find((part)=>part.id===id);if(!module||!Number.isFinite(amount))return false;
-    amount=clamp(Math.round(amount),0,systemMaxPower(module));
-    if(amount-requestedPower(module)>reactorCapacity()-powerUsed())return false;
-    module.power=amount;persist();renderAll();return true;
-  }
-  function upgradeReactor(){
-    const cost=40+20*((save.reactorLevel||1)-1);
-    if(!['hangar','trade'].includes(mode)||save.metal<cost)return false;
-    save.metal-=cost;save.reactorLevel=(save.reactorLevel||1)+1;persist();renderAll();toast('Reactor upgraded · +2 power');return true;
+  function upgradeCorePower(){
+    const core=commandCore(),cost=40+20*((core?.powerLevel||1)-1);
+    if(!core||core.hp<=0||!['hangar','trade'].includes(mode)||save.metal<cost)return false;
+    save.metal-=cost;core.powerLevel=(core.powerLevel||1)+1;persist();renderAll();toast('Command core upgraded · +2 shared power');return true;
   }
   function evasionChance(){
     const core=save.modules.find((module)=>module.type==='core');
     if(!core||core.hp<=0||!crewAtStation('pilot',core))return 0;
-    const engines=activeModules('engine'),power=engines.reduce((sum,module)=>sum+usablePower(module),0);
+    const engines=activeModules('engine'),power=engines.reduce((sum,module)=>sum+systemSupply(module),0);
     if(!power)return 0;
     return Math.min(.45,.05+power*.03+engines.reduce((sum,module)=>sum+Math.min(1,crewAtStation('engine',module))*.05,0));
   }
   function renderSystems(){
-    const panel=$('systemsPanel'),scrollTop=panel.querySelector?.('.power-rows')?.scrollTop||0;
-    const available=reactorCapacity()-powerUsed(),cost=40+20*((save.reactorLevel||1)-1);
-    $('systemsPanel').innerHTML=`<div class="reactor-summary"><strong>REACTOR ${powerUsed()} / ${reactorCapacity()}</strong><span>${available} AVAILABLE · ${Math.round(evasionChance()*100)}% EVADE</span></div><button id="upgradeReactor" type="button" ${!['hangar','trade'].includes(mode)||save.metal<cost?'disabled':''}>UPGRADE REACTOR +2 · ◆ ${cost}</button><div class="power-rows">${save.modules.filter((module)=>systemMaxPower(module)).map((module)=>{
-      const max=systemMaxPower(module),assigned=requestedPower(module),usable=usablePower(module);
-      return `<div class="power-row"><span title="Grid ${module.x}, ${module.y}">${MODULES[module.type].name} <small>(${module.x}, ${module.y})</small></span><div class="power-controls"><button type="button" data-power="${module.id}" data-step="-1" aria-label="Decrease ${MODULES[module.type].name} power" ${assigned<=0?'disabled':''}>−</button><span class="power-bars" aria-label="${usable} usable power, ${assigned} allocated, ${max} maximum">${Array.from({length:max},(_,i)=>`<i class="${i<usable?'powered':i<assigned?'damaged':''}"></i>`).join('')}</span><button type="button" data-power="${module.id}" data-step="1" aria-label="Increase ${MODULES[module.type].name} power" ${assigned>=max||available<=0?'disabled':''}>+</button></div></div>`;
-    }).join('')}</div><small>Allocate power with − / +. Damage removes usable bars. Engines need a pilot for evasion; shields need two bars per layer.</small>`;
+    const panel=$('systemsPanel'),scrollTop=panel.querySelector?.('.power-rows')?.scrollTop||0,core=commandCore();
+    const count=poweredSystems().length,share=sharedPower(),cost=40+20*((core?.powerLevel||1)-1);
+    panel.innerHTML=`<div class="reactor-summary"><strong>COMMAND CORE · ${coreOutput()} POWER</strong><span>AUTO SHARE · ${count} SYSTEMS · ${share.toFixed(2)} EACH<br>${Math.round(evasionChance()*100)}% EVADE</span></div><button id="upgradeCorePower" type="button" ${!['hangar','trade'].includes(mode)||save.metal<cost?'disabled':''}>UPGRADE CORE POWER +2 · ◆ ${cost}</button><div class="power-rows">${save.modules.filter((module)=>systemDemand(module)).map((module)=>{
+      const performance=systemPower(module),shield=SHIELD_TYPES.includes(module.type),stats=shield?shieldStats(module):null;
+      const strength=shield?(battle?shieldState(module).charge:module.hp>0?stats.capacity:0):0;
+      return `<div class="power-row"><span title="Grid ${module.x}, ${module.y}">${MODULES[module.type].name} <small>(${module.x}, ${module.y})</small></span><strong>${module.hp>0?`${Math.round(performance*100)}% POWER`:'OFFLINE'}</strong><div class="power-meter" role="meter" aria-label="${MODULES[module.type].name} performance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(performance*100)}"><span style="width:${performance*100}%"></span></div>${shield?`<span class="shield-strength">SHIELD ${Math.round(strength)} / ${stats.capacity}</span><div class="power-meter shield-meter"><span style="width:${strength/stats.capacity*100}%"></span></div>`:''}</div>`;
+    }).join('')}</div><small>The command core shares power evenly across active systems. Lower power slows weapons, engine thrust, and shield recharge.</small>`;
     const rows=panel.querySelector?.('.power-rows');if(rows)rows.scrollTop=scrollTop;
-    $('upgradeReactor').addEventListener('click',upgradeReactor);
-    $('systemsPanel').querySelectorAll('[data-power]').forEach((button)=>button.addEventListener('click',()=>{const module=save.modules.find((part)=>part.id===+button.dataset.power);setSystemPower(module.id,requestedPower(module)+ +button.dataset.step);}));
+    $('upgradeCorePower').addEventListener('click',upgradeCorePower);
   }
+
   function newSave() {
     const data={
       metal: 90, sector: 1, wins: 0, nextId: 6, starterLayoutVersion:2, weaponFootprintsVersion:2, inventory:{armor:1}, passengers:0, ammoCrates:0,
@@ -267,7 +253,7 @@
       data.nextId = Math.max(data.nextId || 1, ...data.modules.map((module) => module.id + 1));
       data.nextCrewId=Number.isInteger(data.nextCrewId)?data.nextCrewId:1;
       for(const person of data.crew){Object.assign(person,crewAppearance(person));if(!TASKS[person.task])person.task='idle';if(!Number.isFinite(person.x)||!Number.isFinite(person.y))Object.assign(person,moduleStation(data.modules.find((module)=>module.type==='core')));}
-      normalizeSystems(data,true);
+      normalizeSystems(data);
       return data;
     } catch (_) { return null; }
   }
@@ -613,7 +599,7 @@
       selectedModuleId=module.id;movingModuleId=null;selectedCatalog=null;persist();renderAll();toast('Room moved');return;
     }
     const def=MODULES[selectedCatalog];if((save.inventory[selectedCatalog]||0)<1){toast('Buy this module from a trader first.');return;}
-    const module={id:save.nextId++,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing,hp:def.hp,level:1,power:Math.min(systemMaxPower({type:selectedCatalog,level:1}),Math.max(0,reactorCapacity()-powerUsed()))};
+    const module={id:save.nextId++,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing,hp:def.hp,level:1};
     save.modules.push(module);save.inventory[selectedCatalog]--;selectedModuleId=module.id;selectedCatalog=null;
     persist();log(`${def.name} installed from the hold.`);toast(`${def.name} installed`);renderAll();
   }
@@ -628,10 +614,10 @@
     if(!module){$('moduleInspector').innerHTML='<div class="empty-inspector">Click a ship room to inspect its station, firing arc, upgrade, or repair it.</div>';return;}
     const def=MODULES[module.type],maximum=maxHp(module),ratio=module.hp/maximum,upgradeCost=25*module.level+(module.type==='core'?10:0),repairCost=Math.ceil((maximum-module.hp)/10)*3;
     const direction=['RIGHT','DOWN','LEFT','UP'][(module.rotation+(MODULES[module.type].mountFacings===2&&module.weaponFacing===1?3:0))%4];
-    const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° FOCUSED ARC · ${direction}`} · ${Math.floor(battle?.shields?.[module.id]?.charge??shieldStats(module).layers)} / ${shieldStats(module).layers} LAYERS · ${shieldStats(module).recharge.toFixed(1)}s RECHARGE</div>`:null;
+    const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° FOCUSED ARC · ${direction}`} · ${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
     const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · RANGE ${weaponRange(module)} · ${direction} · ${def.ammo?`${def.ammo} AMMO / TRIGGER`:'NO AMMO'}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
     const rangeControl=def.range?`<div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div><div class="weapon-rules">${weaponBehavior(module.type)}</div><label class="weapon-range" for="weaponRange">RANGE LIMIT <input id="weaponRange" type="number" min="30" max="${def.range}" step="1" value="${weaponRange(module)}" ${!['hangar','trade'].includes(mode)?'disabled':''}><span>MAX ${def.range}</span></label>${def.mountFacings===2?`<button id="rotateWeapon" class="outline-button full-width" type="button" ${!['hangar','trade'].includes(mode)?'disabled':''}>TURN MOUNT 90° ↻</button>`:''}`:'';
-    $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}<div class="inspector-detail">${systemMaxPower(module)?`POWER ${usablePower(module)} / ${systemMaxPower(module)} · ALLOCATED ${requestedPower(module)}`:module.type==='core'?'PILOTING STATION · REACTOR CONTROL':'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>UPGRADE<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
+    $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}<div class="inspector-detail">${systemDemand(module)?`AUTO POWER ${systemSupply(module).toFixed(2)} · ${Math.round(systemPower(module)*100)}% PERFORMANCE`:module.type==='core'?`COMMAND POWER ${coreOutput()} · SHARED EQUALLY`:'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>UPGRADE<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
     paintWeaponThumbnails($('moduleInspector'));
     if(module.footprint&&mode==='trade')$('refitFootprint').addEventListener('click',()=>beginModuleMove(true));
     if(mode==='trade')$('moveModule').addEventListener('click',()=>{
@@ -671,6 +657,8 @@
     $('revisitTrader').hidden=mode!=='hangar'||currentMapNode()?.type!=='trader';
     const cells=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),weapons=activeModules(...WEAPON_TYPES).length;
     $('shipStats').innerHTML=`<div class="stat-card"><span>HULL INTEGRITY</span><strong class="${hullRatio()<.35?'bad':'good'}">${Math.round(hullRatio()*100)}%</strong></div><div class="stat-card"><span>MODULES</span><strong>${save.modules.length} <small style="font-size:9px;color:var(--muted)">/ ${cells} CELLS</small></strong></div><div class="stat-card"><span>WEAPONS</span><strong class="${weapons?'good':'bad'}">${weapons} ACTIVE</strong></div><div class="stat-card"><span>AMMUNITION</span><strong class="${mode==='combat'&&battle&&battle.ammo<=2?'warn':''}">${battle?Math.floor(battle.ammo)+' / '+battle.maxAmmo:save.ammoCrates?`READY +${save.ammoCrates*6}`:'READY'}</strong></div>`;
+    const shields=save.modules.filter((module)=>SHIELD_TYPES.includes(module.type));
+    if(shields.length){const maximum=shields.reduce((sum,module)=>sum+shieldStats(module).capacity,0),strength=shields.reduce((sum,module)=>sum+(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0),0);$('shipStats').innerHTML+=`<div class="stat-card"><span>SHIELD STRENGTH</span><strong>${Math.round(strength)} / ${maximum}</strong></div>`;}
     $('leftStatus').textContent=mode==='combat'?`ENGAGED // ${battle?.enemies.filter(enemyAlive).length||0} HOSTILES`:mode==='map'?`CHARTED // SECTOR ${String(save.sector).padStart(2,'0')}`:activeModules('engine').length?'DOCKED // SYSTEMS READY':'DOCKED // ENGINE OFFLINE';
     $('footerStatus').textContent=mode==='combat'?'THRUSTERS ACTIVE ONLY ON DEMAND':mode==='map'?'CHOOSE YOUR NEXT JUMP':'A LONG WAY FROM HOME';
     if(battle){
@@ -1457,7 +1445,7 @@
     const bounds=shipBounds();
     return activeModules('engine').map((module)=>{
       const cells=moduleCells(module),cx=cells.reduce((sum,[x])=>sum+x+.5,0)/cells.length,cy=cells.reduce((sum,[,y])=>sum+y+.5,0)/cells.length;
-      const direction=module.rotation*Math.PI/2,force=MODULES.engine.thrust*(1+.2*(module.level-1))*(usablePower(module)/2)*(1+.25*Math.min(1,crewAtStation('engine',module)));
+      const direction=module.rotation*Math.PI/2,force=MODULES.engine.thrust*(1+.2*(module.level-1))*(systemSupply(module)/2)*(1+.25*Math.min(1,crewAtStation('engine',module)));
       const rx=(cx-bounds.cx)*COMBAT_TILE,ry=(cy-bounds.cy)*COMBAT_TILE;
       return {module,rx,ry,direction,force,torque:(rx*Math.sin(direction)-ry*Math.cos(direction))*force};
     });
@@ -1691,19 +1679,24 @@
     const entry=-b-Math.sqrt(discriminant);
     return entry>=0?entry:Infinity;
   }
-  function shieldStats(module){return {layers:Math.floor(usablePower(module)/2),recharge:(module.type==='focusShield'?2:3)/(1+.4*Math.min(1,crewAtStation('shield',module)))};}
-  function shieldState(module){
-    if(!battle)return null;const layers=shieldStats(module).layers;
-    battle.shields??={};const state=battle.shields[module.id]??={charge:layers,delay:0,flash:0};
-    state.charge=Math.min(state.charge,layers);return state;
+  function shieldStats(module){
+    const def=MODULES[module.type];
+    return {capacity:Math.round(def.capacity*(1+.35*((module.level||1)-1))),recharge:def.recharge*systemPower(module)*(1+.4*Math.min(1,crewAtStation('shield',module)))};
   }
+
+  function shieldState(module){
+    if(!battle)return null;const capacity=shieldStats(module).capacity;
+    battle.shields??={};const state=battle.shields[module.id]??={charge:module.hp>0?capacity:0,delay:0,flash:0};
+    state.charge=module.hp>0?clamp(state.charge,0,capacity):0;return state;
+  }
+
   function shieldCovers(module,player,angle){
     return module.type==='shield'||Math.abs(angleDifference(player.angle+module.rotation*Math.PI/2,angle))<=MODULES[module.type].arc*Math.PI/360;
   }
   function shieldInterception(shot,dx,dy,player,limit){
     let best=null;
     for(const module of activeModules(...SHIELD_TYPES)){
-      if(shieldState(module).charge<1-1e-7)continue;
+      if(shieldState(module).charge<=1e-7)continue;
       const entry=rayCircle(shot,dx,dy,player,player.r+(module.type==='focusShield'?23:17));
       if(entry>limit||entry>=best?.distance)continue;
       const angle=Math.atan2(shot.y+dy*entry-player.y,shot.x+dx*entry-player.x);
@@ -1714,18 +1707,21 @@
   function absorbShields(amount,angle){
     for(const module of activeModules(...SHIELD_TYPES).sort((a,b)=>Number(a.type==='shield')-Number(b.type==='shield'))){
       const state=shieldState(module);
-      if(state.charge<1-1e-7||!shieldCovers(module,battle.player,angle))continue;
-      state.charge=Math.max(0,state.charge-1);state.delay=.5;state.flash=.22;return 0;
+      if(amount<=0||state.charge<=0||!shieldCovers(module,battle.player,angle))continue;
+      const absorbed=Math.min(amount,state.charge);state.charge-=absorbed;amount-=absorbed;
+      state.delay=1.7;state.flash=.22;
     }
     return amount;
   }
+
   function updateShields(dt){
     for(const module of save.modules.filter((part)=>SHIELD_TYPES.includes(part.type))){
       const state=shieldState(module),stats=shieldStats(module),waiting=Math.min(state.delay,dt);
       state.delay=Math.max(0,state.delay-dt);state.flash=Math.max(0,state.flash-dt);
-      state.charge=Math.min(stats.layers,state.charge+(dt-waiting)/stats.recharge);
+      state.charge=Math.min(stats.capacity,state.charge+(dt-waiting)*stats.recharge);
     }
   }
+
   function damagePlayer(amount,point=null){
     const live=save.modules.filter((module)=>module.hp>0);if(!live.length)return;
     let target=null;
@@ -1763,7 +1759,7 @@
       if(weapon.cooldown>0||b.ammo<def.ammo)continue;
       const target=living.filter((enemy)=>weaponCanTarget(weapon,p,enemy)).sort((a,c)=>distance(a,mount)-distance(c,mount))[0];
       if(target){
-        b.ammo-=def.ammo;weapon.cooldown=def.reload/Math.max(.01,systemPower(weapon))/(1+crewAtStation('gun',weapon)*.4)/(1+(weapon.level-1)*.22);
+        b.ammo-=def.ammo;weapon.cooldown=def.reload/systemPower(weapon)/(1+crewAtStation('gun',weapon)*.4)/(1+(weapon.level-1)*.22);
         fireWeapon(weapon,p,target);
       }
     }
@@ -1901,12 +1897,10 @@
   }
   function drawShields(player){
     for(const module of activeModules(...SHIELD_TYPES)){
-      const state=shieldState(module),stats=shieldStats(module);if(!stats.layers)continue;
+      const state=shieldState(module),stats=shieldStats(module);if(state.charge<=0)continue;
       const focused=module.type==='focusShield',center=player.angle+module.rotation*Math.PI/2,span=focused?MODULES[module.type].arc*Math.PI/180:TAU;
-      for(let layer=0;layer<stats.layers;layer++){
-        ctx.save();ctx.globalAlpha=state.charge>=layer+1-1e-7?.55:.13;ctx.strokeStyle=focused?'#92f9e9':'#b9a3f7';ctx.lineWidth=state.flash>0?3:2;
-        ctx.beginPath();ctx.arc(player.x,player.y,player.r+17+layer*6+(focused?6:0),center-span/2,center+span/2);ctx.stroke();ctx.restore();
-      }
+      ctx.save();ctx.globalAlpha=Math.min(1,.15+.45*state.charge/stats.capacity+(state.flash>0?.25:0));ctx.strokeStyle=focused?'#92f9e9':'#b9a3f7';ctx.lineWidth=state.flash>0?3:2;
+      ctx.beginPath();ctx.arc(player.x,player.y,player.r+17+(focused?6:0),center-span/2,center+span/2);ctx.stroke();ctx.restore();
     }
   }
 

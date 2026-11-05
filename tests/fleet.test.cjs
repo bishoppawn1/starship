@@ -164,7 +164,7 @@ test('a swept player projectile damages the first pirate room it crosses',()=>{
   assert.equal(engine.hp,26);assert.equal(core.hp,64);
 });
 
-test('focused layers cover one arc and recharge faster than full-hull layers',()=>{
+test('focused shield strength covers one arc and recharges faster than full-hull strength',()=>{
   const g=game(),save=g.newSave();
   save.modules.push({id:20,type:'shield',x:1,y:1,rotation:0,level:1,hp:85});
   save.modules.push({id:21,type:'focusShield',x:8,y:6,rotation:0,level:1,hp:75});
@@ -174,11 +174,12 @@ test('focused layers cover one arc and recharge faster than full-hull layers',()
   const back=g.shieldInterception({x:300,y:500},1,0,player,300);
   assert.ok(front.distance<back.distance,'the focused barrier extends ahead of the wide shell');
   assert.equal(g.absorbShields(50,0),0);
-  assert.equal(battle.shields[21].charge,0);
+  assert.equal(battle.shields[21].charge,110);
+  assert.equal(g.absorbShields(50,Math.PI),0);
   assert.equal(g.absorbShields(50,Math.PI),0);
   assert.equal(g.absorbShields(50,Math.PI),50);
   assert.equal(battle.shields[20].charge,0);
-  g.updateShields(2.5);assert.equal(battle.shields[21].charge,1);assert.ok(battle.shields[20].charge<1);
+  g.updateShields(2.5);assert.ok(battle.shields[21].charge>110);assert.ok(battle.shields[20].charge>0);assert.ok(g.shieldStats(save.modules.at(-1)).recharge>g.shieldStats(save.modules.at(-2)).recharge);
 });
 
 test('enemy shots hit the shield barrier before they can damage a room',()=>{
@@ -189,7 +190,7 @@ test('enemy shots hit the shield barrier before they can damage a room',()=>{
   g.fireProjectile('enemy',700,500,b.player,20,300,300);
   g.updateBattle(.5,0);
   assert.equal(save.modules[0].hp,hullBefore);
-  assert.equal(b.shields[21].charge,0);
+  assert.equal(b.shields[21].charge,140);
   assert.equal(b.projectiles.length,0);
 });
 

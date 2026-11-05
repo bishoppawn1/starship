@@ -16,7 +16,7 @@ function game(){
     globalThis.game={MODULES,SHIELD_TYPES,TASKS,newSave,loadSave,persist,canPlace,moduleCells,moduleStation,exteriorCells,weaponHasEscape,
       createGrid,panBuild,centerBuildView,shipArtFrame,shipBounds,drawArena,shipSprite,gridButtons,buildView,startBattle,shipRadius,
       traderStock,openTrader,buyTraderItem,buyRecruit,upgradeTraderStock,crewGoal,renderCrew,crewAtStation,
-      normalizeSystems,reactorCapacity,powerUsed,systemMaxPower,usablePower,systemPower,setSystemPower,upgradeReactor,engineThrusters,evasionChance,
+      normalizeSystems,commandCore,coreOutput,powerUsed,systemDemand,sharedPower,systemSupply,systemPower,upgradeCorePower,engineThrusters,evasionChance,weaponWorld,renderSystems,
       shieldStats,shieldState,absorbShields,shieldInterception,updateShields,fireProjectile,updateBattle,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
       setMode(value){mode=value;},stubFlight(){navigatePlayer=()=>{};}};
@@ -88,16 +88,25 @@ test('recruited crew have unique persistent identities, can take jobs, and remai
   assert.equal(new Set(loaded.crew.map((person)=>person.id)).size,4);
 });
 
-test('reactor allocation prevents overspending, upgrades add power, and damage caps usable bars',()=>{
-  const g=game(),save=g.newSave();save.metal=500;g.setSave(save);g.setMode('trade');assert.equal(g.reactorCapacity(),8);assert.equal(g.powerUsed(),6);
-  const shield={id:10,type:'shield',x:7,y:7,rotation:0,level:1,hp:85,power:0};save.modules.push(shield);
-  assert.equal(g.setSystemPower(10,2),true);const engine=save.modules.find((m)=>m.type==='engine');
-  const extra={...engine,id:11,power:0};save.modules.push(extra);assert.equal(g.setSystemPower(11,2),false);assert.equal(extra.power,0);
-  assert.equal(g.upgradeReactor(),true);assert.equal(save.metal,460);assert.equal(g.reactorCapacity(),10);assert.equal(g.setSystemPower(11,2),true);
-  extra.hp=40;assert.equal(g.usablePower(extra),1);extra.hp=0;assert.equal(g.usablePower(extra),0);extra.hp=80;assert.equal(g.usablePower(extra),2);
-  const old=g.newSave();delete old.reactorLevel;for(const module of old.modules)delete module.power;
-  for(let i=0;i<5;i++)old.modules.push({id:100+i,type:'weapon',x:10+i,y:0,rotation:0,hp:75,level:1});g.normalizeSystems(old,true);
-  assert.ok(old.modules.every((module)=>module.power===g.systemMaxPower(module)));assert.ok(g.reactorCapacity(old)>=11);
+test('the command core shares power evenly and upgrades improve every underpowered system',()=>{
+  const g=game(),save=g.newSave();save.metal=500;g.setSave(save);g.setMode('trade');assert.equal(g.coreOutput(),8);assert.equal(g.powerUsed(),8);
+  const shield={id:10,type:'shield',x:7,y:7,rotation:0,level:1,hp:85};save.modules.push(shield);
+  for(const module of save.modules.filter((m)=>g.systemDemand(m))){near(g.systemSupply(module),1.6);near(g.systemPower(module),.8);}
+  const engine=save.modules.find((m)=>m.type==='engine'),extra={...engine,id:11};save.modules.push(extra);
+  near(g.systemSupply(engine),8/6);near(g.systemSupply(shield),8/6);
+  assert.equal(g.upgradeCorePower(),true);assert.equal(save.metal,460);assert.equal(g.coreOutput(),10);assert.equal(g.commandCore().powerLevel,2);
+  for(const module of save.modules.filter((m)=>g.systemDemand(m)))near(g.systemSupply(module),10/6);
+  extra.hp=1;near(g.systemSupply(extra),10/6);near(g.systemSupply(engine),10/6);
+  extra.hp=0;assert.equal(g.systemSupply(extra),0);near(g.systemSupply(engine),2);
+  save.modules[0].hp=1;assert.equal(g.coreOutput(),10);save.modules[0].hp=0;assert.equal(g.coreOutput(),0);assert.equal(g.systemPower(engine),0);
+});
+
+test('old reactor upgrades migrate into the core and manual allocations no longer restrict systems',()=>{
+  const g=game(),old=g.newSave();delete old.modules[0].powerLevel;old.reactorLevel=3;
+  for(const module of old.modules)module.power=0;g.setSave(old);g.persist();const loaded=g.loadSave();g.setSave(loaded);
+  assert.equal(g.commandCore().powerLevel,3);assert.equal(g.coreOutput(),12);assert.equal(loaded.reactorLevel,undefined);
+  assert.ok(loaded.modules.every((module)=>module.power===undefined));
+  for(const module of loaded.modules.filter((module)=>g.systemDemand(module)))assert.equal(g.systemPower(module),1);
 });
 
 test('crew engine bonuses apply at the console and powered engines require a pilot for evasion',()=>{
@@ -106,17 +115,32 @@ test('crew engine bonuses apply at the console and powered engines require a pil
   Object.assign(save.crew[0],{task:'pilot',...g.moduleStation(command)});assert.ok(g.evasionChance()>0);
   Object.assign(save.crew[1],{task:'engine',...g.moduleStation(engine)});near(g.engineThrusters().find((entry)=>entry.module===engine).force,base*1.25);
   save.crew[1].x+=5;near(g.engineThrusters().find((entry)=>entry.module===engine).force,base);
-  for(const part of save.modules.filter((m)=>m.type==='engine'))part.power=0;assert.equal(g.evasionChance(),0);assert.equal(g.engineThrusters().length,0);
+  for(const part of save.modules.filter((m)=>m.type==='engine'))part.hp=0;assert.equal(g.evasionChance(),0);assert.equal(g.engineThrusters().length,0);
 });
 
-test('two power bars provide one rechargeable hit layer and shield operators accelerate recharge',()=>{
-  const g=game(),save=g.newSave();save.modules=[core(0,0),{id:2,type:'shield',x:2,y:0,rotation:0,level:2,hp:110,power:4}];save.reactorLevel=2;const b=battle(g,save),shield=save.modules[1];
-  assert.equal(g.shieldStats(shield).layers,2);assert.equal(g.shieldState(shield).charge,2);
-  assert.equal(g.absorbShields(100,0),0);assert.equal(g.absorbShields(1,0),0);assert.equal(g.absorbShields(100,0),100);
-  g.updateShields(3.4);assert.ok(g.shieldState(shield).charge<1);assert.equal(g.shieldInterception({x:700,y:500},-1,0,b.player,300),null);
-  g.updateShields(.1);near(g.shieldState(shield).charge,1);assert.ok(g.shieldInterception({x:700,y:500},-1,0,b.player,300));
-  const recharge=g.shieldStats(shield).recharge;Object.assign(save.crew[0],{task:'shield',...g.moduleStation(shield)});assert.ok(g.shieldStats(shield).recharge<recharge);
-  g.setSystemPower(shield.id,1);g.updateShields(.1);assert.equal(g.shieldState(shield).charge,0);assert.equal(g.shieldStats(shield).layers,0);
+test('shields absorb exact damage from a strength pool and pass excess damage through',()=>{
+  const g=game(),save=g.newSave();save.modules=[core(0,0),{id:2,type:'shield',x:2,y:0,rotation:0,level:2,hp:110}];const b=battle(g,save),shield=save.modules[1];
+  assert.equal(g.shieldStats(shield).capacity,135);assert.equal(g.shieldState(shield).charge,135);
+  assert.equal(g.absorbShields(100,0),0);assert.equal(g.shieldState(shield).charge,35);
+  assert.equal(g.absorbShields(50,0),15);assert.equal(g.shieldState(shield).charge,0);
+  assert.equal(g.shieldInterception({x:700,y:500},-1,0,b.player,300),null);
+  g.updateShields(1.7);assert.equal(g.shieldState(shield).charge,0);g.updateShields(.1);near(g.shieldState(shield).charge,1);
+  g.shieldState(shield).charge=.25;assert.ok(g.shieldInterception({x:700,y:500},-1,0,b.player,300));near(g.absorbShields(1,0),.75);
+  g.updateShields(100);assert.equal(g.shieldState(shield).charge,135);
+  const recharge=g.shieldStats(shield).recharge;Object.assign(save.crew[0],{task:'shield',...g.moduleStation(shield)});assert.ok(g.shieldStats(shield).recharge>recharge);
+  for(let i=0;i<4;i++)save.modules.push({id:10+i,type:'engine',x:4+i,y:0,rotation:0,level:1,hp:80});
+  near(g.systemPower(shield),.8);near(g.shieldStats(shield).recharge,recharge*1.4*.8);assert.equal(g.shieldStats(shield).capacity,135);
+  shield.hp=1;near(g.systemPower(shield),.8);shield.hp=0;g.updateShields(.1);assert.equal(g.shieldState(shield).charge,0);
+});
+
+test('lower shared power slows actual weapon reload and the panel has no manual allocation controls',()=>{
+  const g=game(),save=g.newSave(),gun={id:2,type:'weapon',x:3,y:3,rotation:0,hp:75,level:1,cooldown:0};
+  save.modules=[core(0,0),gun];save.crew=[];
+  for(let i=0;i<4;i++)save.modules.push({id:10+i,type:'engine',x:5+i,y:0,rotation:0,hp:80,level:1});
+  const b=battle(g,save),mount=g.weaponWorld(gun,b.player);b.enemies[0].x=mount.x+100;b.enemies[0].y=mount.y;
+  g.updateBattle(.001,0);near(gun.cooldown,g.MODULES.weapon.reload/.8);
+  g.renderSystems();const panel=g.elements.get('systemsPanel').innerHTML;
+  assert.ok(panel.includes('COMMAND CORE'));assert.ok(panel.includes('80% POWER'));assert.ok(!panel.includes('data-power='));assert.ok(!panel.includes('power-bars'));
 });
 
 test('pilot evasion rolls once per approaching shot and an evaded shot passes both shields and hull',()=>{
@@ -124,4 +148,13 @@ test('pilot evasion rolls once per approaching shot and an evaded shot passes bo
   const hp=save.modules[0].hp;g.fireProjectile('enemy',600,500,b.player,30,300,500);const shot=b.projectiles[0];
   g.updateBattle(.5,0);assert.equal(shot.evaded,true);assert.equal(save.modules[0].hp,hp);assert.ok(b.projectiles.includes(shot));assert.ok(b.effects.some((effect)=>effect.text==='MISS'));
   g.math.random=()=>1;g.updateBattle(.1,0);assert.equal(shot.evaded,true);assert.equal(save.modules[0].hp,hp);
+});
+
+
+test('combat sends only damage beyond the remaining shield strength to the hull',()=>{
+  const g=game(),save=g.newSave();save.modules=[core(0,0),{id:2,type:'shield',x:2,y:0,rotation:0,level:1,hp:85}];save.crew=[];
+  const b=battle(g,save),shield=save.modules[1],state=g.shieldState(shield);state.charge=12;state.delay=5;
+  const before=save.modules.reduce((sum,module)=>sum+module.hp,0);
+  g.fireProjectile('enemy',700,500,b.player,20,400,400);g.updateBattle(.5,0);
+  near(save.modules.reduce((sum,module)=>sum+module.hp,0),before-8);assert.equal(state.charge,0);assert.equal(b.projectiles.length,0);
 });
