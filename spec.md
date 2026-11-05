@@ -30,8 +30,10 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 
 - Combat can involve the player's ship against one or multiple enemy ships.
 - Battles take place in an arena whose size scales with the sizes of the participating ships, leaving room to maneuver.
-- Arenas contain randomly generated obstacles such as asteroids. Obstacles should create tactical choices without making the arena unusable.
-- Pirate ships and asteroids use detailed source sprites and the same smooth, display-density rotation as the player’s ship. Canvas resizing preserves world dimensions and mouse targeting coordinates.
+- Arenas contain randomly generated broken ship wrecks. The route planner keeps a wide clearance around them for both player and pirate ships. A ship that directly rams wreckage is pushed out and rebounds; the impact itself causes no room damage. Wrecks can be destroyed by weapons and then leave the navigation graph.
+- Pirate ships and wrecks use detailed source sprites and the same smooth, display-density rotation as the player’s ship. Canvas resizing preserves world dimensions and mouse targeting coordinates.
+- Pirate ships have separate command, weapon, engine, and armor rooms. Swept shots strike the first live room on their path. Destroyed rooms stay visible as dark wreckage but no longer block later shots. Destroying the weapon stops pirate fire, destroying the engine stops its movement, and destroying the core defeats the ship even if other rooms remain.
+- Wide shield arrays project a low-capacity rechargeable barrier around the whole player ship. Focused shield rooms project a stronger 105° sector in their room's facing direction. Enemy projectiles hit a covering shield before the hull; depleted shields recharge after a short delay. A disabled shield room stops projecting.
 - Damage to ship systems matters: a damaged weapon, engine, or other module should affect its function until repaired.
 - Each weapon fires from a visible mount. Its facing, range, and firing arc determine which targets it can hit. Selecting a weapon shows its art and firing arc, clipped at the first hull cell in each direction except for the proton lance’s safe passage through its own ship. Hull shadows never resume on the other side of the ship; disabled rooms still block fire.
 - In the hangar, each weapon has a saved range limit from 30 arena units up to its type’s maximum (220–650 units across the 20 designs; 420 for pulse cannons and 580 for railguns). Targeting, overlays, and projectile travel all respect that limit.
@@ -50,6 +52,7 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 
 - Ships have crew members who can operate systems to improve their effectiveness.
 - Crew can repair damaged systems.
+- Crew assigned to shield operation walk to a shield console and increase its recharge rate when stationed there.
 - Crew can perform support tasks, including delivering ammunition to weapons that require it.
 - Crew walk along connected floor cells to system stations. An assignment becomes effective when the crew member reaches the relevant station.
 
@@ -59,6 +62,7 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 - Encounters can provide opportunities to gain metal, supplies, or other rewards as the game develops.
 - Trading and upgrades should feed back into ship construction and readiness for future events.
 - Sector charts are bidirectional networks. Players may revisit beacons, including traders and repair outposts, without replaying one-time rewards. The exit stays in the current chart until the player chooses to advance; there is no pursuing fleet.
+- A chart contains one trader, one outpost, and distinct event sites including pirate raids, freighter rescues, salvage, derelicts, anomalies, relays, minefields, and lifeboats. Different scenes offer different costs and outcomes. Lifeboat passengers travel aboard until delivered to an outpost for payment; salvaged ammunition adds six rounds to the next battle; restored relays and gravity lenses open new two-way links. Traders do not pay for uncollected survey data.
 
 ## Open design choices
 
@@ -67,18 +71,18 @@ Longer-term combat balance, additional events and resources, more module types, 
 ## Current playable version
 
 - Combat runs in real time with exactly 20 purchasable weapon designs. Weapons differ in range, arc, damage, reload time, ammunition per trigger, projectile speed, and effects. Ion, laser, disruptor, Tesla, and proton weapons use no ammunition and still fire with an empty ammo pool. Cannons, railguns, missile launchers, torpedoes, and the plasma, cryo, and inferno projectors consume their listed ammo cost from the shared battle supply, waiting for loaders when empty. Catalogs and inspectors show the cost. Salvos share one trigger's ammo cost. Shots start at their muzzle and respect their configured travel limit. Direct fire respects its mounted arc and is blocked by hull cells, with the proton lance exception below.
-- Missile racks and swarm launchers automatically acquire enemies within range regardless of target bearing. They launch along a clear direction within their mount’s launch arc, stay straight until they clear the hull’s projected edge, and then home toward their target. Torpedoes remain heavy unguided explosives. Actual projectile path length respects the configured range. Rail and Gauss rounds hit each ship at most once; proton lances pass harmlessly through the firing ship’s own hull and stop at the first enemy or asteroid instead of piercing several ships.
-- Asteroids have health (twice their radius), take direct and nearby blast damage, and disappear from collision and navigation when destroyed. Explosions at asteroid surfaces also damage nearby enemies whose hull intersects the blast radius. Splash hits deal 55% damage to neighboring ships.
+- Missile racks and swarm launchers automatically acquire enemies within range regardless of target bearing. They launch along a clear direction within their mount’s launch arc, stay straight until they clear the hull’s projected edge, and then home toward their target. Torpedoes remain heavy unguided explosives. Actual projectile path length respects the configured range. Rail and Gauss rounds hit each ship at most once; proton lances pass harmlessly through the firing ship’s own hull and stop at the first enemy or wreck instead of piercing several ships.
+- Wrecks have health (twice their radius), take direct and nearby blast damage, and disappear from collision and navigation when destroyed. Explosions at wreck surfaces also damage nearby enemies whose hull intersects the blast radius. Splash hits deal 55% damage to neighboring ships.
 - Ion hits halve the efficiency of the system nearest the impact for three seconds: weapon and core hits reduce firing efficiency, while engine hits reduce thrust. Each enemy has independent system status; ion hits do not apply a ship-wide movement debuff. Other slowing effects and burning expire after their stated durations. A gunner at any weapon station improves its fire rate.
 - The disruptor is a broad, weaker alternative to the ion blaster: a 155° firing arc, 5 direct damage, and an 80-unit pulse that reduces every live functional system touched by the pulse to 80% efficiency for two seconds. It can affect several rooms on the struck ship and nearby ships, does not slow the entire ship, and does not damage secondary rooms.
 - Tesla coils deal 6 damage to the struck system, then arc to up to three other live functional systems on that same ship. Each hop travels at most 110 units between system centers and deals 70% of the previous hit’s damage (4.2, 2.94, 2.058 at level 1). A system is hit at most once per discharge. Bounces skip armor and disabled rooms, stop when the ship is destroyed, and never jump to another ship. Visible arcs follow the ship’s rotated system positions.
 - An engineer repairs a damaged module after walking to its station. A loader walks between an ammo source and a weapon to deliver ammunition.
-- The starting ship has a command core, two mirrored directional ion engines, and two mirrored pulse cannons facing forward. Its occupied cells and external mounts are symmetric above and below the centerline, and its engine pair has equal opposite turning torque. An untouched legacy starter save gains the mirrored cannon automatically; customized or damaged ships are preserved. It begins with one spare armor module. All 20 weapons, engines, shield arrays, armor plating, and ammo holds can be bought and installed at traders. Each new trader stocks five distinct weapons, every available shield design, and one other support-system type; returning traders keep their remaining stock. Shield cards appear first in the catalog, with a dedicated **Shields** filter. Missing shield offers are added when opening older saved traders, including markets already migrated to the current stock version. Existing prices and sold-out shield quantities are preserved. Older saved markets gain missing weapon and support offers once, retaining sold-out quantities and original prices. Modules must connect by an edge and cannot overlap or block reserved exhaust and mount space.
+- The starting ship has a command core, two mirrored directional ion engines, and two mirrored pulse cannons facing forward. Its occupied cells and external mounts are symmetric above and below the centerline, and its engine pair has equal opposite turning torque. An untouched legacy starter save gains the mirrored cannon automatically; customized or damaged ships are preserved. It begins with one spare armor module. All 20 weapons, engines, wide and focused shield arrays, armor plating, and ammo holds can be bought and installed at traders. Each new trader stocks five distinct weapons and three support-system types, always including both shield designs; returning traders keep their remaining stock. Older saved markets gain missing weapon and shield offers once, retaining sold-out quantities and original prices. Modules must connect by an edge and cannot overlap or block reserved exhaust and mount space.
 - During construction, a selected module stays in placement mode when the cursor is over an installed room. The preview and click snap to a nearby valid edge position, including below the ship. Without a selected catalog module, clicking a room inspects it. Leaving a trader clears placement mode. A trader at the current beacon can be reopened with **Dock at Trader** from the ship view.
-- Pirate ships are assembled from connected four-cell tetromino modules, with visible core, weapon, engine, and sometimes armor rooms. Arena sizing uses their actual tile count.
-- Asteroids are solid to both player and pirate ships. Move orders and pirate pursuit route around each asteroid with clearance for the ship's size; a ship that reaches an obstacle is stopped and steered along it.
+- Pirate ships are assembled from connected four-cell tetromino modules, with visible core, weapon, engine, and sometimes armor rooms. Each room has its own health and function. Arena sizing uses their actual tile count.
+- Broken ship wrecks are solid to both player and pirate ships. Move orders and pirate pursuit route around them with the ship's radius plus a wide berth; a moving ship that touches a wreck rebounds.
 - A destroyed command core ends the run. Other destroyed modules stop providing their function until repaired. Metal pays traders for new modules and pays for upgrades, repairs, and some encounter choices.
-- A generated sector chart has connected, revisitable beacons and a dedicated exit. Pirate and freighter destinations lead to arena combat; salvage, anomalies, derelicts, outposts, and traders offer other choices. Completed sites remain on the chart. A new chart appears only when the player chooses **Go to Next Sector** at the exit.
+- A generated sector chart has connected, revisitable beacons and a dedicated exit. Pirate and some freighter destinations lead to arena combat; salvage, anomalies, derelicts, minefields, lifeboats, relays, outposts, and traders offer other choices. Completed sites remain on the chart. A new chart appears only when the player chooses **Go to Next Sector** at the exit.
 - Progress is stored in the browser's local storage. The game is a static site with no account or server dependency.
 - The game opens at a title menu. **Continue Game** loads the local run when its command core is intact; **New Game** replaces it after confirmation. The in-game **Main Menu** action saves and returns to the title screen. **Quit Game** ends the browser session at a closing screen with a path back to the menu; an unfinished battle is abandoned and can be attempted again from its chart beacon.
 
@@ -108,3 +112,34 @@ All ranges below are maximum arena units. Corner mounts offer two facing choices
 | Inferno Projector | 230 | 130° | Burns for 5 damage per second over 4 seconds |
 | Proton Lance | 620 | 25° | Passes through own hull; stops at first enemy; fixed barrel; no ammo |
 | Gauss Repeater | 510 | 55° | Two slugs, each piercing two ships; fixed barrel |
+
+## Weapon fitting and firing patterns
+
+The 20 weapons use ten footprint patterns. Six compact designs occupy only one or two cells. Catalog cards and inspectors show the occupied-cell diagram, cell count, dimensions, and behavior details derived from the combat settings. Rocket pods show recessed loaded rockets, torpedo tubes show a large warhead, and electrical coils and laser emitters have different silhouettes. Projectiles likewise distinguish rockets with exhaust, laser bolts, ion pulses, plasma, and incendiary shots.
+
+Existing installed weapons keep their saved footprint and muzzle location, preserving ship layouts. While docked at a trader, **Refit to New Footprint · Free** previews the new room shape. Only confirming a valid, connected location changes the room; its identity, health, upgrades, range, and crew are preserved. Canceling retains the original room.
+
+Gatling bursts fire three rounds 0.09 seconds apart; Gauss repeaters fire two slugs 0.12 seconds apart; swarm launchers fire four guided rockets 0.10 seconds apart. Later rounds launch from the weapon's current location and track the target between shots. Queued rounds cancel if their weapon is disabled or their target is no longer valid. Trigger ammo is paid once for the complete burst. Flak and scatter salvos fire simultaneously.
+
+| Weapon | Cells | Footprint |
+| --- | ---: | --- |
+| Pulse Cannon | 3 | L corner |
+| Railgun | 4 | Straight row |
+| Autocannon | 2 | Domino |
+| Gatling Battery | 3 | Straight row |
+| Flak Battery | 4 | T |
+| Scatter Cannon | 2 | Column |
+| Plasma Cannon | 4 | Square |
+| Ion Blaster | 1 | Single cell |
+| Laser Repeater | 2 | Domino |
+| Heavy Laser | 3 | Straight row |
+| Missile Rack | 4 | Square |
+| Swarm Launcher | 4 | Tall L |
+| Torpedo Tube | 3 | Straight row |
+| Siege Cannon | 5 | Long L |
+| Disruptor | 3 | Column |
+| Tesla Coil | 4 | T |
+| Cryo Projector | 2 | Domino |
+| Inferno Projector | 2 | Column |
+| Proton Lance | 4 | Straight row |
+| Gauss Repeater | 4 | Zigzag |

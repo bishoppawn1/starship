@@ -12,6 +12,8 @@ function game(){
     globalThis.game={MODULES,WEAPON_TYPES,newSave,migrateStarter,traderStock,moduleCells,weaponGeometry,weaponHasEscape,
       weaponsHaveClearArc,engineThrusters,upgradeTraderStock,openTrader,buyTraderItem,onGridClick,setMode,renderCatalog,crewGoal,
       weaponCanTarget,weaponWorld,fireWeapon,fireProjectile,weaponImpact,updateBattle,
+      enemyLayout,enemyAlive,rayEnemyRoom,hurtEnemy,enemySystemEfficiency,
+      shieldInterception,absorbShields,updateShields,resolveRockCollision,clearSegment,routeAroundRocks,
       beginModuleMove,canPlace,placementPreview,systemEfficiency,enemyLayout,enemySystemEfficiency,drawHangar,drawExteriorHardware,
       selectModule(id){selectedModuleId=id;},hover(x,y){hoverCell={x,y};},rotateBuild,
       setSave(value){save=value;},getSave(){return save;},getMode(){return mode;},
@@ -70,10 +72,11 @@ test('exactly 20 distinct weapons support all room rotations, crew stations, and
   assert.equal(signatures.size,20);
 });
 
-test('trader offers include five weapons and two systems, and every weapon can be stocked',()=>{
+test('trader offers five weapons and both shield types, and every weapon can be stocked',()=>{
   const g=game(),seen=new Set();
   for(let i=0;i<200;i++){
-    const stock=g.traderStock();assert.equal(stock.length,7);assert.equal(stock.filter((item)=>g.MODULES[item.type].range).length,5);
+    const stock=g.traderStock();assert.equal(stock.length,8);assert.equal(stock.filter((item)=>g.MODULES[item.type].range).length,5);
+    assert.ok(stock.some((item)=>item.type==='shield'));assert.ok(stock.some((item)=>item.type==='focusShield'));
     for(const item of stock)if(g.MODULES[item.type].range)seen.add(item.type);
   }
   assert.equal(seen.size,20);
@@ -125,7 +128,7 @@ test('salvos stay inside the mounted firing arc even when the target is near an 
 
 test('older trader markets gain varied offers once without restocking sold items',()=>{
   const g=game(),node={stock:[{type:'weapon',qty:0,price:45},{type:'engine',qty:0,price:35}]};
-  g.upgradeTraderStock(node);assert.equal(node.stock.length,7);assert.equal(node.stock[0].qty,0);assert.equal(node.stock[1].qty,0);
+  g.upgradeTraderStock(node);assert.equal(node.stock.length,8);assert.equal(node.stock[0].qty,0);assert.equal(node.stock[1].qty,0);
   const before=JSON.stringify(node.stock);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node.stock),before);
   assert.equal(node.stock.filter((item)=>g.MODULES[item.type].range).length,5);
 });
@@ -137,6 +140,67 @@ test('every weapon is included in automatic combat fire and spends its own trigg
     b.enemies=[enemy(mount.x+100,mount.y)];g.updateBattle(.001,0);
     assert.equal(b.ammo,100-def.ammo,type);assert.equal(b.projectiles.length,def.salvo||1,type);
   }
+});
+
+test('pirate rooms take their own hits and disabled systems stop working',()=>{
+  const g=game(),layout=g.enemyLayout(true),ship={x:500,y:500,angle:0,modules:layout.modules,r:layout.r,hp:201,name:'RAIDER'};
+  const engine=ship.modules.find((room)=>room.type==='engine'),core=ship.modules.find((room)=>room.type==='core');
+  const contact=g.rayEnemyRoom({x:350,y:500},1,0,ship,250);
+  assert.equal(contact.room.type,'engine');
+  g.hurtEnemy(ship,engine.hp,engine);assert.equal(engine.hp,0);
+  assert.equal(g.enemySystemEfficiency(ship,'engine'),0);
+  assert.equal(g.enemyAlive(ship),true);
+  g.hurtEnemy(ship,core.hp,core);assert.equal(g.enemyAlive(ship),false);
+  assert.ok(ship.hp>0,'other rooms can remain intact after core destruction');
+});
+
+test('a swept player projectile damages the first pirate room it crosses',()=>{
+  const g=game(),{b}=combat(g),layout=g.enemyLayout(true);
+  const ship={...enemy(700,500),r:layout.r,modules:layout.modules};
+  ship.hp=ship.maxHp=layout.modules.reduce((sum,room)=>sum+room.hp,0);b.enemies=[ship];
+  const engine=ship.modules.find((room)=>room.type==='engine'),core=ship.modules.find((room)=>room.type==='core');
+  g.fireProjectile('player',540,500,{x:850,y:500},14,400,400);
+  g.updateBattle(.4,0);
+  assert.equal(engine.hp,26);assert.equal(core.hp,64);
+});
+
+test('focused shields cover one arc with more charge than a full-hull shield',()=>{
+  const g=game(),save=g.newSave();
+  save.modules.push({id:20,type:'shield',x:1,y:1,rotation:0,level:1,hp:85});
+  save.modules.push({id:21,type:'focusShield',x:8,y:6,rotation:0,level:1,hp:75});
+  g.setSave(save);
+  const player={x:500,y:500,angle:0,r:70},battle={player,shields:{}};g.setBattle(battle);
+  const front=g.shieldInterception({x:700,y:500},-1,0,player,300);
+  const back=g.shieldInterception({x:300,y:500},1,0,player,300);
+  assert.ok(front.distance<back.distance,'the focused barrier extends ahead of the wide shell');
+  assert.equal(g.absorbShields(50,0),0);
+  assert.equal(battle.shields[21].charge,30);
+  assert.equal(g.absorbShields(50,Math.PI),18);
+  assert.equal(battle.shields[20].charge,0);
+  g.updateShields(2);assert.ok(battle.shields[21].charge>30);
+});
+
+test('enemy shots hit the shield barrier before they can damage a room',()=>{
+  const g=game(),{b}=combat(g),save=g.getSave();
+  save.modules.push({id:21,type:'focusShield',x:3,y:3,rotation:0,level:1,hp:75});
+  b.enemies=[enemy(900,500)];
+  const hullBefore=save.modules[0].hp;
+  g.fireProjectile('enemy',700,500,b.player,20,300,300);
+  g.updateBattle(.5,0);
+  assert.equal(save.modules[0].hp,hullBefore);
+  assert.equal(b.shields[21].charge,60);
+  assert.equal(b.projectiles.length,0);
+});
+
+test('wreck routes leave a wide berth and direct impacts bounce ships outward',()=>{
+  const g=game(),wreck={x:500,y:500,r:30},world={w:1000,h:900};
+  assert.equal(g.clearSegment({x:200,y:500},{x:800,y:500},40,[wreck]),false);
+  const route=g.routeAroundRocks({x:200,y:500},{x:800,y:500},40,[wreck],world);
+  assert.ok(route.length>1);
+  for(const point of route)assert.ok(Math.hypot(point.x-500,point.y-500)>=30+40+62);
+  const ship={x:563,y:500,r:40,vx:-30,vy:0};
+  assert.equal(g.resolveRockCollision(ship,[wreck],world),true);
+  assert.ok(ship.x>=575&&ship.vx>0);
 });
 
 
@@ -192,9 +256,9 @@ test('missiles acquire targets behind the launcher and clear every rotated hull 
     const mount=g.weaponWorld(gun,b.player),target=enemy(mount.x-Math.cos(mount.direction)*250,mount.y-Math.sin(mount.direction)*250);b.enemies=[target];
     assert.ok(g.weaponCanTarget(gun,b.player,target));g.fireWeapon(gun,b.player,target);
     const shots=[...b.projectiles];assert.equal(shots.length,g.MODULES[type].salvo||1);
-    for(let step=0;step<6;step++)g.updateBattle(.02,0);
+    for(let step=0;step<Math.ceil(((g.MODULES[type].salvo||1)-1)*(g.MODULES[type].burstInterval||0)/.02)+6;step++)g.updateBattle(.02,0);
     assert.ok(shots.every((shot)=>b.projectiles.includes(shot)),`${type} ${rotation}/${facing} exploded at launch`);
-    assert.ok(shots.every((shot)=>shot.remaining<g.MODULES[type].range));
+    assert.ok(shots[0].remaining<g.MODULES[type].range,`${type} ${rotation}/${facing} lead shot did not leave the launcher`);
   }
 });
 

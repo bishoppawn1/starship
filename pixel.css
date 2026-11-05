@@ -129,3 +129,13 @@
 .weapon-thumbnail { display: block; width: 44px; height: 16px; image-rendering: auto; }
 .market-catalog .catalog-item { grid-template-columns: 44px minmax(0,1fr); }
 .inspector-head .weapon-thumbnail { width: 66px; height: 24px; flex: none; }
+
+.weapon-fit { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: #b9c5b2; font-size: 9px; }
+.market-catalog small.weapon-fit { display: flex; }
+.footprint-diagram { display: inline-block; position: relative; flex: none; }
+.footprint-diagram i { position: absolute; width: 6px; height: 6px; background: #9dad9f; border: 1px solid #d2d7c4; }
+.weapon-thumbnail { height: 24px; }
+.inspector-head .weapon-thumbnail { height: 36px; }
+#refitFootprint { font-size: 9px; margin: 0 0 8px; white-space: normal; }
+
+.weapon-rules { color: #c9bc9f; font-size: 9px; line-height: 1.6; margin: 6px 0; }
