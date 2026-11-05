@@ -72,10 +72,10 @@
   function loadSave() {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (!raw) return newSave();
+      if (!raw) return null;
       const data = JSON.parse(raw);
-      if (!Array.isArray(data.modules) || !Array.isArray(data.crew) || !Number.isFinite(data.metal)) return newSave();
-      if (!data.modules.some((module) => module.type === 'core')) return newSave();
+      if (!Array.isArray(data.modules) || !Array.isArray(data.crew) || !Number.isFinite(data.metal)) return null;
+      if (!data.modules.some((module) => module.type === 'core')) return null;
       if (data.map?.version!==2) data.map = makeMap(data.sector || 1);
       if(!data.inventory||typeof data.inventory!=='object')data.inventory={};
       for (const template of CREW) {
@@ -86,10 +86,11 @@
       }
       data.nextId = Math.max(data.nextId || 1, ...data.modules.map((module) => module.id + 1));
       return data;
-    } catch (_) { return newSave(); }
+    } catch (_) { return null; }
   }
 
-  let save = loadSave(), mode = 'hangar', selectedCatalog = null, selectedModuleId = 1;
+  const storedSave = loadSave();
+  let save = storedSave || newSave(), hasSave = !!storedSave, screen = 'menu', mode = 'hangar', selectedCatalog = null, selectedModuleId = 1;
   let buildRotation = 0, buildWeaponFacing = 0, hoverCell = null, battle = null, eventOpen = false, pendingNodeId = null;
   let toastTimer = null, lastFrame = performance.now(), lastHudRefresh = 0;
   const logEntries = [], gridButtons = [], crewRoutes = {};
@@ -100,7 +101,7 @@
   const enemySprites = new Map();
   ctx.imageSmoothingEnabled = false; hangarCtx.imageSmoothingEnabled = false; spriteCtx.imageSmoothingEnabled = false;
 
-  function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (_) {} }
+  function persist() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); hasSave = true; } catch (_) {} }
   function toast(message) {
     const el = $('toast'); el.textContent = message; el.classList.add('show');
     clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2400);
@@ -757,12 +758,36 @@
     ]});
     if(node.type==='outpost')openOutpost(node,true);
   }
-  function newRunPrompt(){
-    if(mode==='combat'){toast('Finish the encounter before starting a new run.');return;}
-    showEvent({type:'COMMAND // NEW RUN',icon:'↺',title:'RESET THE JOURNEY?',body:'This replaces your ship, metal, route chart, and crew assignments.',choices:[
-      {label:'START A NEW RUN',action:()=>{save=newSave();selectedModuleId=1;selectedCatalog=null;pendingNodeId=null;for(const id of Object.keys(crewRoutes))delete crewRoutes[id];persist();logEntries.length=0;log('New journey initiated.');hideEvent();openHangar();toast('New run started');}},
-      {label:'KEEP CURRENT RUN',action:hideEvent}
-    ]});
+  function canContinue(){return hasSave&&save.modules.some((module)=>module.type==='core'&&module.hp>0);}
+  function renderMainMenu(){
+    const available=canContinue();
+    $('menuContinue').disabled=!available;
+    $('menuSaveStatus').textContent=available?`SAVED GAME // SECTOR ${String(save.sector).padStart(2,'0')} · ${save.metal} METAL`:hasSave?'LAST SHIP LOST // START A NEW GAME':'NO SAVED GAME // BEGIN A NEW JOURNEY';
+    const g=$('menuShip').getContext('2d');g.imageSmoothingEnabled=false;drawInterior(g);
+  }
+  function showMainMenu(){
+    screen='menu';$('appShell').hidden=true;$('quitScreen').hidden=true;$('mainMenu').hidden=false;
+    $('menuConfirm').hidden=true;renderMainMenu();
+  }
+  function showGame(){
+    screen='playing';$('mainMenu').hidden=true;$('quitScreen').hidden=true;$('appShell').hidden=false;
+    setMode('hangar');renderAll();
+  }
+  function startNewGame(){
+    save=newSave();battle=null;pendingNodeId=null;eventOpen=false;$('eventOverlay').hidden=true;
+    selectedModuleId=1;selectedCatalog=null;buildRotation=0;buildWeaponFacing=0;hoverCell=null;
+    for(const id of Object.keys(crewRoutes))delete crewRoutes[id];
+    logEntries.length=0;persist();log('New journey initiated.');showGame();
+  }
+  function returnToMainMenu(){
+    if(screen!=='playing')return;
+    if(battle){battle=null;for(const module of save.modules)delete module.cooldown;}
+    pendingNodeId=null;eventOpen=false;$('eventOverlay').hidden=true;
+    persist();showMainMenu();
+  }
+  function quitGame(){
+    screen='quit';$('mainMenu').hidden=true;$('appShell').hidden=true;$('quitScreen').hidden=false;
+    $('quitMessage').textContent=hasSave?'Your progress is saved in this browser. You can close this tab now.':'You can close this tab now.';
   }
 
   function shipRadius(){const b=shipBounds();return Math.max(38,Math.hypot(b.maxX-b.minX+1,b.maxY-b.minY+1)*COMBAT_TILE*.54);}
@@ -1179,19 +1204,27 @@
   }
   function frame(time){
     const dt=Math.min(.05,(time-lastFrame)/1000||0);lastFrame=time;
-    if(!eventOpen)updateCrew(dt);
-    if(mode==='combat'&&battle){updateBattle(dt,time);drawArena(time);}
-    if(mode==='hangar')drawHangar();
-    if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();}
+    if(screen==='playing'){
+      if(!eventOpen)updateCrew(dt);
+      if(mode==='combat'&&battle){updateBattle(dt,time);drawArena(time);}
+      if(mode==='hangar')drawHangar();
+      if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();}
+    }
     requestAnimationFrame(frame);
   }
   function init(){
     createGrid();
-    window.addEventListener('resize',()=>{if(mode==='combat')fitArenaCanvas();});
+    window.addEventListener('resize',()=>{if(screen==='playing'&&mode==='combat')fitArenaCanvas();});
+    $('menuContinue').addEventListener('click',()=>{if(canContinue())showGame();});
+    $('menuNew').addEventListener('click',()=>{if(canContinue())$('menuConfirm').hidden=false;else startNewGame();});
+    $('confirmNew').addEventListener('click',startNewGame);
+    $('cancelNew').addEventListener('click',()=>{$('menuConfirm').hidden=true;$('menuNew').focus();});
+    $('menuQuit').addEventListener('click',quitGame);
+    $('quitReturn').addEventListener('click',showMainMenu);
     $('buildWeaponFacing').addEventListener('click',()=>{buildWeaponFacing=buildWeaponFacing?0:1;renderGrid();});
     $('buildRotateLeft').addEventListener('click',()=>rotateBuild(-1));$('buildRotateRight').addEventListener('click',()=>rotateBuild(1));
     $('combatRotateLeft').addEventListener('click',()=>rotateArrival(-1));$('combatRotateRight').addEventListener('click',()=>rotateArrival(1));
-    $('selectShipButton').addEventListener('click',()=>selectPlayer());$('jumpButton').addEventListener('click',toggleMap);$('resetButton').addEventListener('click',newRunPrompt);
+    $('selectShipButton').addEventListener('click',()=>selectPlayer());$('jumpButton').addEventListener('click',toggleMap);$('resetButton').addEventListener('click',returnToMainMenu);
     $('nextSectorButton').addEventListener('click',goNextSector);
     canvas.addEventListener('contextmenu',(event)=>event.preventDefault());
     canvas.addEventListener('wheel',(event)=>{event.preventDefault();rotateArrival(event.deltaY>0?1:-1);},{passive:false});
@@ -1204,12 +1237,14 @@
     });
     document.addEventListener('keydown',(event)=>{
       if(event.target instanceof HTMLSelectElement||event.target instanceof HTMLInputElement)return;
+      if(screen==='menu'){if(event.key==='Escape')$('menuConfirm').hidden=true;return;}
+      if(screen!=='playing')return;
       if(event.key.toLowerCase()==='q'){if(mode==='combat')rotateArrival(-1);else if(mode==='hangar')rotateBuild(-1);}
       if(event.key.toLowerCase()==='e'){if(mode==='combat')rotateArrival(1);else if(mode==='hangar')rotateBuild(1);}
       if(event.key==='Escape'&&mode==='hangar'&&!eventOpen){selectedCatalog=null;renderAll();}
     });
     log('Ship systems online. Plot a route on the sector map.');
-    renderAll();requestAnimationFrame(frame);
+    renderAll();showMainMenu();requestAnimationFrame(frame);
   }
   init();
 })();

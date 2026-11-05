@@ -11,7 +11,34 @@
     <script src="game.js" defer></script>
   </head>
   <body>
-    <div class="app-shell">
+    <main id="mainMenu" class="title-screen">
+      <div class="title-frame">
+        <div class="title-heading"><span class="eyebrow">DEEP SPACE // COMMAND LINK</span><span class="title-signal"><i></i> SIGNAL ONLINE</span></div>
+        <div class="title-layout">
+          <div class="title-copy">
+            <div class="title-emblem" aria-hidden="true">✦</div>
+            <p class="title-kicker">A MODULAR SPACE ADVENTURE</p>
+            <h1>STARSHIP<span>// DRIFT</span></h1>
+            <p class="title-description">Build your ship. Chart your own course. Bring your crew home.</p>
+            <div class="title-actions">
+              <button id="menuContinue" class="primary-button" type="button">CONTINUE GAME <span aria-hidden="true">→</span></button>
+              <button id="menuNew" class="outline-button" type="button">NEW GAME <span aria-hidden="true">＋</span></button>
+              <button id="menuQuit" class="text-button" type="button">QUIT GAME</button>
+            </div>
+            <p id="menuSaveStatus" class="title-save-status"></p>
+            <div id="menuConfirm" class="title-confirm" hidden>
+              <strong>REPLACE CURRENT GAME?</strong>
+              <p>Starting a new game replaces the saved ship and sector chart.</p>
+              <div><button id="confirmNew" class="primary-button" type="button">START NEW GAME</button><button id="cancelNew" class="outline-button" type="button">CANCEL</button></div>
+            </div>
+          </div>
+          <div class="title-display" aria-hidden="true"><div class="title-display-label"><span>HANGAR FEED // 01</span><span>◉ LIVE</span></div><canvas id="menuShip" width="288" height="240"></canvas><div class="title-display-footer">POLYOMINO CONSTRUCTION <span>◆</span> CREWED SYSTEMS <span>◆</span> OPEN SECTORS</div></div>
+        </div>
+        <div class="title-footer"><span>STARSHIP // DRIFT</span><span>LOCAL SAVE ENABLED</span></div>
+      </div>
+    </main>
+    <main id="quitScreen" class="title-screen quit-screen" hidden><div class="quit-card"><span class="eyebrow">COMMAND LINK CLOSED</span><div class="title-emblem" aria-hidden="true">✦</div><h1>SESSION ENDED</h1><p id="quitMessage">You can close this tab now.</p><button id="quitReturn" class="outline-button" type="button">RETURN TO MAIN MENU</button></div></main>
+    <div id="appShell" class="app-shell" hidden>
       <header class="topbar">
         <div class="brand"><span class="brand-mark" aria-hidden="true">✦</span><div><strong>STARSHIP</strong><span>// DRIFT</span></div></div>
         <div class="topbar-stats">
@@ -19,7 +46,7 @@
           <div class="top-stat metal-stat"><span>METAL</span><strong id="metalDisplay">0</strong></div>
           <div class="top-stat"><span>HULL</span><strong id="hullDisplay">100%</strong></div>
         </div>
-        <div class="top-actions"><button id="resetButton" class="text-button" type="button" title="Start a new run">NEW RUN</button><button id="jumpButton" class="primary-button" type="button">OPEN SECTOR MAP <span aria-hidden="true">↗</span></button></div>
+        <div class="top-actions"><button id="resetButton" class="text-button" type="button" title="Save and return to the main menu">MAIN MENU</button><button id="jumpButton" class="primary-button" type="button">OPEN SECTOR MAP <span aria-hidden="true">↗</span></button></div>
       </header>
 
       <main class="main-layout">
