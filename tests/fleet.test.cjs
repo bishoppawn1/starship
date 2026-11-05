@@ -12,6 +12,8 @@ function game(){
     globalThis.game={MODULES,WEAPON_TYPES,newSave,migrateStarter,traderStock,moduleCells,weaponGeometry,weaponHasEscape,
       weaponsHaveClearArc,engineThrusters,upgradeTraderStock,openTrader,buyTraderItem,onGridClick,setMode,renderCatalog,crewGoal,
       weaponCanTarget,weaponWorld,fireWeapon,fireProjectile,weaponImpact,updateBattle,
+      beginModuleMove,canPlace,placementPreview,systemEfficiency,enemyLayout,enemySystemEfficiency,drawHangar,drawExteriorHardware,
+      selectModule(id){selectedModuleId=id;},hover(x,y){hoverCell={x,y};},rotateBuild,
       setSave(value){save=value;},getSave(){return save;},getMode(){return mode;},
       setBattle(value){battle=value;},getBattle(){return battle;},
       stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;},
@@ -135,4 +137,110 @@ test('every weapon is included in automatic combat fire and spends its own trigg
     b.enemies=[enemy(mount.x+100,mount.y)];g.updateBattle(.001,0);
     assert.equal(b.ammo,100-def.ammo,type);assert.equal(b.projectiles.length,def.salvo||1,type);
   }
+});
+
+
+test('trader moves keep room identity, damage, upgrades, range, and crew, without spending resources',()=>{
+  const g=game(),save=g.newSave();g.setSave(save);
+  const gun=save.modules.find((module)=>module.id===4);Object.assign(gun,{hp:41,level:2,range:175});
+  save.crew[0].x=7.5;save.crew[0].y=4.5;
+  g.selectModule(gun.id);assert.equal(g.beginModuleMove(),false);
+  g.openTrader({type:'trader',stock:[]});g.selectModule(gun.id);assert.equal(g.beginModuleMove(),true);
+  const metal=save.metal,inventory=JSON.stringify(save.inventory),original={...gun};
+  g.onGridClick(0,0);assert.equal(JSON.stringify(gun),JSON.stringify(original));
+  let destination;
+  for(let y=0;y<10;y++)for(let x=0;x<12;x++)if(g.canPlace(gun.type,x,y,gun.rotation)&&(x!==gun.x||y!==gun.y))destination={x,y};
+  assert.ok(destination);g.onGridClick(destination.x,destination.y);
+  assert.equal(gun.x,destination.x);assert.equal(gun.y,destination.y);
+  assert.equal(gun.id,4);assert.equal(gun.hp,41);assert.equal(gun.level,2);assert.equal(gun.range,175);
+  assert.equal(save.metal,metal);assert.equal(JSON.stringify(save.inventory),inventory);
+  assert.ok(save.modules.flatMap(g.moduleCells).some(([x,y])=>x===Math.floor(save.crew[0].x)&&y===Math.floor(save.crew[0].y)));
+});
+
+test('moving a connecting room cannot disconnect other rooms and leaving a trader cancels the move',()=>{
+  const g=game(),save=g.newSave();save.modules=[
+    {id:1,type:'core',x:4,y:4,rotation:0,hp:170,level:1},
+    {id:2,type:'cargo',x:6,y:4,rotation:0,hp:65,level:1},
+    {id:3,type:'core',x:9,y:4,rotation:0,hp:170,level:1}];g.setSave(save);
+  g.openTrader({type:'trader',stock:[]});g.selectModule(2);g.beginModuleMove();
+  assert.equal(g.canPlace('cargo',4,3,0),false);
+  const before=JSON.stringify(save.modules);g.setMode('hangar');g.onGridClick(4,3);assert.equal(JSON.stringify(save.modules),before);
+});
+
+test('placement previews carry the chosen weapon mount and rotation before installation',()=>{
+  const g=game(),save=g.newSave();save.inventory.missile=1;g.setSave(save);g.openTrader({type:'trader',stock:[]});
+  g.forceSelection('missile');g.hover(8,3);
+  const first=g.placementPreview();assert.equal(first.module.type,'missile');assert.equal(first.module.rotation,0);
+  const points=[];g.elements.get('hangarArt').getContext().lineTo=(x,y)=>points.push([x,y]);g.drawHangar();
+  assert.ok(points.length>10,'the uninstalled weapon renders its firing arc');
+  g.rotateBuild(1);assert.equal(g.placementPreview().module.rotation,1);assert.equal(save.modules.length,5);
+});
+
+test('energy weapons fire with an empty ammo pool while cannons and launchers wait for ammo',()=>{
+  const g=game();
+  for(const type of ['ion','laser','heavyLaser','proton','weapon','siege','missile','swarm','torpedo']){
+    const {b,gun}=combat(g,type);g.getSave().modules.push(gun);b.ammo=0;
+    const mount=g.weaponWorld(gun,b.player);b.enemies=[enemy(mount.x+150,mount.y)];g.updateBattle(.01,0);
+    assert.equal(b.projectiles.length,g.MODULES[type].ammo===0?1:0,type);assert.equal(b.ammo,0);
+  }
+});
+
+test('missiles acquire targets behind the launcher and clear every rotated hull before tracking',()=>{
+  const g=game();
+  for(const type of ['missile','swarm'])for(let rotation=0;rotation<4;rotation++)for(let facing=0;facing<2;facing++){
+    const {b,gun}=combat(g,type);gun.rotation=rotation;gun.weaponFacing=facing;g.getSave().modules.push(gun);b.player.angle=.71;
+    const mount=g.weaponWorld(gun,b.player),target=enemy(mount.x-Math.cos(mount.direction)*250,mount.y-Math.sin(mount.direction)*250);b.enemies=[target];
+    assert.ok(g.weaponCanTarget(gun,b.player,target));g.fireWeapon(gun,b.player,target);
+    const shots=[...b.projectiles];assert.equal(shots.length,g.MODULES[type].salvo||1);
+    for(let step=0;step<6;step++)g.updateBattle(.02,0);
+    assert.ok(shots.every((shot)=>b.projectiles.includes(shot)),`${type} ${rotation}/${facing} exploded at launch`);
+    assert.ok(shots.every((shot)=>shot.remaining<g.MODULES[type].range));
+  }
+});
+
+test('a partially blocked missile mount launches along its clear arc instead of into an adjacent room',()=>{
+  const g=game(),{b,gun}=combat(g,'missile');g.getSave().modules.push(gun,{id:10,type:'core',x:6,y:3,rotation:0,hp:170,level:1});
+  const mount=g.weaponWorld(gun,b.player);b.enemies=[enemy(mount.x+200,mount.y)];g.fireWeapon(gun,b.player,b.enemies[0]);
+  const shot=b.projectiles[0];assert.ok(shot);assert.ok(Math.abs(shot.vy)>0);
+  for(let i=0;i<10;i++)g.updateBattle(.02,0);
+  assert.ok(b.projectiles.includes(shot));
+});
+
+test('missiles explode on asteroids, damage nearby ships, and remove destroyed rocks',()=>{
+  const g=game(),{b}=combat(g),rock={x:700,y:500,r:20,hp:15,maxHp:40};b.asteroids=[rock];b.enemies=[enemy(710,535)];
+  g.fireProjectile('player',600,500,{x:800,y:500},20,250,300,{splash:38,color:'#fff',family:'missile'});
+  g.updateBattle(.4,0);assert.equal(rock.hp,0);assert.equal(b.asteroids.length,0);assert.equal(b.projectiles.length,0);
+  assert.ok(b.enemies[0].hp<1000);assert.ok(b.effects.some((effect)=>effect.r===38));
+});
+
+test('ion hits weaken the struck weapon instead of slowing the whole ship, then expire',()=>{
+  const g=game(),{b}=combat(g),target=enemy(800,500);target.modules=g.enemyLayout(true).modules.map((module)=>({...module}));target.cooldown=10;b.enemies=[target];
+  g.weaponImpact({x:855,y:489,damage:7,ion:.5,ionDuration:3},target);
+  assert.equal(g.enemySystemEfficiency(target,'weapon'),.5);assert.equal(g.enemySystemEfficiency(target,'engine'),1);assert.equal(target.slowTime,undefined);
+  g.updateBattle(1,0);near(target.cooldown,9.5);g.updateBattle(2.1,0);assert.equal(g.enemySystemEfficiency(target,'weapon'),1);
+});
+
+test('proton lances pass through own hull without damage and stop at the first enemy',()=>{
+  const g=game(),{b,gun}=combat(g,'proton');g.getSave().modules.push(gun,{id:10,type:'core',x:7,y:3,rotation:0,hp:170,level:1});
+  const before=g.getSave().modules.map((module)=>module.hp),mount=g.weaponWorld(gun,b.player);
+  const first=enemy(mount.x+150,mount.y),second=enemy(mount.x+200,mount.y);b.enemies=[first,second];gun.cooldown=100;
+  assert.ok(g.weaponCanTarget(gun,b.player,first));g.fireWeapon(gun,b.player,first);g.updateBattle(.3,0);
+  assert.equal(first.hp,976);assert.equal(second.hp,1000);assert.equal(b.projectiles.length,0);assert.deepEqual(g.getSave().modules.map((module)=>module.hp),before);
+});
+
+
+test('every weapon including the hull-passing proton lance has visible mounted hardware',()=>{
+  const g=game();g.getSave().crew=[];
+  for(const type of g.WEAPON_TYPES){
+    let rectangles=0;const context=g.elements.get('hangarArt').getContext();context.fillRect=()=>rectangles++;
+    g.drawExteriorHardware(context,weapon(type));assert.ok(rectangles>10,type);
+  }
+});
+
+
+test('fractional frame distances do not create phantom hull impacts on a clear missile path',()=>{
+  const g=game(),{b}=combat(g);
+  const dt=.0300005;
+  assert.ok((250*dt/30)*30<250*dt);g.fireProjectile('player',600,500,{x:1000,y:500},20,250,560,{splash:38});
+  g.updateBattle(dt,0);assert.equal(b.projectiles.length,1);assert.equal(b.effects.length,0);
 });
