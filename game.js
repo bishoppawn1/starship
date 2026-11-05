@@ -13,7 +13,7 @@
   };
   const MODULES = {
     core: { name: 'Command Core', short: 'C', color: C.core, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 170, cost: 0, description: 'A walkable bridge with one command console.' },
-    engine: { name: 'Ion Engine', short: 'E', color: C.engine, shape: [[0,0],[0,1],[0,2]], station: [0,1], hp: 80, cost: 35, thrust: 270, description: 'Thrusts in the arrow direction. Its position also creates turning torque.' },
+    engine: { name: 'Ion Engine', short: 'E', color: C.engine, shape: [[0,0],[0,1],[0,2]], station: [0,1], hp: 80, cost: 35, thrust: 270, description: 'Hull-mounted engine. Keep two exterior cells clear behind its nozzle.' },
     weapon: { name: 'Pulse Cannon', short: 'W', color: C.weapon, shape: [[0,0],[1,0],[1,1]], station: [1,1], mount: [1,0], muzzle: [2,.5], hp: 75, cost: 45, range: 420, arc: 130, damage: 14, reload: 1.2, ammo: 1, description: 'A crewed pulse cannon with a 130° forward firing arc.' },
     railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range damage through a narrow 50° firing arc.' },
     shield: { name: 'Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, description: 'A walkable room with one shield console.' },
@@ -29,22 +29,36 @@
   const TASKS = { gun: 'Operate weapons', repair: 'Repair systems', load: 'Deliver ammo', idle: 'Stand by' };
   const EVENT_TYPES = {
     pirate: { name: 'PIRATES', icon: '⚔' }, rescue: { name: 'DISTRESS', icon: '◇' },
-    salvage: { name: 'SALVAGE', icon: '✧' }, trader: { name: 'TRADER', icon: '◆' }
+    salvage: { name: 'SALVAGE', icon: '✧' }, trader: { name: 'TRADER', icon: '◆' },
+    anomaly: { name: 'ANOMALY', icon: '◈' }, derelict: { name: 'DERELICT', icon: '▣' },
+    outpost: { name: 'OUTPOST', icon: '⌂' }, exit: { name: 'NEXT SECTOR', icon: '➜' }
   };
 
+  function traderStock(){
+    return [...BUYABLE].sort(()=>Math.random()-.5).slice(0,3).map((type)=>({type,qty:1+Number(Math.random()<.25),price:MODULES[type].cost+Math.floor(rand(-5,11))}));
+  }
   function makeMap(base) {
-    const nodes = [{ id: '0-1', col: 0, row: 1, type: 'start', links: ['1-0','1-1','1-2'] }];
-    const types = ['pirate','rescue','salvage','trader'];
-    for (let col = 1; col <= 5; col++) for (let row = 0; row < 3; row++) {
-      const links = col === 5 ? [] : [`${col+1}-${row}`];
-      if (col < 5 && Math.random() < .65) links.push(`${col+1}-${clamp(row + (Math.random()<.5?-1:1),0,2)}`);
-      nodes.push({ id: `${col}-${row}`, col, row, type: types[Math.floor(Math.random()*types.length)], links: [...new Set(links)] });
+    const types=['pirate','rescue','salvage','trader','anomaly','derelict','outpost'];
+    const nodes=[{id:'0-1',col:0,row:1,mapX:80,mapY:300,type:'start',links:[]}];
+    for(let col=1;col<=4;col++)for(let row=0;row<3;row++){
+      const type=col===2&&row===1?'trader':types[Math.floor(Math.random()*types.length)];
+      nodes.push({id:`${col}-${row}`,col,row,mapX:80+col*168+rand(-16,16),mapY:110+row*190+rand(-31,31),type,variant:Math.floor(Math.random()*3),links:[],stock:type==='trader'?traderStock():undefined});
     }
-    return { base, nodes, current: '0-1', visited: ['0-1'] };
+    nodes.push({id:'5-1',col:5,row:1,mapX:920,mapY:300,type:'exit',links:[]});
+    const byId=new Map(nodes.map((node)=>[node.id,node]));
+    const connect=(a,b)=>{if(!byId.get(a).links.includes(b))byId.get(a).links.push(b);if(!byId.get(b).links.includes(a))byId.get(b).links.push(a);};
+    for(let row=0;row<3;row++)connect('0-1',`1-${row}`);
+    for(let col=1;col<4;col++)for(let row=0;row<3;row++){
+      connect(`${col}-${row}`,`${col+1}-${row}`);
+      if(Math.random()<.65)connect(`${col}-${row}`,`${col+1}-${clamp(row+(Math.random()<.5?-1:1),0,2)}`);
+    }
+    for(let row=0;row<3;row++)connect(`4-${row}`,'5-1');
+    for(let col=1;col<=4;col++)for(let row=0;row<2;row++)if(Math.random()<.55)connect(`${col}-${row}`,`${col}-${row+1}`);
+    return {version:2,base,nodes,current:'0-1',visited:['0-1'],resolved:['0-1']};
   }
   function newSave() {
     return {
-      metal: 90, sector: 1, wins: 0, nextId: 5,
+      metal: 90, sector: 1, wins: 0, nextId: 5, inventory:{armor:1},
       modules: [
         { id: 1, type: 'core', x: 5, y: 4, rotation: 0, hp: 170, level: 1 },
         { id: 2, type: 'engine', x: 4, y: 2, rotation: 0, hp: 80, level: 1 },
@@ -62,7 +76,8 @@
       const data = JSON.parse(raw);
       if (!Array.isArray(data.modules) || !Array.isArray(data.crew) || !Number.isFinite(data.metal)) return newSave();
       if (!data.modules.some((module) => module.type === 'core')) return newSave();
-      if (!data.map?.nodes?.length) data.map = makeMap(data.sector || 1);
+      if (data.map?.version!==2) data.map = makeMap(data.sector || 1);
+      if(!data.inventory||typeof data.inventory!=='object')data.inventory={};
       for (const template of CREW) {
         let person = data.crew.find((member) => member.id === template.id);
         if (!person) { person = { id: template.id, task: template.task }; data.crew.push(person); }
@@ -173,10 +188,52 @@
     const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
     return {minX,maxX,minY,maxY,cx:(minX+maxX+1)/2,cy:(minY+maxY+1)/2};
   }
+  function moduleClearance(module){
+    if(module.type==='engine'){
+      const [dx,dy]=[[1,0],[0,1],[-1,0],[0,-1]][module.rotation],cells=moduleCells(module);
+      const own=new Set(cells.map(([x,y])=>`${x},${y}`));
+      const rear=cells.filter(([x,y])=>!own.has(`${x-dx},${y-dy}`)).map(([x,y])=>[x-dx,y-dy]);
+      const station=rotatedGeometry('engine',module.rotation).station;
+      rear.push([module.x+station[0]-2*dx,module.y+station[1]-2*dy]);
+      return rear;
+    }
+    if(MODULES[module.type].muzzle){
+      const mount=weaponGeometry(module);
+      return [[Math.floor(mount.x+Math.cos(mount.direction)*1e-7),Math.floor(mount.y+Math.sin(mount.direction)*1e-7)]];
+    }
+    return [];
+  }
+  function exteriorCells(blocked){
+    const outside=new Set(),queue=[];
+    for(let y=0;y<GRID_H;y++)for(let x=0;x<GRID_W;x++){
+      if(x!==0&&y!==0&&x!==GRID_W-1&&y!==GRID_H-1)continue;
+      const key=`${x},${y}`;if(!blocked.has(key)){outside.add(key);queue.push([x,y]);}
+    }
+    for(let i=0;i<queue.length;i++){
+      const [x,y]=queue[i];for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
+        const nx=x+dx,ny=y+dy,key=`${nx},${ny}`;
+        if(nx<0||nx>=GRID_W||ny<0||ny>=GRID_H||outside.has(key)||blocked.has(key))continue;
+        outside.add(key);queue.push([nx,ny]);
+      }
+    }
+    return outside;
+  }
+  function hasClearMount(module){
+    const occupied=occupancy(),reserved=new Set(save.modules.filter((other)=>other.id!==module.id).flatMap(moduleClearance).map(([x,y])=>`${x},${y}`));
+    const outside=exteriorCells(new Set(occupied.keys()));
+    return moduleClearance(module).every(([x,y])=>x>=0&&x<GRID_W&&y>=0&&y<GRID_H&&!occupied.has(`${x},${y}`)&&!reserved.has(`${x},${y}`)&&outside.has(`${x},${y}`));
+  }
   function canPlaceFootprint(type,x,y,rotation) {
-    const occupied=occupancy(), cells=rotatedGeometry(type,rotation).cells.map(([dx,dy])=>[x+dx,y+dy]);
-    if(cells.some(([cx,cy])=>cx<0||cx>=GRID_W||cy<0||cy>=GRID_H||occupied.has(`${cx},${cy}`))) return false;
-    return cells.some(([cx,cy])=>[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>occupied.has(`${cx+dx},${cy+dy}`)));
+    const occupied=occupancy(),candidate={type,x,y,rotation,weaponFacing:buildWeaponFacing},cells=moduleCells(candidate);
+    if(cells.some(([cx,cy])=>cx<0||cx>=GRID_W||cy<0||cy>=GRID_H||occupied.has(`${cx},${cy}`)))return false;
+    const reserved=new Set(save.modules.flatMap(moduleClearance).map(([cx,cy])=>`${cx},${cy}`));
+    if(cells.some(([cx,cy])=>reserved.has(`${cx},${cy}`)))return false;
+    if(!cells.some(([cx,cy])=>[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>occupied.has(`${cx+dx},${cy+dy}`))))return false;
+    const blocked=new Set([...occupied.keys(),...cells.map(([cx,cy])=>`${cx},${cy}`)]);
+    const clearance=moduleClearance(candidate);
+    if(clearance.some(([cx,cy])=>cx<0||cx>=GRID_W||cy<0||cy>=GRID_H||blocked.has(`${cx},${cy}`)))return false;
+    const outside=exteriorCells(blocked);
+    return clearance.every(([cx,cy])=>outside.has(`${cx},${cy}`));
   }
   function placementAt(type,x,y,rotation) {
     if(canPlace(type,x,y,rotation))return {x,y,valid:true};
@@ -229,24 +286,26 @@
   }
   function renderCatalog() {
     $('catalog').innerHTML=BUYABLE.map((type)=>{
-      const def=MODULES[type];
-      return `<button type="button" class="catalog-item ${selectedCatalog===type?'active':''}" data-type="${type}" ${save.metal<def.cost?'disabled':''} aria-pressed="${selectedCatalog===type}">${miniShape(type)}<span><strong>${def.name.toUpperCase()}</strong><small>${def.description}</small></span><span class="price">◆ ${def.cost}</span></button>`;
+      const def=MODULES[type],count=save.inventory[type]||0;
+      return `<button type="button" class="catalog-item ${selectedCatalog===type?'active':''}" data-type="${type}" ${count<1?'disabled':''} aria-pressed="${selectedCatalog===type}">${miniShape(type)}<span><strong>${def.name.toUpperCase()}</strong><small>${def.description}</small></span><span class="price">${count?`IN HOLD ×${count}`:'TRADER ONLY'}</span></button>`;
     }).join('');
     $('catalog').querySelectorAll('[data-type]').forEach((button)=>button.addEventListener('click',()=>{
       selectedCatalog=selectedCatalog===button.dataset.type?null:button.dataset.type;selectedModuleId=null;renderAll();
     }));
   }
   function renderGrid() {
-    const occupied=occupancy(),ghost=new Set();let valid=false;
+    const occupied=occupancy(),ghost=new Set(),reserved=new Map();let valid=false;
+    for(const module of save.modules)for(const [rx,ry] of moduleClearance(module))reserved.set(`${rx},${ry}`,module.type);
     if(selectedCatalog&&hoverCell){const place=placementAt(selectedCatalog,hoverCell.x,hoverCell.y,buildRotation);valid=place.valid;for(const [dx,dy] of rotatedGeometry(selectedCatalog,buildRotation).cells)ghost.add(`${place.x+dx},${place.y+dy}`);}
     for(const cell of gridButtons){
       const x=+cell.dataset.x,y=+cell.dataset.y,key=`${x},${y}`,module=occupied.get(key);
       cell.className='grid-cell';cell.style.removeProperty('--module-color');cell.textContent='';
       if(module){cell.classList.add('occupied');if(module.id===selectedModuleId)cell.classList.add('selected');cell.style.setProperty('--module-color',MODULES[module.type].color);cell.setAttribute('aria-label',`${MODULES[module.type].name}, level ${module.level}, ${Math.ceil(module.hp)} health`);}
       else if(ghost.has(key)){cell.classList.add('ghost');if(!valid)cell.classList.add('invalid');cell.style.setProperty('--module-color',MODULES[selectedCatalog].color);cell.setAttribute('aria-label',`${MODULES[selectedCatalog].name} placement ${valid?'valid':'invalid'}`);}
+      else if(reserved.has(key)){cell.classList.add('reserved');cell.setAttribute('aria-label',`${reserved.get(key)==='engine'?'Engine exhaust':'Weapon mount'} clearance, keep empty`);}
       else cell.setAttribute('aria-label',`Empty cell ${x+1}, ${y+1}`);
     }
-    $('placementHint').textContent=selectedCatalog?(hoverCell?(valid?'CLICK TO PLACE MODULE':'PLACE BESIDE YOUR SHIP IN FREE CELLS'):'HOVER OVER THE GRID TO PLACE MODULE'):'SELECT A MODULE TO EXPAND YOUR SHIP';
+    $('placementHint').textContent=selectedCatalog?(hoverCell?(valid?'CLICK TO INSTALL HELD MODULE':'ROOMS NEED OPEN HULL SPACE AND CLEAR EXHAUST'):'HOVER OVER THE GRID TO INSTALL MODULE'):'INSTALL STORED PARTS · UPGRADE SYSTEMS WITH METAL';
     $('buildWeaponFacing').hidden=selectedCatalog!=='weapon';
     $('buildWeaponFacing').textContent=`MOUNT: ${['RIGHT','DOWN','LEFT','UP'][(buildRotation+(buildWeaponFacing?3:0))%4]} ↻`;
     drawHangar();
@@ -254,13 +313,13 @@
   function onGridClick(x,y) {
     const existing=occupancy().get(`${x},${y}`);
     if(existing&&!selectedCatalog){selectedModuleId=existing.id;renderAll();return;}
-    if(!selectedCatalog){toast('Select a module from the bay first.');return;}
+    if(!selectedCatalog){toast('Select a stored module from the bay first.');return;}
     const place=placementAt(selectedCatalog,x,y,buildRotation);
-    if(!place.valid){toast('Modules must fit, connect by an edge, and leave a weapon arc clear to space.');return;}
-    const def=MODULES[selectedCatalog];if(save.metal<def.cost){toast('Not enough metal.');return;}
+    if(!place.valid){toast('Connect rooms and keep exhaust and a weapon arc clear to space.');return;}
+    const def=MODULES[selectedCatalog];if((save.inventory[selectedCatalog]||0)<1){toast('Buy this module from a trader first.');return;}
     const module={id:save.nextId++,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing,hp:def.hp,level:1};
-    save.modules.push(module);save.metal-=def.cost;selectedModuleId=module.id;selectedCatalog=null;
-    persist();log(`${def.name} installed.`);toast(`${def.name} installed · −${def.cost} metal`);renderAll();
+    save.modules.push(module);save.inventory[selectedCatalog]--;selectedModuleId=module.id;selectedCatalog=null;
+    persist();log(`${def.name} installed from the hold.`);toast(`${def.name} installed`);renderAll();
   }
   function rotateBuild(step){buildRotation=(buildRotation+step+4)%4;$('buildRotationLabel').textContent=`${buildRotation*90}°`;renderGrid();}
   function renderInspector(){
@@ -280,7 +339,7 @@
     if(module.type==='weapon')$('rotateWeapon').addEventListener('click',()=>{
       if(mode!=='hangar')return;
       const candidate={...module,weaponFacing:module.weaponFacing===1?0:1};
-      if(!weaponHasEscape(candidate,save.modules.flatMap(moduleCells))){toast('That mount direction is completely blocked by the hull.');return;}
+      if(!hasClearMount(candidate)||!weaponHasEscape(candidate,save.modules.flatMap(moduleCells))){toast('That mount direction needs open space outside the hull.');return;}
       module.weaponFacing=candidate.weaponFacing;persist();renderAll();
     });
     $('upgradeModule').addEventListener('click',()=>{if(module.level>=3||save.metal<upgradeCost||mode==='combat')return;save.metal-=upgradeCost;module.level++;module.hp+=25;persist();log(`${def.name} upgraded to level ${module.level}.`);toast(`${def.name} upgraded`);renderAll();});
@@ -367,34 +426,79 @@
         g.fillStyle='#543d35';g.fillRect(px+8,py+13,2,2);g.fillRect(px+14,py+13,2,2);
       }
       if(module.type==='engine'){
-        g.save();g.translate(px+12,py+12);g.rotate(module.rotation*Math.PI/2);
-        g.fillStyle='#0b1b29';g.fillRect(-9,-7,18,14);
-        g.fillStyle='#597d86';g.fillRect(-7,-6,13,12);
-        g.fillStyle='#a0e3c5';g.fillRect(-5,-4,9,8);g.fillStyle='#d9fff2';g.fillRect(1,-2,7,4);
-        g.fillStyle='#527380';g.fillRect(-9,-4,3,8);g.fillStyle='#143445';g.fillRect(-11,-3,2,6);
-        if(throttle>.08){const flame=Math.max(3,Math.round(throttle*9));g.fillStyle='#51d8ed';g.fillRect(-11-flame,-3,flame,6);g.fillStyle='#fff0a7';g.fillRect(-11-flame,-1,Math.max(2,flame-2),2);}
-        g.restore();
+        g.fillStyle='#0d2731';g.fillRect(px+7,py+7,10,10);
+        g.fillStyle='#71c9a6';g.fillRect(px+8,py+8,8,4);
+        g.fillStyle='#e6fff0';g.fillRect(px+9,py+9,3,1);
+        g.fillStyle='#345b65';g.fillRect(px+8,py+14,2,2);g.fillRect(px+12,py+14,4,2);
+      }
+      if(module.type==='weapon'||module.type==='railgun'){
+        g.fillStyle='#15283a';g.fillRect(px+7,py+7,10,9);
+        g.fillStyle=module.type==='railgun'?'#e99085':'#f1b66c';g.fillRect(px+8,py+8,8,4);
+        g.fillStyle='#fff0c7';g.fillRect(px+9,py+9,3,1);
+        g.fillStyle='#6b8390';g.fillRect(px+8,py+14,2,2);g.fillRect(px+13,py+14,3,2);
       }
     }
-    if(def.muzzle){
-      const mount=geom.mount,px=(module.x+mount[0]+.5)*TILE,py=(module.y+mount[1]+.5)*TILE;
-      g.save();g.translate(Math.round(px),Math.round(py));g.rotate(weaponGeometry(module).direction);
-      g.fillStyle='#0a1725';g.fillRect(-9,-9,17,18);
-      g.fillStyle=def.color;g.fillRect(-7,-7,13,14);
-      g.fillStyle='#263c4d';g.fillRect(-5,-5,9,10);
-      g.fillStyle='#f5ce8d';g.fillRect(1,-4,9,8);
-      g.fillStyle='#132333';g.fillRect(2,-2,9,4);
-      g.fillStyle='#fff0c8';g.fillRect(9,-1,4,2);
+  }
+  function drawHullShell(g,occupied){
+    for(const key of occupied.keys()){
+      const [x,y]=key.split(',').map(Number),px=x*TILE,py=y*TILE;
+      for(const [dx,dy,side] of [[-1,0,'left'],[1,0,'right'],[0,-1,'top'],[0,1,'bottom']]){
+        if(occupied.has(`${x+dx},${y+dy}`))continue;
+        g.fillStyle='#122637';
+        if(side==='left'||side==='right'){
+          const sx=side==='left'?px-8:px+24;g.fillRect(sx,py,8,24);
+          g.fillStyle='#536f80';g.fillRect(sx+(side==='left'?2:0),py+2,6,20);
+          g.fillStyle='#8ca8b0';g.fillRect(sx+(side==='left'?6:0),py+4,2,16);
+          g.fillStyle='#d3d9cf';g.fillRect(sx+3,py+5,2,2);g.fillRect(sx+3,py+17,2,2);
+          g.fillStyle='#304b5d';g.fillRect(sx+1,py+11,6,2);
+        }else{
+          const sy=side==='top'?py-8:py+24;g.fillRect(px,sy,24,8);
+          g.fillStyle='#536f80';g.fillRect(px+2,sy+(side==='top'?2:0),20,6);
+          g.fillStyle='#8ca8b0';g.fillRect(px+4,sy+(side==='top'?6:0),16,2);
+          g.fillStyle='#d3d9cf';g.fillRect(px+5,sy+3,2,2);g.fillRect(px+17,sy+3,2,2);
+          g.fillStyle='#304b5d';g.fillRect(px+11,sy+1,2,6);
+        }
+      }
+    }
+  }
+  function drawExteriorHardware(g,module,throttle=0){
+    if(module.type==='engine'){
+      const station=rotatedGeometry('engine',module.rotation).station;
+      const cx=(module.x+station[0]+.5)*TILE,cy=(module.y+station[1]+.5)*TILE;
+      g.save();g.translate(cx,cy);g.rotate(module.rotation*Math.PI/2);
+      g.fillStyle='#162735';g.fillRect(-23,-13,12,26);
+      g.fillStyle='#7897a2';g.fillRect(-21,-12,8,24);
+      g.fillStyle='#c7d8d5';g.fillRect(-20,-10,2,20);
+      for(const offset of [-7,7]){
+        g.fillStyle='#243847';g.fillRect(-28,offset-5,12,10);
+        g.fillStyle='#a7c4c9';g.fillRect(-27,offset-4,4,8);
+        g.fillStyle='#44b9ce';g.fillRect(-31,offset-4,5,8);
+        g.fillStyle='#b6f5ee';g.fillRect(-31,offset-2,2,4);
+        if(throttle>.08){const length=5+Math.round(throttle*13);g.fillStyle='#3ad8ed';g.fillRect(-29-length,offset-3,length,6);g.fillStyle='#fff0ae';g.fillRect(-29-length,offset-1,Math.max(3,length-3),2);}
+      }
+      g.restore();
+    }
+    if(MODULES[module.type].muzzle){
+      const mount=weaponGeometry(module),cx=mount.x*TILE,cy=mount.y*TILE;
+      g.save();g.translate(cx,cy);g.rotate(mount.direction);
+      g.fillStyle='#142636';g.fillRect(-7,-11,21,22);
+      g.fillStyle='#758b99';g.fillRect(-5,-9,17,18);
+      g.fillStyle=MODULES[module.type].color;g.fillRect(-3,-7,15,14);
+      g.fillStyle='#263d50';g.fillRect(1,-5,11,10);
       if(module.type==='railgun'){
-        g.fillStyle='#a44e5e';g.fillRect(-6,-8,16,3);g.fillRect(-6,5,16,3);
-        g.fillStyle='#f3c9ae';g.fillRect(7,-6,2,12);g.fillStyle='#fff1de';g.fillRect(11,-1,4,2);
-      }else{g.fillStyle='#e7a775';g.fillRect(-7,-9,5,2);g.fillRect(-7,7,5,2);}
+        g.fillStyle='#9d4d58';g.fillRect(8,-9,16,4);g.fillRect(8,5,16,4);
+        g.fillStyle='#d5bbc0';g.fillRect(11,-4,12,8);g.fillStyle='#172331';g.fillRect(12,-2,12,4);
+      }else{
+        g.fillStyle='#e4b379';g.fillRect(9,-5,11,10);g.fillStyle='#182b38';g.fillRect(12,-3,9,6);
+        g.fillStyle='#fbe5b7';g.fillRect(19,-1,3,2);
+      }
       g.restore();
     }
   }
   function drawInterior(g,showSelection=false,thrusters={}){
     g.clearRect(0,0,GRID_W*TILE,GRID_H*TILE);
     const occupied=occupancy();
+    drawHullShell(g,occupied);
     if(showSelection){
       const selected=selectedModule();
       if(selected&&MODULES[selected.type].muzzle){
@@ -437,6 +541,7 @@
       }
       drawStation(g,module,thrusters[module.id]||0);
     }
+    for(const module of save.modules)drawExteriorHardware(g,module,thrusters[module.id]||0);
     for(const person of save.crew)drawCrewSprite(g,person);
     if(showSelection){
       const selected=selectedModule();
@@ -520,27 +625,34 @@
     const map=save.map,current=currentMapNode(),available=new Set(availableNodes());
     const svg=$('mapLinks'),container=$('sectorMap');
     svg.innerHTML=map.nodes.flatMap((node)=>node.links.map((id)=>{
-      const target=map.nodes.find((item)=>item.id===id);if(!target)return'';
-      const cls=node.id===current.id&&available.has(id)?'active':map.visited.includes(node.id)&&map.visited.includes(id)?'visited':'';
-      return `<line class="${cls}" x1="${80+node.col*168}" y1="${110+node.row*190}" x2="${80+target.col*168}" y2="${110+target.row*190}" />`;
+      const target=map.nodes.find((item)=>item.id===id);if(!target||node.id>id)return'';
+      const cls=(node.id===current.id||id===current.id)?'active':map.visited.includes(node.id)&&map.visited.includes(id)?'visited':'';
+      return `<line class="${cls}" x1="${node.mapX??80+node.col*168}" y1="${node.mapY??110+node.row*190}" x2="${target.mapX??80+target.col*168}" y2="${target.mapY??110+target.row*190}" />`;
     })).join('');
     container.innerHTML=map.nodes.map((node)=>{
       const isCurrent=node.id===current.id,isAvailable=available.has(node.id),visited=map.visited.includes(node.id);
       const info=EVENT_TYPES[node.type]||{name:'CURRENT',icon:'✦'};
-      const cls=isCurrent?'current':isAvailable?'available':visited?'visited':'future';
-      return `<button type="button" class="map-node ${cls}" data-node="${node.id}" style="left:${8+node.col*16.8}%;top:${18.3+node.row*31.7}%" ${!isAvailable||!activeModules('engine').length?'disabled':''} aria-label="Sector ${String(map.base+node.col).padStart(2,'0')}: ${info.name}${isAvailable?', available next':''}"><span>${info.icon}</span><strong>${info.name}</strong><small>${String(map.base+node.col).padStart(2,'0')}${isCurrent?' · YOU':''}</small></button>`;
+      const cls=isCurrent?'current':isAvailable?`available${visited?' revisited':''}`:visited?'visited':'future';
+      return `<button type="button" class="map-node ${cls} type-${node.type}" data-node="${node.id}" style="left:${(node.mapX??80+node.col*168)/10}%;top:${(node.mapY??110+node.row*190)/6}%" ${!isAvailable||!activeModules('engine').length?'disabled':''} aria-label="Sector ${String(save.sector).padStart(2,'0')} ${info.name}${visited?', visited':''}${isAvailable?', available next':''}"><span>${info.icon}</span><strong>${info.name}</strong><small>${isCurrent?'YOU ARE HERE':visited?'VISITED':`BEACON ${node.col}${node.row+1}`}</small></button>`;
     }).join('');
     container.querySelectorAll('.map-node.available').forEach((button)=>button.addEventListener('click',()=>openMapEvent(button.dataset.node)));
-    $('mapHint').textContent=activeModules('engine').length?(innerWidth<=720?'TAP A ROUTE · SWIPE MAP TO PAN':'SELECT A CONNECTED SECTOR TO JUMP'):'ENGINE OFFLINE · REPAIR IN SHIPYARD';
+    $('nextSectorButton').hidden=current.type!=='exit';
+    $('mapHint').textContent=activeModules('engine').length?(innerWidth<=720?'TAP CONNECTED BEACONS · SWIPE TO PAN':'EXPLORE AND REVISIT CONNECTED BEACONS'):'ENGINE OFFLINE · REPAIR IN SHIPYARD';
   }
   function openMap(){setMode('map');}
   function openHangar(){setMode('hangar');renderAll();}
   function toggleMap(){if(mode==='combat'||eventOpen)return;if(mode==='map')openHangar();else openMap();}
   function advanceRoute(){
     if(!pendingNodeId)return;
-    const node=save.map.nodes.find((item)=>item.id===pendingNodeId);save.map.current=node.id;save.map.visited.push(node.id);save.sector++;
-    if(node.col===5)save.map=makeMap(save.sector);
+    const node=save.map.nodes.find((item)=>item.id===pendingNodeId);save.map.current=node.id;
+    if(!save.map.visited.includes(node.id))save.map.visited.push(node.id);
+    if(!save.map.resolved.includes(node.id))save.map.resolved.push(node.id);
     pendingNodeId=null;persist();
+  }
+  function goNextSector(){
+    if(currentMapNode()?.type!=='exit'||!activeModules('engine').length)return;
+    save.sector++;save.map=makeMap(save.sector);pendingNodeId=null;persist();
+    log(`Entered sector ${String(save.sector).padStart(2,'0')}.`);toast(`Sector ${String(save.sector).padStart(2,'0')} charted`);openMap();renderAll();
   }
   function showEvent({type,icon,title,body,choices}){
     eventOpen=true;$('eventType').textContent=type;$('eventVisual').innerHTML=`<span>${icon}</span>`;
@@ -556,26 +668,94 @@
       {label:'RETURN TO SHIPYARD',action:()=>{hideEvent();openHangar();}}
     ]});
   }
+  function damageRandomModule(amount){
+    const live=save.modules.filter((module)=>module.hp>0),target=live[Math.floor(Math.random()*live.length)];
+    target.hp=Math.max(1,target.hp-amount);return target;
+  }
+  function openTrader(node){
+    const stock=node.stock||[],available=stock.filter((item)=>item.qty>0);
+    const choices=available.map((item)=>({
+      label:`BUY ${MODULES[item.type].name.toUpperCase()} · ◆ ${item.price} · ${item.qty} LEFT`,disabled:save.metal<item.price,
+      action:()=>{save.metal-=item.price;item.qty--;save.inventory[item.type]=(save.inventory[item.type]||0)+1;persist();
+        log(`${MODULES[item.type].name} purchased at a trader.`);renderAll();openTrader(node);toast(`${MODULES[item.type].name} added to your hold`);}
+    }));
+    choices.push({label:'FIELD REPAIRS · ◆ 15',disabled:save.metal<15||hullRatio()>=.999,action:()=>{
+      save.metal-=15;repairAll(55);log('Field repairs purchased.');openTrader(node);
+    }});
+    if(!node.surveySold)choices.push({label:'SELL SURVEY DATA · +12 METAL',action:()=>{
+      node.surveySold=true;save.metal+=12;persist();log('Survey data sold to a trader.');renderAll();openTrader(node);
+    }});
+    choices.push({label:'LEAVE TRADER →',action:()=>{hideEvent();openMap();}});
+    showEvent({type:'NEUTRAL SIGNAL // TRADER',icon:'◆',title:'WAYFARER TRADER',
+      body:`Buy a complete module for your hold, then install it in the shipyard. ${available.length?`${available.length} types in stock.`:'This trader is sold out.'} Metal also pays for repairs and system upgrades.`,choices});
+  }
+  function openOutpost(node,firstVisit){
+    const choices=[{label:'DOCK FOR REPAIRS · ◆ 12',disabled:save.metal<12||hullRatio()>=.999,action:()=>{
+      save.metal-=12;repairAll(40);log('Outpost crew patched the hull.');
+      if(firstVisit)concludeEvent('HULL PATCHED','The outpost technicians repair the worst damage.','⌂');else{persist();openOutpost(node,false);}
+    }}];
+    if(firstVisit)choices.push({label:'TRADE CHART DATA · +15 METAL',action:()=>{
+      save.metal+=15;log('Outpost bought your navigation data.');concludeEvent('CHARTS EXCHANGED','Your maps help the outpost chart safer routes.','⌂');
+    }});
+    choices.push({label:'LEAVE OUTPOST',action:()=>{if(firstVisit){log('Outpost charted.');concludeEvent('OUTPOST CHARTED','The station remains on your map for future repairs.','⌂');}else{hideEvent();openMap();}}});
+    showEvent({type:'CIVILIAN SIGNAL // OUTPOST',icon:'⌂',title:'FRINGE OUTPOST',
+      body:firstVisit?'A small station offers hull work and asks for recent navigation charts.':'The station is still open for repairs.',choices});
+  }
   function openMapEvent(id){
     if(!availableNodes().includes(id)||!activeModules('engine').length)return;
     pendingNodeId=id;const node=save.map.nodes.find((item)=>item.id===id);
-    if(node.type==='pirate')showEvent({type:'HOSTILE SIGNAL // PIRATES',icon:'⚔',title:'PIRATE INTERCEPT',body:'A raider cuts across your route and demands cargo. Their weapons are already charging.',choices:[
+    const firstVisit=!save.map.resolved.includes(id);
+    if(!firstVisit||node.type==='trader'||node.type==='exit'){
+      advanceRoute();renderAll();
+      if(node.type==='trader'){openTrader(node);return;}
+      if(node.type==='outpost'){openOutpost(node,false);return;}
+      if(node.type==='exit'){toast('Exit reached · choose NEXT SECTOR or keep exploring');return;}
+      toast(`${EVENT_TYPES[node.type]?.name||'BEACON'} revisited`);return;
+    }
+    const variant=node.variant||0;
+    if(node.type==='pirate')showEvent({type:'HOSTILE SIGNAL // PIRATES',icon:'⚔',title:['PIRATE INTERCEPT','SMUGGLER AMBUSH','RAIDER TOLL'][variant],body:[
+      'A raider cuts across your route and demands cargo. Their weapons are already charging.',
+      'A smuggler ship emerges from behind debris and locks weapons on your hull.',
+      'A pirate captain blocks the lane and demands metal for passage.'
+    ][variant],choices:[
       {label:'ENGAGE THE PIRATES →',action:()=>startBattle('pirate')},
       {label:'PAY 18 METAL TO PASS',disabled:save.metal<18,action:()=>{save.metal-=18;log('Pirates paid off.');concludeEvent('SAFE PASSAGE','The raider takes your metal and clears the lane.','◆');}}
     ]});
-    if(node.type==='rescue')showEvent({type:'DISTRESS SIGNAL // FREIGHTER',icon:'◇',title:'FREIGHTER IN PERIL',body:'A damaged freighter is pinned down by two pirate skiffs. Its captain asks for help.',choices:[
+    if(node.type==='rescue')showEvent({type:'DISTRESS SIGNAL // FREIGHTER',icon:'◇',title:['FREIGHTER IN PERIL','BROKEN CONVOY','SOS IN THE DUST'][variant],body:[
+      'A damaged freighter is pinned down by two pirate skiffs. Its captain asks for help.',
+      'An ore convoy has lost its escort. Two skiffs close on the last transport.',
+      'A freighter transmits a faint distress call from an asteroid field.'
+    ][variant],choices:[
       {label:'DEFEND THE FREIGHTER →',action:()=>startBattle('rescue')},
       {label:'SEND REPAIR SUPPLIES · −12 METAL',disabled:save.metal<12,action:()=>{save.metal-=12;log('Freighter assisted with supplies.');concludeEvent('AID DELIVERED','The freighter escapes while your crew transfers spare material.','◇');}},
       {label:'CONTINUE ON YOUR ROUTE',action:()=>{log('Freighter signal left behind.');concludeEvent('SIGNAL FADES','The freighter vanishes from the scope as you leave the sector.','·');}}
     ]});
-    if(node.type==='salvage')showEvent({type:'ANOMALY // SALVAGE',icon:'✧',title:'DRIFTING WRECKAGE',body:'A quiet debris field contains useful metal. A sealed hold deeper inside might contain even more.',choices:[
+    if(node.type==='salvage')showEvent({type:'ANOMALY // SALVAGE',icon:'✧',title:['DRIFTING WRECKAGE','LOST CARGO PODS','QUIET DEBRIS FIELD'][variant],body:[
+      'A quiet debris field contains useful metal. A sealed hold deeper inside might contain even more.',
+      'Cargo pods drift between shattered hull plates. One pod still has power.',
+      'Your scanners find alloy in an old battle site and a sealed compartment deeper in.'
+    ][variant],choices:[
       {label:'COLLECT SAFE SALVAGE · +18 METAL',action:()=>{save.metal+=18;log('18 metal recovered from wreckage.');concludeEvent('SALVAGE SECURED','The crew stows the metal and marks the field on the chart.','◆');}},
-      {label:'OPEN THE SEALED HOLD',action:()=>{if(Math.random()<.6){save.metal+=38;log('38 metal found in a sealed hold.');concludeEvent('HIDDEN CACHE','The hold is packed with alloy plates.','◆');}else{const target=save.modules[Math.floor(Math.random()*save.modules.length)];target.hp=Math.max(1,target.hp-25);log(`${MODULES[target.type].name} damaged by salvage trap.`);concludeEvent('TRAP SPRUNG',`A defense charge detonates. Your ${MODULES[target.type].name.toLowerCase()} takes 25 damage.`,'⚠');}}}
+      {label:'OPEN THE SEALED HOLD',action:()=>{if(Math.random()<.6){save.metal+=38;log('38 metal found in a sealed hold.');concludeEvent('HIDDEN CACHE','The hold is packed with alloy plates.','◆');}else{const target=damageRandomModule(25);log(`${MODULES[target.type].name} damaged by salvage trap.`);concludeEvent('TRAP SPRUNG',`A defense charge detonates. Your ${MODULES[target.type].name.toLowerCase()} takes 25 damage.`,'⚠');}}}
     ]});
-    if(node.type==='trader')showEvent({type:'NEUTRAL SIGNAL // TRADER',icon:'◆',title:'WAYFARER TRADER',body:'A small trade ship offers field repairs and buys recent survey data.',choices:[
-      {label:'FIELD REPAIRS · −15 METAL',disabled:save.metal<15||hullRatio()>=.999,action:()=>{save.metal-=15;repairAll(55);log('Field repairs purchased.');concludeEvent('REPAIRS COMPLETE','The trader patches the worst damage before continuing.','✚');}},
-      {label:'SELL SURVEY DATA · +12 METAL',action:()=>{save.metal+=12;log('Survey data traded for 12 metal.');concludeEvent('TRADE COMPLETE','Your crew transmits recent route data and receives a crate of metal.','◆');}}
+    if(node.type==='anomaly')showEvent({type:'UNUSUAL SIGNAL // ANOMALY',icon:'◈',title:['PULSING NEBULA','SILENT RELAY','BLUE GRAVITY WELL'][variant],body:[
+      'A blue cloud pulses with weak energy signatures. The crew can scan it at close range.',
+      'An abandoned relay still broadcasts encrypted star charts.',
+      'A small gravity well has trapped valuable metallic fragments.'
+    ][variant],choices:[
+      {label:'INVESTIGATE THE SIGNAL',action:()=>{if(Math.random()<.6){save.metal+=24;log('Anomaly yielded 24 metal.');concludeEvent('ANOMALY MAPPED','The crew recovers rare alloy from the strange signal.','◈');}else{const target=damageRandomModule(18);log(`${MODULES[target.type].name} strained by anomaly.`);concludeEvent('FIELD SURGE',`A sudden pulse damages your ${MODULES[target.type].name.toLowerCase()}.`,'⚠');}}},
+      {label:'CHART A SAFE COURSE',action:()=>{log('Anomaly safely charted.');concludeEvent('SAFE PASSAGE','The crew records the signal and keeps a safe distance.','◈');}}
     ]});
+    if(node.type==='derelict')showEvent({type:'UNKNOWN CONTACT // DERELICT',icon:'▣',title:['DARK SCIENCE SHIP','ABANDONED MINER','GHOST TRANSPORT'][variant],body:[
+      'A research vessel drifts without power. Its cargo bay might still contain parts.',
+      'An empty mining ship sits among slowly spinning ore containers.',
+      'A silent transport holds a sealed store of valuable metal.'
+    ][variant],choices:[
+      {label:'RECOVER EXPOSED METAL · +22',action:()=>{save.metal+=22;log('22 metal recovered from derelict.');concludeEvent('CARGO RECOVERED','The crew brings the accessible alloy aboard.','▣');}},
+      {label:'BOARD THE DARK HULL',action:()=>{if(Math.random()<.55){save.metal+=42;log('42 metal recovered from sealed hold.');concludeEvent('HOLD OPENED','A long sealed hold contains reusable machinery.','▣');}else{const target=damageRandomModule(28);log(`${MODULES[target.type].name} damaged near derelict.`);concludeEvent('HIDDEN CHARGE',`An old defense charge hits your ${MODULES[target.type].name.toLowerCase()}.`,'⚠');}}},
+      {label:'LEAVE IT DRIFTING',action:()=>concludeEvent('DERELICT MARKED','Its coordinates remain on your map.','▣')}
+    ]});
+    if(node.type==='outpost')openOutpost(node,true);
   }
   function newRunPrompt(){
     if(mode==='combat'){toast('Finish the encounter before starting a new run.');return;}
@@ -948,9 +1128,11 @@
     for(const enemy of b.enemies)if(enemy.hp>0)drawEnemy(enemy);
     if(p.selected){ctx.strokeStyle='#88e5e5';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();ctx.arc(p.x,p.y,p.r+13,0,TAU);ctx.stroke();ctx.setLineDash([]);}
     drawInterior(spriteCtx,false,p.thrusters);
-    const bounds=shipBounds(),width=bounds.maxX-bounds.minX+1,height=bounds.maxY-bounds.minY+1;
+    const bounds=shipBounds(),minX=Math.max(0,bounds.minX-2),minY=Math.max(0,bounds.minY-2);
+    const maxX=Math.min(GRID_W-1,bounds.maxX+2),maxY=Math.min(GRID_H-1,bounds.maxY+2);
+    const width=maxX-minX+1,height=maxY-minY+1;
     ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);
-    ctx.drawImage(shipSprite,bounds.minX*TILE,bounds.minY*TILE,width*TILE,height*TILE,-width*COMBAT_TILE/2,-height*COMBAT_TILE/2,width*COMBAT_TILE,height*COMBAT_TILE);
+    ctx.drawImage(shipSprite,minX*TILE,minY*TILE,width*TILE,height*TILE,(minX-bounds.cx)*COMBAT_TILE,(minY-bounds.cy)*COMBAT_TILE,width*COMBAT_TILE,height*COMBAT_TILE);
     ctx.restore();
     for(const shot of b.projectiles){ctx.fillStyle=shot.owner==='player'?'#ffdb92':'#fc828a';ctx.fillRect(shot.x-4,shot.y-4,8,8);ctx.fillStyle=shot.owner==='player'?'#e8a75e88':'#d65f7088';ctx.fillRect(shot.x-shot.vx*.025,shot.y-shot.vy*.025,4,4);}
     ctx.fillStyle='#a6c8d0';ctx.font='14px monospace';ctx.fillText(`SECTOR ${String(save.sector).padStart(2,'0')}  //  ${Math.round(hullRatio()*100)}% HULL`,20,h-19);
@@ -1010,6 +1192,7 @@
     $('buildRotateLeft').addEventListener('click',()=>rotateBuild(-1));$('buildRotateRight').addEventListener('click',()=>rotateBuild(1));
     $('combatRotateLeft').addEventListener('click',()=>rotateArrival(-1));$('combatRotateRight').addEventListener('click',()=>rotateArrival(1));
     $('selectShipButton').addEventListener('click',()=>selectPlayer());$('jumpButton').addEventListener('click',toggleMap);$('resetButton').addEventListener('click',newRunPrompt);
+    $('nextSectorButton').addEventListener('click',goNextSector);
     canvas.addEventListener('contextmenu',(event)=>event.preventDefault());
     canvas.addEventListener('wheel',(event)=>{event.preventDefault();rotateArrival(event.deltaY>0?1:-1);},{passive:false});
     canvas.addEventListener('pointerdown',(event)=>{

@@ -21,6 +21,9 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 - Modules have distinct functions, such as weapons and engines. Additional systems can be added as the design develops.
 - The ship layout affects what the ship can do in combat and how much space it needs in an arena.
 - Players can upgrade systems, primarily by spending **metal**.
+- New modules come from limited trader stock and enter the player's hold. Installing a held module costs no extra metal; upgrades and repairs still spend metal.
+- Ion engines mount at the outer hull. Their exhaust side must face connected open space, with a clear strip directly behind the engine and a second clear cell behind its central nozzle. Later construction cannot fill those cells. Weapon mounts also need an exposed outside cell.
+- Rooms remain walkable interiors with small control panels. Hull plating and structural ribs occupy a separate border outside the rooms; engine nozzles and weapon barrels sit on that exterior border and rotate with the ship.
 
 ## Encounters and combat
 
@@ -54,6 +57,7 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 - **Metal** is the main resource. It is used chiefly for system upgrades and trading.
 - Encounters can provide opportunities to gain metal, supplies, or other rewards as the game develops.
 - Trading and upgrades should feed back into ship construction and readiness for future events.
+- Sector charts are bidirectional networks. Players may revisit beacons, including traders and repair outposts, without replaying one-time rewards. The exit stays in the current chart until the player chooses to advance; there is no pursuing fleet.
 
 ## Open design choices
 
@@ -63,10 +67,10 @@ Longer-term combat balance, additional events and resources, more module types, 
 
 - Combat runs in real time. Pulse cannons have a 130° arc; railguns have a longer range and a 50° arc. Each shot starts at its muzzle and spends ammunition. A gunner at the weapon station improves its fire rate.
 - An engineer repairs a damaged module after walking to its station. A loader walks between an ammo source and a weapon to deliver ammunition.
-- The starting ship has a command core, two directional ion engines, and a pulse cannon. Engines, cannons, railguns, shield arrays, armor plating, and ammo holds can be added on the hangar grid. Modules must connect by an edge and cannot overlap.
+- The starting ship has a command core, two directional ion engines, and a pulse cannon. It begins with one spare armor module. Engines, cannons, railguns, shield arrays, armor plating, and ammo holds can be bought from traders and installed on the hangar grid. Modules must connect by an edge and cannot overlap or block reserved exhaust and mount space.
 - During construction, a selected module stays in placement mode when the cursor is over an installed room. The preview and click snap to a nearby valid edge position, including below the ship. Without a selected catalog module, clicking a room inspects it.
 - Pirate ships are assembled from connected four-cell tetromino modules, with visible core, weapon, engine, and sometimes armor rooms. Arena sizing uses their actual tile count.
 - Asteroids are solid to both player and pirate ships. Move orders and pirate pursuit route around each asteroid with clearance for the ship's size; a ship that reaches an obstacle is stopped and steered along it.
-- A destroyed command core ends the run. Other destroyed modules stop providing their function until repaired. Metal pays for new modules, upgrades, repairs, and some encounter choices.
-- A generated branching map offers connected next sectors. Pirate and freighter destinations lead to arena combat; salvage and trader destinations offer noncombat choices. Resolving a destination advances the route, and a new chart appears after its last column.
+- A destroyed command core ends the run. Other destroyed modules stop providing their function until repaired. Metal pays traders for new modules and pays for upgrades, repairs, and some encounter choices.
+- A generated sector chart has connected, revisitable beacons and a dedicated exit. Pirate and freighter destinations lead to arena combat; salvage, anomalies, derelicts, outposts, and traders offer other choices. Completed sites remain on the chart. A new chart appears only when the player chooses **Go to Next Sector** at the exit.
 - Progress is stored in the browser's local storage. The game is a static site with no account or server dependency.

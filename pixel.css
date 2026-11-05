@@ -6,6 +6,8 @@
 .grid-cell.occupied:before, .grid-cell.occupied span { display: none; }
 .grid-cell.occupied.selected { outline: 0; }
 .grid-cell.ghost { box-shadow: inset 0 0 0 2px var(--module-color); }
+.grid-cell.reserved { background: #6b4b3c44; border-color: #ad7956; }
+.grid-cell.reserved:after { content: "×"; color: #e0a475; font-size: 14px; opacity: .65; }
 .module-inspector .inspector-sub { line-height: 1.55; }
 .inspector-detail { color: #f4c780; font-size: 10px; line-height: 1.45; letter-spacing: .04em; margin: 0 0 8px; }
 .flight-telemetry { margin: 0 0 14px; padding: 11px; background: #0a1c2c; border: 1px solid #416278; color: #9de1e4; font-size: 10px; line-height: 1.8; letter-spacing: .08em; }
@@ -29,6 +31,10 @@
 .map-node.available:hover { background: #2b5861; transform: translate(-50%,-50%) scale(1.05); }
 .map-node.current { color: #0a1a24; background: #f3bf68; border-color: #fff0bb; box-shadow: 4px 4px #775733; }
 .map-node.visited { color: #9dd7b5; border-color: #537766; }
+.map-node.available.revisited { border-color: #8fc8a8; background: #1b3941; }
+.map-node.type-exit { border-color: #d6b46f; color: #f8d695; }
+#nextSectorButton { margin-top: 15px; width: 100%; }
+.event-card { max-height: calc(100vh - 40px); overflow: auto; }
 .map-node:disabled { cursor: default; opacity: 1; }
 @keyframes mapPulse { 50% { box-shadow: 4px 4px #16444c, 0 0 0 5px #7cc9cc55; } }
 

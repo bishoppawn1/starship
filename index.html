@@ -26,7 +26,7 @@
         <aside class="side-panel left-panel">
           <div class="panel-heading"><span class="eyebrow">01 // LOADOUT</span><h2 id="leftTitle">MODULE BAY</h2></div>
           <div id="hangarTools">
-            <p class="muted small">Select a module, rotate it, then place it beside your ship.</p>
+            <p class="muted small">Install modules from your hold. Traders sell new parts; metal upgrades and repairs installed systems.</p>
             <div id="catalog" class="catalog"></div>
             <div class="tool-note"><span class="note-icon">↻</span><div><strong>ROTATE MODULE</strong><span>Q / E or the controls below</span></div></div>
             <div class="rotation-controls"><button id="buildRotateLeft" type="button" aria-label="Rotate module counterclockwise">↶</button><span id="buildRotationLabel">0°</span><button id="buildRotateRight" type="button" aria-label="Rotate module clockwise">↷</button></div>
@@ -44,10 +44,11 @@
             <button id="selectShipButton" class="outline-button full-width" type="button">SELECT MY SHIP</button>
           </div>
           <div id="mapTools" hidden>
-            <p class="muted small">Choose a connected destination. Each jump advances your route through the sector chart.</p>
+            <p class="muted small">Explore connected beacons in any direction. Revisit charted locations, then leave through the sector exit when ready.</p>
             <div class="instruction-card"><span>◆</span><div><strong>AVAILABLE</strong><small>Reachable on your next jump</small></div></div>
             <div class="instruction-card"><span>◇</span><div><strong>FUTURE ROUTE</strong><small>Plan your path ahead</small></div></div>
             <div class="instruction-card"><span>✦</span><div><strong>CURRENT POSITION</strong><small>Your ship is here</small></div></div>
+            <button id="nextSectorButton" class="primary-button full-width" type="button" hidden>GO TO NEXT SECTOR →</button>
           </div>
           <div class="left-footer"><span class="signal-dot"></span><span id="leftStatus">DOCKED // SYSTEMS READY</span></div>
         </aside>
@@ -60,7 +61,7 @@
           </div>
           <div id="mapScreen" class="map-screen" hidden>
             <div class="sector-map-wrap"><div class="map-content"><div class="sector-map-stars"></div><svg id="mapLinks" class="map-links" viewBox="0 0 1000 600" preserveAspectRatio="none" aria-hidden="true"></svg><div id="sectorMap" class="sector-map" aria-label="Sector route map"></div></div></div>
-            <div class="stage-bottom"><span id="mapHint">SELECT A CONNECTED SECTOR TO JUMP</span><span>ROUTES CHANGE EACH EXPEDITION</span></div>
+            <div class="stage-bottom"><span id="mapHint">EXPLORE CONNECTED BEACONS</span><span>NO PURSUING FLEET · LEAVE WHEN READY</span></div>
           </div>
           <div id="combatScreen" class="combat-screen" hidden>
             <div class="arena-wrap"><canvas id="combatCanvas" width="960" height="800" aria-label="Space combat arena"></canvas><div class="arena-overlay top-left"><span class="signal-dot danger"></span><span id="combatWaveLabel">HOSTILE CONTACT</span></div><div class="arena-overlay top-right" id="enemyCountLabel">1 HOSTILE</div></div>
