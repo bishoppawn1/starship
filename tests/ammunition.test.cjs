@@ -12,10 +12,11 @@ function game(){
     localStorage:{getItem:(key)=>storage.get(key)||null,setItem:(key,value)=>storage.set(key,value)},
     document:{getElementById:(id)=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,querySelectorAll:()=>[]}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
-    globalThis.game={AMMO,MODULES,WEAPON_TYPES,STARTER_SHIPS,newSave,normalizeAmmo,loadSave,persist,recoverAmmoCrate,updateAmmoProduction,magazineCount,ammoSources,updateCrew,crewGoal,crewStatus,crewRoutes,
+    globalThis.game={AMMO,MODULES,BUYABLE,WEAPON_TYPES,STARTER_SHIPS,newSave,normalizeAmmo,loadSave,persist,recoverAmmoCrate,updateAmmoProduction,magazineCount,ammoSources,updateCrew,crewGoal,crewStatus,crewRoutes,
       moduleStation,moduleCells,moduleClearance,connectedHull,weaponsHaveClearArc,engineThrusters,updateBattle,startBattle,finishBattle,upgradeTraderStock,renderAmmo,renderInspector,concludeEvent,startNewGame,showStarterPicker,
       setSave(value){save=value;for(const key of Object.keys(crewRoutes))delete crewRoutes[key];},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
       getMode(){return mode;},setMode(value){mode=value;},getEventOpen(){return eventOpen;},setPending(value){pendingNodeId=value;eventOpen=true;},setTrade(value){mode='trade';tradeNode=value;},
+      trackFire(){const shots={};const original=fireWeapon;fireWeapon=(weapon,...args)=>{shots[weapon.id]=(shots[weapon.id]||0)+1;return original(weapon,...args);};navigatePlayer=()=>{};return shots;},
       stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;}};
   })();`);
   vm.runInNewContext(source,sandbox);return {...sandbox.game,elements};
@@ -127,7 +128,7 @@ test('every starting ship has a connected non-overlapping hull, clear mounts and
     for(const module of save.modules)for(const cell of g.moduleClearance(module))assert.ok(!occupied.has(cell.join(',')),`${starter.id}: ${module.type} blocked at ${cell}`);
     const reverse=g.engineThrusters().filter((engine)=>engine.module.rotation===2);assert.equal(reverse.length,2);assert.ok(reverse.every((engine)=>engine.force>0));
     assert.equal(save.starterId,starter.id);assert.ok(save.nextId>Math.max(...save.modules.map((m)=>m.id)));
-    if(starter.id!=='wayfarer'){const loader=save.crew.find((p)=>p.task==='load');g.updateCrew(0);assert.ok(loader.workModuleId,starter.id);tick(g,20);assert.ok(save.modules.some((m)=>g.magazineCount(m)>0),starter.id);}
+    if(starter.id!=='wayfarer'){const loader=save.crew.find((p)=>p.task==='load');for(const gun of save.modules.filter((m)=>g.MODULES[m.type].ammoType))gun.magazine=0;g.updateCrew(0);assert.ok(loader.workModuleId,starter.id);tick(g,20);assert.ok(save.modules.some((m)=>g.magazineCount(m)>0),starter.id);}
   }
 });
 
@@ -139,6 +140,7 @@ test('encounter results resolve the beacon and return directly to the map with n
 
 test('entering battles and revisiting the map never refills stocks or magazines',()=>{
   const g=game(),save=g.newSave('arsenal');g.setSave(save);save.ammunition={heavy:0,missile:0};
+  for(const room of save.modules.filter((room)=>room.type==='missile'))room.magazine=0;
   save.modules.find((room)=>room.type==='missile').magazine=2;
   for(let i=0;i<2;i++){
     g.startBattle('pirate');assert.deepEqual({...save.ammunition},{heavy:0,missile:0});
@@ -158,4 +160,39 @@ test('a swarm pays one missile round per rocket and cannot begin a burst without
   const g=game(),def=g.MODULES.swarm;assert.equal(def.ammo,def.salvo);
   const {gun,b}=battle(g,'swarm',def.ammo-1);g.updateBattle(.05,0);assert.equal(b.projectiles.length,0);
   gun.magazine=def.ammo;g.updateBattle(.05,50);assert.equal(b.projectiles.length,def.salvo);assert.equal(gun.magazine,0);
+});
+
+test('ammo starters sustain both staffed weapons for three minutes from their powered production chain',()=>{
+  for(const starter of ['arsenal','bulwark']){
+    const g=game(),save=g.newSave(starter);g.setSave(save);save.ammunition={heavy:0,missile:0};
+    const guns=save.modules.filter((room)=>g.MODULES[room.type].ammoType),factories=save.modules.filter((room)=>room.type==='ammoAssembly');
+    assert.equal(save.crew.length,6);assert.equal(save.crew.filter((p)=>p.task==='load').length,2);assert.equal(save.crew.filter((p)=>p.task==='gun').length,2);
+    assert.equal(save.crew.filter((p)=>p.task==='pilot').length,1);assert.equal(save.crew.filter((p)=>p.task==='repair').length,1);
+    assert.equal(factories.length,2);assert.ok(factories.every((room)=>room.ammoRecipe===g.MODULES[guns[0].type].ammoType));
+    assert.ok(guns.every((room)=>g.magazineCount(room)===g.MODULES[room.type].magazine));
+    const target={x:900,y:500,hp:1e9,maxHp:1e9,r:12,speed:0,pathTimer:10000,path:[],phase:0,angle:0,cooldown:10000};
+    const b={kind:'pirate',shake:0,world:{w:2400,h:2000},asteroids:[],projectiles:[],drones:[],player:{x:500,y:500,angle:0,r:g.engineThrusters().length*20,thrusters:{}},enemies:[target]};
+    g.setBattle(b);const shots=g.trackFire();let waits=0;
+    for(let frame=0;frame<3600;frame++){
+      g.updateAmmoProduction(.05);g.updateCrew(.05);g.updateBattle(.05,frame*50);
+      if(frame>200)for(const gun of guns)if(gun.cooldown<=0&&g.magazineCount(gun)<g.MODULES[gun.type].ammo)waits++;
+    }
+    assert.equal(waits,0,`${starter}: weapons waited for ammo after warmup`);
+    for(const gun of guns)assert.ok(shots[gun.id]>30,`${starter}: weapon ${gun.id} only fired ${shots[gun.id]} times`);
+    assert.ok(factories.some((room)=>room.ammoStock[room.ammoRecipe]>0),starter);
+  }
+});
+
+test('Ammo Holds are removed from purchases and old ships retain every hull cell when converted to armor',()=>{
+  const g=game(),save=g.newSave();assert.equal(g.MODULES.cargo,undefined);assert.ok(!g.BUYABLE.includes('cargo'));
+  const legacy={id:50,type:'cargo',x:-4,y:8,rotation:3,flipped:true,hp:42,level:2};
+  const expected=g.moduleCells({...legacy,type:'armor',footprint:{shape:[[0,0],[1,0],[2,0]],station:null}}).map((c)=>c.join(',')).sort();
+  save.modules.push(legacy);save.inventory.cargo=2;save.inventory.armor=1;
+  const node=save.map.nodes.find((node)=>node.type==='trader');node.stock=[{type:'cargo',qty:1,price:25},{type:'railgun',qty:0,price:70}];
+  g.setSave(save);g.persist();const loaded=g.loadSave();assert.ok(loaded);const converted=loaded.modules.find((room)=>room.id===50);
+  assert.equal(converted.type,'armor');assert.deepEqual(Array.from(g.moduleCells(converted),(c)=>c.join(',')).sort(),Array.from(expected));
+  assert.equal(converted.hp,42);assert.equal(converted.level,2);assert.equal(converted.flipped,true);assert.equal(loaded.inventory.armor,3);assert.equal(loaded.inventory.cargo,undefined);
+  const market=loaded.map.nodes.find((room)=>room.id===node.id);assert.equal(market.stock.length,1);assert.equal(market.stock[0].type,'railgun');assert.equal(market.stock[0].qty,0);
+  g.setSave(loaded);g.persist();const again=g.loadSave();assert.equal(again.inventory.armor,3);assert.equal(again.modules.find((room)=>room.id===50).type,'armor');
+  const oldTrader={stock:[{type:'cargo',qty:1,price:25}]};g.upgradeTraderStock(oldTrader);assert.ok(!oldTrader.stock.some((offer)=>offer.type==='cargo'));
 });

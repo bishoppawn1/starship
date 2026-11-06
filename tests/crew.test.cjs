@@ -23,7 +23,7 @@ const room=(id,type,x,y,hp)=>({id,type,x,y,rotation:0,hp,level:1});
 function setup(g,task,types=['weapon','weapon']){
   const save=g.newSave();save.modules=[room(1,'core',0,0,170),...types.map((type,i)=>room(i+2,type,2+i*3,0,g.MODULES[type].hp))];
   // A connected corridor joins all stations, with both crew closest to the left.
-  save.modules.push(room(20,'cargo',2,1,65),room(21,'cargo',5,1,65),room(22,'cargo',8,1,65));
+  save.modules.push({...room(20,'armor',2,1,115),footprint:{shape:[[0,0],[1,0],[2,0]],station:null}},{...room(21,'armor',5,1,115),footprint:{shape:[[0,0],[1,0],[2,0]],station:null}},{...room(22,'armor',8,1,115),footprint:{shape:[[0,0],[1,0],[2,0]],station:null}});
   save.crew=[{id:'one',task,x:.5,y:.5},{id:'two',task,x:1.5,y:.5}];g.setSave(save);return save;
 }
 function settle(g){for(let i=0;i<180;i++)g.updateCrew(.05);}

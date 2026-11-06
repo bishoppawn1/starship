@@ -23,7 +23,7 @@ function game(){
 
 const part=(g,id,type,x,y,extra={})=>({id,type,x,y,rotation:0,hp:g.MODULES[type].hp,level:1,...extra});
 function setup(g,task='drone',type='combat'){
-  const save=g.newSave();save.modules=[part(g,1,'core',0,0),part(g,2,'droneAssembly',0,2,{droneType:type}),part(g,3,'droneControl',5,1),part(g,4,'cargo',2,1)];
+  const save=g.newSave();save.modules=[part(g,1,'core',0,0),part(g,2,'droneAssembly',0,2,{droneType:type}),part(g,3,'droneControl',5,1),part(g,4,'armor',2,1,{footprint:{shape:[[0,0],[1,0],[2,0]],station:null}})];
   save.crew=[{id:'porter',name:'PORTER',task,hp:100,x:.5,y:.5}];g.setSave(save);g.setMode('hangar');g.setBattle(null);g.updateDrones(15);return save;
 }
 function tick(g,seconds){for(let i=0;i<Math.ceil(seconds/.05);i++){g.updateCrew(.05);g.updateDrones(.05);}}

@@ -13,7 +13,7 @@
   const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const C = {
     core: '#78dbea', engine: '#8cd7b0', weapon: '#f4b878', railgun: '#f29490',
-    shield: '#bfa6f1', armor: '#9aadc0', cargo: '#e5ca84'
+    shield: '#bfa6f1', armor: '#9aadc0'
   };
   const MODULES = {
     core: { name: 'Command Core', short: 'C', color: C.core, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 170, cost: 0, description: 'Command console and shared power source. Staff a pilot here to enable engine evasion.' },
@@ -29,8 +29,7 @@
     droneControl: { name: 'Drone Bay', short: 'D', color: '#b9cde4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 65, door:[2,.5], description: 'Launches crew-loaded drones automatically through a clear exterior door. Two drone slots, plus one per upgrade. Build a Drone Assembly and leave the launch lane open.' },
     droneAssembly: { name: 'Drone Assembly', short: 'A', color: '#d3be8e', shape: [[0,0],[1,0],[0,1],[1,1]], station:[0,0], hp:80, cost:50, description:'Builds and replaces one configured drone. Crew must carry the finished drone to a bay; no parts or launch costs. Requires power and a Drone Bay to operate the drone.' },
     ammoAssembly: { name: 'Ammo Assembly', short: 'A', color: '#d8b579', shape: [[0,0],[0,1]], station: [0,0], hp: 75, cost: 45, description: 'Powered ammunition factory. Uses shared power only to make heavy rounds (4 per batch) or missiles (2 per batch). Crew collect finished rounds here and carry them to matching magazines.' },
-    armor: { name: 'Armor Plating', short: 'A', color: C.armor, shape: [[0,0],[1,0],[0,1]], station: null, hp: 115, cost: 20, description: 'Open, durable floor that can absorb damage.' },
-    cargo: { name: 'Ammo Hold', short: 'M', color: C.cargo, shape: [[0,0],[1,0],[2,0]], station: [1,0], hp: 65, cost: 25, description: 'A crew pickup point for recovered heavy rounds and missiles. Finished ammunition persists between battles; magazines must be loaded by crew.' }
+    armor: { name: 'Armor Plating', short: 'A', color: C.armor, shape: [[0,0],[1,0],[0,1]], station: null, hp: 115, cost: 20, description: 'Open, durable floor that can absorb damage.' }
   };
   // Every weapon participates in construction, crew operation, and combat through
   // the same definition. Corner mounts can turn; long barrels remain fixed.
@@ -108,7 +107,7 @@
   }
   const SHIELD_TYPES=Object.keys(MODULES).filter((type)=>type==='shield'||MODULES[type].shield);
   const ENGINE_TYPES=Object.keys(MODULES).filter((type)=>MODULES[type].thrust).sort((a,b)=>MODULES[a].thrust-MODULES[b].thrust);
-  const BUYABLE = [...ENGINE_TYPES,...WEAPON_TYPES,'ammoAssembly','shield','focusShield','generator','teleporter','droneControl','droneAssembly','armor','cargo'];
+  const BUYABLE = [...ENGINE_TYPES,...WEAPON_TYPES,'ammoAssembly','shield','focusShield','generator','teleporter','droneControl','droneAssembly','armor'];
   const CREW = [
     { id: 'vega', name: 'VEGA', initial: 'V', color: '#f4bd77', task: 'gun', x: 5.5, y: 4.5 },
     { id: 'moss', name: 'MOSS', initial: 'M', color: '#8fddb5', task: 'repair', x: 6.5, y: 4.5 },
@@ -263,6 +262,19 @@
     $('upgradeCorePower').addEventListener('click',upgradeCorePower);
   }
 
+  function retireAmmoHolds(data){
+    for(const module of data.modules)if(module.type==='cargo'){
+      // Keep all occupied cells, even for rotated/mirrored legacy rooms.
+      const old=module.footprint||{shape:[[0,0],[1,0],[2,0]]};
+      module.type='armor';module.footprint={...old,station:null,mount:null,muzzle:null};
+    }
+    if(data.inventory){
+      const held=data.inventory.cargo;
+      if(Number.isFinite(held)&&held>0)data.inventory.armor=(data.inventory.armor||0)+Math.floor(held);
+      delete data.inventory.cargo;
+    }
+    for(const node of data.map?.nodes||[])if(Array.isArray(node.stock))node.stock=node.stock.filter((item)=>item.type!=='cargo');
+  }
   function normalizeAmmo(data){
     const count=(n)=>Number.isFinite(n)?Math.max(0,Math.floor(n)):0;
     if(data.ammoVersion!==1){
@@ -309,7 +321,7 @@
   function ammoSources(type){
     const stores=save.ammunition;
     return [...activeModules('ammoAssembly').filter((module)=>(module.ammoStock?.[type]||0)>0).map((module)=>({module,stock:module.ammoStock})),
-      ...activeModules('cargo','core').filter(()=>stores[type]>0).map((module)=>({module,stock:stores}))];
+      ...activeModules('core').filter(()=>stores[type]>0).map((module)=>({module,stock:stores}))];
   }
   function reachableAmmoSources(person,type){
     return ammoSources(type).filter(({module})=>{const point=moduleStation(module);return distance(person,point)<.12||walkPath(person,point).length>0;})
@@ -319,25 +331,37 @@
     const panel=$('ammoPanel');if(!panel)return;
     const stores=$('ammoStores');if(stores)stores.textContent=`H ${save.ammunition.heavy} · M ${save.ammunition.missile}`;
     const stock=save.ammunition,assemblies=save.modules.filter((room)=>room.type==='ammoAssembly'),weapons=save.modules.filter((room)=>MODULES[room.type].ammoType);
-    panel.innerHTML=`<strong>POWERED AMMO PRODUCTION</strong><p class="muted small">Power → assembly → crew → magazine. Assign Deliver ammo / drones; empty magazines stop firing.</p><div class="ammo-stores">HEAVY ${stock.heavy} · MISSILE ${stock.missile}<small>Recovered stock · pickup at core / ammo hold</small></div>${assemblies.map((room)=>`<div class="ammo-row"><strong>ASSEMBLY ${room.id} · ${(room.ammoRecipe||'heavy').toUpperCase()}</strong><small>${room.hp<=0?'OFFLINE':systemPower(room)<=0?'NO POWER':(room.ammoStock?.[room.ammoRecipe||'heavy']||0)+AMMO[room.ammoRecipe||'heavy'].batch>24?'OUTPUT FULL':`${Math.floor((room.ammoProgress||0)/4*100)}% · ${Math.round(systemPower(room)*100)}% POWER`} · STOCK H ${room.ammoStock?.heavy||0} / M ${room.ammoStock?.missile||0}</small></div>`).join('')}${assemblies.length?'':'<p class="muted small">Buy an Ammo Assembly at a trader to make rounds.</p>'}${weapons.map((room)=>`<div class="ammo-row"><strong>${MODULES[room.type].name}</strong><small>${MODULES[room.type].ammoType.toUpperCase()} MAG ${magazineCount(room)} / ${MODULES[room.type].magazine}${room.hp<=0?' · OFFLINE':magazineCount(room)<MODULES[room.type].ammo?' · EMPTY · NEEDS LOADER':''}</small></div>`).join('')}${weapons.length?'':'<p class="muted small">Current weapons are ammo-free.</p>'}`;
+    panel.innerHTML=`<strong>POWERED AMMO PRODUCTION</strong><p class="muted small">Power → assembly → crew → magazine. Assign Deliver ammo / drones; empty magazines stop firing.</p><div class="ammo-stores">HEAVY ${stock.heavy} · MISSILE ${stock.missile}<small>Recovered stock · pickup at command core</small></div>${assemblies.map((room)=>`<div class="ammo-row"><strong>ASSEMBLY ${room.id} · ${(room.ammoRecipe||'heavy').toUpperCase()}</strong><small>${room.hp<=0?'OFFLINE':systemPower(room)<=0?'NO POWER':(room.ammoStock?.[room.ammoRecipe||'heavy']||0)+AMMO[room.ammoRecipe||'heavy'].batch>24?'OUTPUT FULL':`${Math.floor((room.ammoProgress||0)/4*100)}% · ${Math.round(systemPower(room)*100)}% POWER`} · STOCK H ${room.ammoStock?.heavy||0} / M ${room.ammoStock?.missile||0}</small></div>`).join('')}${assemblies.length?'':'<p class="muted small">Buy an Ammo Assembly at a trader to make rounds.</p>'}${weapons.map((room)=>`<div class="ammo-row"><strong>${MODULES[room.type].name}</strong><small>${MODULES[room.type].ammoType.toUpperCase()} MAG ${magazineCount(room)} / ${MODULES[room.type].magazine}${room.hp<=0?' · OFFLINE':magazineCount(room)<MODULES[room.type].ammo?' · EMPTY · NEEDS LOADER':''}</small></div>`).join('')}${weapons.length?'':'<p class="muted small">Current weapons are ammo-free.</p>'}`;
   }
   const STARTER_SHIPS = [
     {id:'wayfarer',name:'Wayfarer',role:'LIGHT PATROL',description:'Twin pulse cannons. Ammo-free weapons and agile handling.'},
-    {id:'arsenal',name:'Arsenal',role:'MISSILE FRIGATE',description:'Twin missile racks, a missile assembly and a dedicated loader.'},
-    {id:'bulwark',name:'Bulwark',role:'HEAVY GUNSHIP',description:'Twin railguns, a heavy-ammo assembly and ammunition holds.'}
+    {id:'arsenal',name:'Arsenal',role:'MISSILE FRIGATE',description:'Twin missile racks, two upgraded missile assemblies and two loaders. Six crew.'},
+    {id:'bulwark',name:'Bulwark',role:'HEAVY GUNSHIP',description:'Twin railguns, two heavy-ammo assemblies and two loaders. Six crew.'}
   ];
   function starterModules(starterId){
     const rooms=[['core',5,4,0],['engine',4,2,0],['engine',4,5,0]];
-    if(starterId==='arsenal')rooms.push(['missile',6,2,0],['missile',6,6,0],['armor',7,4,0],['smallEngine',7,1,2],['smallEngine',7,8,2],['ammoAssembly',5,6,0],['generator',5,2,1]);
-    else if(starterId==='bulwark')rooms.push(['railgun',5,2,0],['railgun',5,7,0],['cargo',5,3,0],['cargo',5,6,0],['smallEngine',8,1,2],['smallEngine',8,8,2],['ammoAssembly',7,4,0]);
+    if(starterId==='arsenal')rooms.push(['missile',6,2,0],['missile',6,6,0],['generator',7,4,1],['smallEngine',7,1,2],['smallEngine',7,8,2],['ammoAssembly',5,6,0],['ammoAssembly',5,2,0]);
+    else if(starterId==='bulwark')rooms.push(['railgun',5,2,0],['railgun',5,7,0],['ammoAssembly',5,3,1],['ammoAssembly',5,6,1],['smallEngine',8,1,2],['smallEngine',8,8,2]);
     else rooms.push(['weapon',6,3,0],['weapon',6,5,1],['smallEngine',5,2,2],['smallEngine',5,7,2]);
-    return rooms.map(([type,x,y,rotation],i)=>({id:i+1,type,x,y,rotation,hp:MODULES[type].hp,level:1,...(i===4&&starterId==='wayfarer'?{weaponFacing:1}:{}),...(type==='ammoAssembly'?{ammoRecipe:starterId==='arsenal'?'missile':'heavy'}:{})}));
+    return rooms.map(([type,x,y,rotation],i)=>({id:i+1,type,x,y,rotation,hp:MODULES[type].hp+(type==='ammoAssembly'&&starterId==='arsenal'?25:0),level:type==='ammoAssembly'&&starterId==='arsenal'?2:1,...(i===4&&starterId==='wayfarer'?{weaponFacing:1}:{}),...(type==='ammoAssembly'?{ammoRecipe:starterId==='arsenal'?'missile':'heavy'}:{}),...(MODULES[type].ammoType?{magazine:MODULES[type].magazine}:{})}));
+  }
+  function starterCrew(starterId){
+    const people=CREW.map((person)=>({...person,hp:100,hurtTime:0}));
+    if(starterId!=='wayfarer'){
+      const modules=starterModules(starterId),weapons=modules.filter((room)=>MODULES[room.type].ammoType),factories=modules.filter((room)=>room.type==='ammoAssembly');
+      Object.assign(people[0],moduleStation(weapons[0]));
+      Object.assign(people[2],moduleStation(factories[1]));
+      people.push({id:'orion',name:'ORION',initial:'O',color:'#81cee4',task:'gun',hp:100,hurtTime:0,...moduleStation(weapons[1])},
+        {id:'lyra',name:'LYRA',initial:'L',color:'#ea9baf',task:'load',hp:100,hurtTime:0,...moduleStation(factories[0])},
+        {id:'nova',name:'NOVA',initial:'N',color:'#efc27c',task:'pilot',hp:100,hurtTime:0,...moduleStation(modules[0])});
+    }
+    return people;
   }
   function newSave(starterId='wayfarer') {
     if(!STARTER_SHIPS.some((ship)=>ship.id===starterId))starterId='wayfarer';
     const modules=starterModules(starterId);
     const data={metal:90,sector:1,wins:0,nextId:modules.length+1,starterId,starterLayoutVersion:2,weaponFootprintsVersion:2,inventory:{ion:1},passengers:0,
-      modules,crew:CREW.map(({id,name,initial,color,task,x,y})=>({id,name,initial,color,task,x,y,hp:100,hurtTime:0})),map:makeMap(1)};
+      modules,crew:starterCrew(starterId),map:makeMap(1)};
     data.drones=[];normalizeSystems(data);normalizeAmmo(data);return data;
   }
   function migrateStarter(data) {
@@ -357,6 +381,7 @@
       if(data.map?.version===2)reshapeMap(data.map);
       else if(data.map?.version!==3)data.map=makeMap(data.sector||1);
       if(!data.inventory||typeof data.inventory!=='object')data.inventory={};
+      retireAmmoHolds(data);
       if(!Number.isFinite(data.passengers))data.passengers=0;
       if(!Number.isFinite(data.ammoCrates))data.ammoCrates=0;
       for (const template of CREW) {
@@ -919,11 +944,6 @@
       if(['teleporter','droneControl','droneAssembly'].includes(module.type)){g.fillStyle=module.type==='teleporter'?'#62c8ba':'#94adce';g.fillRect(px+7,py+7,10,10);g.fillStyle='#152b3a';g.fillRect(px+9,py+9,6,6);g.fillStyle='#f0e8ab';g.fillRect(px+11,py+10,2,4);}
       if(module.type==='droneAssembly'){g.fillStyle='#aa9268';g.fillRect(px+3,py+5,3,14);g.fillRect(px+4,py+3,15,3);g.fillStyle='#e3d4a7';g.fillRect(px+16,py+4,3,8);g.fillStyle='#526c7b';g.fillRect(px+9,py+10,6,5);g.fillStyle='#90d6cb';g.fillRect(px+11,py+11,2,2);}
       if(module.type==='ammoAssembly'){g.fillStyle='#49525a';g.fillRect(px+5,py+5,14,14);g.fillStyle='#b49768';g.fillRect(px+6,py+6,12,4);g.fillStyle=AMMO[module.ammoRecipe||'heavy'].color;g.fillRect(px+8,py+12,3,5);g.fillRect(px+13,py+12,3,5);}
-      if(module.type==='cargo'){
-        g.fillStyle='#865e42';g.fillRect(px+7,py+7,10,10);
-        g.fillStyle='#e9ca83';g.fillRect(px+8,py+8,8,2);g.fillRect(px+11,py+8,2,8);
-        g.fillStyle='#543d35';g.fillRect(px+8,py+13,2,2);g.fillRect(px+14,py+13,2,2);
-      }
       if(ENGINE_TYPES.includes(module.type)){
         g.fillStyle='#0d2731';g.fillRect(px+7,py+7,10,10);
         g.fillStyle='#71c9a6';g.fillRect(px+8,py+8,8,4);
@@ -1688,7 +1708,7 @@
   }
   function upgradeTraderStock(node){
     delete node.supplyPacks;
-    node.stock??=traderStock();delete node.dronePacks;
+    node.stock??=traderStock();node.stock=node.stock.filter((item)=>item.type!=='cargo');delete node.dronePacks;
     if(!Array.isArray(node.recruits))node.recruits=traderRecruits();
     node.stockVersion=9;
   }
@@ -1867,7 +1887,7 @@
   }
   function showStarterPicker(){
     $('menuConfirm').hidden=true;$('starterPicker').hidden=false;
-    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>2 reverse thrusters · 3 crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
+    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>2 reverse thrusters · ${ship.id==='wayfarer'?3:6} crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
     const original=save;
     try{
       for(const preview of $('starterLineup').querySelectorAll('canvas[data-starter-preview]')){
