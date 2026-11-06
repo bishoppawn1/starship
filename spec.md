@@ -127,7 +127,7 @@ Longer-term combat balance, additional events and resources, more module types, 
 ## Current playable version
 
 - Combat runs in real time with exactly 20 purchasable weapon designs. Weapons differ in range, arc, damage, reload time, ammunition per trigger, projectile speed, and effects. Pulse cannons, autocannons, Gatling batteries, scatter cannons, plasma/cryo/inferno projectors, lasers, ion blasters, disruptors, Tesla coils and proton lances use no ammunition. Railguns, flak, siege cannons and Gauss repeaters consume heavy ammo; missile racks, swarm launchers and torpedoes consume missile ammo from their individual magazines, waiting for loaders when empty. Catalogs and inspectors show the cost. Salvos share one trigger's ammo cost. Shots start at their muzzle. Direct-fire shots respect their configured travel limit; guided missiles have no distance cutoff. Direct fire respects its mounted arc and is blocked by hull cells, with the proton lance exception below.
-- Missile racks and swarm launchers automatically acquire enemies anywhere in the arena regardless of distance or target bearing. They launch along a clear direction within their mount’s launch arc, stay straight until they clear the hull’s projected edge, and then home toward their target. Guided missiles keep tracking until they hit a ship or wreck, can turn back from outside the arena boundary, and reacquire the nearest living enemy if their target is destroyed. They still consume ammunition. Torpedoes remain heavy unguided explosives with a finite range; other direct-fire projectile path lengths respect their configured range. Each Railgun and Gauss slug hits up to two aligned rooms, whether on one ship or two, and never damages the same room twice. An active projected enemy shield stops the slug even if excess damage reaches the first room. Proton lances pass harmlessly through the firing ship’s own hull and stop at the first enemy or wreck.
+- Missile racks and swarm launchers automatically acquire enemies anywhere in the arena regardless of distance or target bearing. They launch along a clear direction within their mount’s launch arc, stay straight until they clear the hull’s projected edge, and then home toward their target. Guided missiles keep tracking until they hit a ship or wreck, can turn back from outside the arena boundary, and reacquire the nearest living enemy if their target is destroyed. They still consume ammunition. Torpedoes remain heavy unguided explosives with a finite range; other direct-fire projectile path lengths respect their configured range. Each Railgun and Gauss slug hits up to two aligned rooms and never damages the same room twice. Those rooms may be on one enemy or separate enemies. An active projected enemy shield stops the slug even if excess damage reaches the first room. Proton lances pass harmlessly through the firing ship’s own hull and stop at the first enemy or wreck.
 - Wrecks have health (twice their radius), take direct and nearby blast damage, and disappear from collision and navigation when destroyed. Explosions at wreck surfaces also damage nearby enemies whose hull intersects the blast radius. Splash hits deal 55% damage to neighboring ships.
 - Ion hits halve the efficiency of the system nearest the impact for three seconds: weapon and core hits reduce firing efficiency, while engine hits reduce thrust. Each enemy has independent system status; ion hits do not apply a ship-wide movement debuff. Other slowing effects and burning expire after their stated durations. A gunner at any weapon station improves its fire rate.
 - The disruptor is a broad, weaker alternative to the ion blaster: a 155° firing arc, 5 direct damage, and an 80-unit pulse that reduces every live functional system touched by the pulse to 80% efficiency for two seconds. It can affect several rooms on the struck ship and nearby ships, does not slow the entire ship, and does not damage secondary rooms.
@@ -150,7 +150,7 @@ Numeric ranges below are maximum arena units; guided launchers have unlimited ra
 | Weapon | Range | Arc | Role |
 | --- | ---: | ---: | --- |
 | Pulse Cannon | 420 | 130° | General-purpose pulse fire |
-| Railgun | 580 | 50° | Pierces two aligned rooms or ships; fixed barrel |
+| Railgun | 580 | 50° | Pierces two aligned rooms; fixed barrel |
 | Autocannon | 360 | 110° | Fast accurate shells |
 | Gatling Battery | 310 | 100° | Three-round burst |
 | Flak Battery | 280 | 150° | Five explosive shells |
@@ -168,7 +168,7 @@ Numeric ranges below are maximum arena units; guided launchers have unlimited ra
 | Cryo Projector | 260 | 140° | Reduces movement to 40% for 4 seconds |
 | Inferno Projector | 230 | 130° | Burns for 5 damage per second over 4 seconds |
 | Proton Lance | 620 | 25° | Passes through own hull; stops at first enemy; fixed barrel; no ammo |
-| Gauss Repeater | 510 | 55° | Two slugs, each piercing two aligned rooms or ships; fixed barrel |
+| Gauss Repeater | 510 | 55° | Two slugs, each piercing two aligned rooms; fixed barrel |
 
 ## Weapon fitting and firing patterns
 

@@ -21,7 +21,7 @@
     smallEngine: { name: 'Compact Ion Engine', short: 'E', color: '#90c6d8', shape: [[0,0]], station: [0,0], hp: 50, cost: 22, thrust: 110, description: 'Single-cell maneuvering thruster. Low force, easy to fit at the hull edge. Keep the exhaust clear.' },
     heavyEngine: { name: 'Heavy Ion Engine', short: 'E', color: '#a7c99b', shape: [[0,0],[1,0],[0,1],[1,1],[0,2],[1,2]], station: [0,1], hp: 125, cost: 70, thrust: 620, description: 'Six-cell drive with three exhaust nozzles. High force for heavy hulls. Keep the exhaust clear.' },
     weapon: { name: 'Pulse Cannon', short: 'W', color: C.weapon, shape: [[0,0],[1,0],[1,1]], station: [1,1], mount: [1,0], muzzle: [2,.5], hp: 75, cost: 45, range: 420, arc: 130, damage: 14, reload: 1.2, ammo: 1, description: 'A crewed pulse cannon with a 130° forward firing arc.' },
-    railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range slug pierces two aligned rooms or ships within a narrow 50° arc.' },
+    railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range slug pierces two aligned rooms within a narrow 50° arc.' },
     shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:100, recharge:10, description: 'A 100-strength full-hull shield. Shared power and a crew operator improve recharge.' },
     focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:160, recharge:16, arc:105, description: 'A 160-strength shield covering a 105° sector, with faster recharge.' },
     generator: { name: 'Small Power Generator', short: 'G', color: '#e5be72', shape: [[0,0],[1,0]], station: [0,0], hp: 65, cost: 35, generation: 2, description: 'Compact two-cell generator. Adds 2 shared power; each upgrade adds 1 more. No crew or power required.' },
@@ -93,7 +93,7 @@
   for(const [type,layout] of Object.entries(WEAPON_FOOTPRINTS))Object.assign(MODULES[type],layout,{muzzle:[layout.mount[0]+1,layout.mount[1]+.5]});
   MODULES.gatling.burstInterval=.09;MODULES.gauss.burstInterval=.12;MODULES.swarm.burstInterval=.1;
   MODULES.gatling.description='Three rounds fire in a timed burst, tracking the target between shots.';
-  MODULES.gauss.description='Two magnetic slugs fire in sequence; each can pierce two aligned rooms or ships.';
+  MODULES.gauss.description='Two magnetic slugs fire in sequence; each can pierce two aligned rooms.';
   MODULES.missile.description='Automatically launches at enemies anywhere in the arena, clears your hull, then homes and explodes.';
   MODULES.swarm.description='Four guided rockets launch in sequence, then track enemies anywhere in the arena.';
   function copyFootprint(def){return {shape:def.shape.map((cell)=>[...cell]),station:def.station&&[...def.station],mount:def.mount&&[...def.mount],muzzle:def.muzzle&&[...def.muzzle]};}
@@ -772,7 +772,7 @@
     if(d.slow)rules.push(`Movement ${Math.round(d.slow*100)}% for ${d.slowDuration}s`);
     if(d.burn)rules.push(`Burn ${d.burn}/s for ${d.burnDuration}s`);
     if(d.chain)rules.push(`Chain within ${d.chain} · 50% damage`);
-    if(d.pierce)rules.push(`Pierces up to ${d.pierce+1} aligned rooms or ships`);
+    if(d.pierce)rules.push(`Pierces up to ${d.pierce+1} aligned rooms`);
     if(d.hullPass)rules.push('Own-hull passage · one enemy');
     return rules.join(' · ');
   }
