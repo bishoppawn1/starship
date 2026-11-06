@@ -143,7 +143,7 @@ test('every weapon is included in automatic combat fire and spends its own trigg
 });
 
 test('pirate rooms take their own hits and disabled systems stop working',()=>{
-  const g=game(),layout=g.enemyLayout(true),ship={x:500,y:500,angle:0,modules:layout.modules,r:layout.r,hp:201,name:'RAIDER'};
+  const g=game(),layout=g.enemyLayout(true),ship={x:500,y:500,angle:0,modules:layout.modules,r:layout.r,hp:layout.modules.reduce((sum,room)=>sum+room.hp,0),name:'RAIDER'};
   const engine=ship.modules.find((room)=>room.type==='engine'),core=ship.modules.find((room)=>room.type==='core');
   const contact=g.rayEnemyRoom({x:350,y:500},1,0,ship,250);
   assert.equal(contact.room.type,'engine');
@@ -161,7 +161,7 @@ test('a swept player projectile damages the first pirate room it crosses',()=>{
   const engine=ship.modules.find((room)=>room.type==='engine'),core=ship.modules.find((room)=>room.type==='core');
   g.fireProjectile('player',540,500,{x:850,y:500},14,400,400);
   g.updateBattle(.4,0);
-  assert.equal(engine.hp,26);assert.equal(core.hp,64);
+  assert.equal(engine.hp,engine.maxHp-14);assert.equal(core.hp,core.maxHp);
 });
 
 test('focused shield strength covers one arc and recharges faster than full-hull strength',()=>{
@@ -253,14 +253,14 @@ test('energy weapons fire with an empty ammo pool while cannons and launchers wa
 
 test('missiles acquire targets behind the launcher and clear every rotated hull before tracking',()=>{
   const g=game();
-  for(const type of ['missile','swarm'])for(let rotation=0;rotation<4;rotation++)for(let facing=0;facing<2;facing++){
-    const {b,gun}=combat(g,type);gun.rotation=rotation;gun.weaponFacing=facing;g.getSave().modules.push(gun);b.player.angle=.71;
+  for(const type of ['missile','swarm'])for(let rotation=0;rotation<4;rotation++)for(let facing=0;facing<2;facing++)for(const flipped of [false,true]){
+    const {b,gun}=combat(g,type);gun.rotation=rotation;gun.weaponFacing=facing;gun.flipped=flipped;g.getSave().modules.push(gun);b.player.angle=.71;
     const mount=g.weaponWorld(gun,b.player),target=enemy(mount.x-Math.cos(mount.direction)*250,mount.y-Math.sin(mount.direction)*250);b.enemies=[target];
     assert.ok(g.weaponCanTarget(gun,b.player,target));g.fireWeapon(gun,b.player,target);
     const shots=[...b.projectiles];assert.equal(shots.length,g.MODULES[type].salvo||1);
     for(let step=0;step<Math.ceil(((g.MODULES[type].salvo||1)-1)*(g.MODULES[type].burstInterval||0)/.02)+6;step++)g.updateBattle(.02,0);
     assert.ok(shots.every((shot)=>b.projectiles.includes(shot)),`${type} ${rotation}/${facing} exploded at launch`);
-    assert.ok(shots[0].remaining<g.MODULES[type].range,`${type} ${rotation}/${facing} lead shot did not leave the launcher`);
+    assert.ok(Math.hypot(shots[0].x-mount.x,shots[0].y-mount.y)>1,`${type} ${rotation}/${facing} lead shot did not leave the launcher`);
   }
 });
 
