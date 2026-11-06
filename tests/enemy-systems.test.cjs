@@ -13,7 +13,7 @@ function game(){
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
     globalThis.game={MODULES,ENEMY_LOADOUTS,newSave,enemyLayout,startBattle,enemyAlive,enemyWeaponMount,enemyWeaponStats,fireEnemyWeapons,
       enemyShieldState,enemyShieldStrength,absorbEnemyShields,updateEnemyShields,enemyShieldInterception,weaponImpact,fireProjectile,updateBattle,
-      hurtEnemy,enemyPath,enemySprite,drawEnemy,evasionChance,updateDrones,shieldState,moduleStation,
+      hurtEnemy,enemyPath,enemySprite,drawEnemy,evasionChance,updateDrones,shieldState,moduleStation,enemyTacticalRange,enemyTacticalGoal,clearSegment,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
       stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;},setEvasion(value){evasionChance=()=>value;}};
   })();`);
@@ -31,6 +31,22 @@ function setup(g,loadout='cannon'){
   return {save,b,enemy,shield:enemy.modules.find(m=>m.type==='shield')};
 }
 const fire=(g,enemy,damage,extra={})=>g.fireProjectile('player',enemy.x-250,enemy.y,enemy,damage,400,800,extra);
+
+test('enemy tactics use weapon range, retreat for weak shields, and orbit instead of rushing the player',()=>{
+  const g=game(),{b,enemy,shield}=setup(g,'cannon');enemy.speed=80;enemy.orbitSign=1;
+  const cannonRange=g.enemyTacticalRange(enemy),missile=ship(g,'missile');
+  assert.ok(cannonRange>=320);assert.ok(g.enemyTacticalRange(missile)>cannonRange+100);
+  shield.charge=10;assert.ok(g.enemyTacticalRange(enemy)>cannonRange+50);shield.charge=100;
+  enemy.x=680;enemy.y=800;enemy.pathTimer=0;g.updateBattle(.5,0);assert.ok(enemy.x>680,'a close raider should back away');
+  enemy.x=1400;enemy.y=800;enemy.path=[];enemy.pathTimer=0;g.updateBattle(.5,0);assert.ok(enemy.x<1400,'a distant raider should close');
+  enemy.x=500+cannonRange;enemy.y=800;enemy.path=[];enemy.pathTimer=0;g.updateBattle(.5,0);
+  assert.ok(Math.abs(enemy.y-800)>5,'a raider in range should move sideways');
+  for(let i=0;i<30;i++)g.updateBattle(.1,0);
+  assert.ok(Math.abs(enemy.y-800)>35,'the orbit should continue in one direction');
+  b.asteroids=[{x:1100,y:800,r:40,hp:80,maxHp:80}];enemy.x=1400;enemy.y=800;enemy.path=[];enemy.pathTimer=0;
+  g.updateBattle(.1,0);assert.ok(enemy.path.length>1,'wreckage should alter the tactical route');
+  let previous={x:1400,y:800};for(const waypoint of enemy.path){assert.ok(g.clearSegment(previous,waypoint,enemy.r,b.asteroids));previous=waypoint;}
+});
 
 test('all enemy loadouts have connected shield rooms and distinct usable weapon mounts',()=>{
   const g=game();for(const heavy of [false,true])for(const loadout of Object.keys(g.ENEMY_LOADOUTS)){

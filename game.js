@@ -21,7 +21,7 @@
     smallEngine: { name: 'Compact Ion Engine', short: 'E', color: '#90c6d8', shape: [[0,0]], station: [0,0], hp: 50, cost: 22, thrust: 110, description: 'Single-cell maneuvering thruster. Low force, easy to fit at the hull edge. Keep the exhaust clear.' },
     heavyEngine: { name: 'Heavy Ion Engine', short: 'E', color: '#a7c99b', shape: [[0,0],[1,0],[0,1],[1,1],[0,2],[1,2]], station: [0,1], hp: 125, cost: 70, thrust: 620, description: 'Six-cell drive with three exhaust nozzles. High force for heavy hulls. Keep the exhaust clear.' },
     weapon: { name: 'Pulse Cannon', short: 'W', color: C.weapon, shape: [[0,0],[1,0],[1,1]], station: [1,1], mount: [1,0], muzzle: [2,.5], hp: 75, cost: 45, range: 420, arc: 130, damage: 14, reload: 1.2, ammo: 1, description: 'A crewed pulse cannon with a 130° forward firing arc.' },
-    railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range damage through a narrow 50° firing arc.' },
+    railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range slug pierces two aligned rooms or ships within a narrow 50° arc.' },
     shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:100, recharge:10, description: 'A 100-strength full-hull shield. Shared power and a crew operator improve recharge.' },
     focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:160, recharge:16, arc:105, description: 'A 160-strength shield covering a 105° sector, with faster recharge.' },
     generator: { name: 'Small Power Generator', short: 'G', color: '#e5be72', shape: [[0,0],[1,0]], station: [0,0], hp: 65, cost: 35, generation: 2, description: 'Compact two-cell generator. Adds 2 shared power; each upgrade adds 1 more. No crew or power required.' },
@@ -93,7 +93,7 @@
   for(const [type,layout] of Object.entries(WEAPON_FOOTPRINTS))Object.assign(MODULES[type],layout,{muzzle:[layout.mount[0]+1,layout.mount[1]+.5]});
   MODULES.gatling.burstInterval=.09;MODULES.gauss.burstInterval=.12;MODULES.swarm.burstInterval=.1;
   MODULES.gatling.description='Three rounds fire in a timed burst, tracking the target between shots.';
-  MODULES.gauss.description='Two magnetic slugs fire in sequence; each can pierce two ships.';
+  MODULES.gauss.description='Two magnetic slugs fire in sequence; each can pierce two aligned rooms or ships.';
   MODULES.missile.description='Automatically launches at enemies anywhere in the arena, clears your hull, then homes and explodes.';
   MODULES.swarm.description='Four guided rockets launch in sequence, then track enemies anywhere in the arena.';
   function copyFootprint(def){return {shape:def.shape.map((cell)=>[...cell]),station:def.station&&[...def.station],mount:def.mount&&[...def.mount],muzzle:def.muzzle&&[...def.muzzle]};}
@@ -717,7 +717,7 @@
     if(d.slow)rules.push(`Movement ${Math.round(d.slow*100)}% for ${d.slowDuration}s`);
     if(d.burn)rules.push(`Burn ${d.burn}/s for ${d.burnDuration}s`);
     if(d.chain)rules.push(`Chain within ${d.chain} · 50% damage`);
-    if(d.pierce)rules.push(`Hits up to ${d.pierce+1} ships`);
+    if(d.pierce)rules.push(`Pierces up to ${d.pierce+1} aligned rooms or ships`);
     if(d.hullPass)rules.push('Own-hull passage · one enemy');
     return rules.join(' · ');
   }
@@ -2055,13 +2055,13 @@
       return range(a)-range(b);
     })[0];
   }
-  function rayEnemyRoom(origin,dx,dy,enemy,limit){
+  function rayEnemyRoom(origin,dx,dy,enemy,limit,ignoredRooms=null){
     if(!enemy.modules?.length){const entry=rayCircle(origin,dx,dy,enemy,enemy.r);return {distance:entry,room:null};}
     const cos=Math.cos(enemy.angle),sin=Math.sin(enemy.angle),ox=origin.x-enemy.x,oy=origin.y-enemy.y;
     const x=ox*cos+oy*sin,y=-ox*sin+oy*cos,vx=dx*cos+dy*sin,vy=-dx*sin+dy*cos;
     let nearest=limit,roomHit=null;
     for(const room of enemy.modules){
-      if(room.hp<=0)continue;
+      if(room.hp<=0||ignoredRooms?.has(room))continue;
       for(const [cx,cy] of room.cells){
         let entry=-Infinity,exit=Infinity;
         for(const [start,delta,min] of [[x,vx,cx*ENEMY_TILE-ENEMY_TILE/2],[y,vy,cy*ENEMY_TILE-ENEMY_TILE/2]]){
@@ -2095,7 +2095,7 @@
       const layout=layouts[i],modules=layout.modules;
       for(const room of modules)if(room.type==='weapon')room.cooldown=rand(.7,1.5);
       const hp=modules.reduce((sum,room)=>sum+room.hp,0);
-      enemies.push({x:world.w*.5+220+i*70,y:world.h*.5+(count===1?0:i===0?-135:135),angle:Math.PI,hp,maxHp:hp,r:layout.r,modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),loadout:layout.loadout,ammo:18+save.sector*4,name:`${ENEMY_LOADOUTS[layout.loadout].name} ${kind==='rescue'?'SKIFF':'RAIDER'}`});
+      enemies.push({x:world.w*.5+220+i*70,y:world.h*.5+(count===1?0:i===0?-135:135),angle:Math.PI,hp,maxHp:hp,r:layout.r,modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),orbitSign:i%2?-1:1,loadout:layout.loadout,ammo:18+save.sector*4,name:`${ENEMY_LOADOUTS[layout.loadout].name} ${kind==='rescue'?'SKIFF':'RAIDER'}`});
     }
     const player={x:world.w*.5-260,y:world.h*.5,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,path:[],selected:false,r:shipRadius(),thrusters:{}};
     // Stocks and magazines persist: entering combat never creates ammunition.
@@ -2279,7 +2279,7 @@
   }
   function fireProjectile(owner,x,y,target,damage,speed,range=speed*2.3,options={}){
     const angle=options.angle??Math.atan2(target.y-y,target.x-x);
-    battle.projectiles.push({owner,x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,damage,life:range/speed,remaining:range,hitIds:new Set(),...options});
+    battle.projectiles.push({owner,x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,damage,life:range/speed,remaining:range,hitIds:new Set(),hitRooms:new Set(),...options});
   }
   function weaponAim(weapon,player,target){
     const mount=weaponWorld(weapon,player),base=weaponGeometry(weapon).direction,def=MODULES[weapon.type];
@@ -2505,6 +2505,24 @@
     if(target.hp===0){log(`${MODULES[target.type].name} disabled!`);toast(`${MODULES[target.type].name} disabled!`);}
     if(save.modules.find((module)=>module.type==='core').hp<=0)finishBattle(false);
   }
+  function enemyTacticalRange(enemy){
+    const weapons=enemy.modules?.length?enemy.modules.filter((room)=>room.type==='weapon'&&room.hp>0):[enemy];
+    if(!weapons.length)return 560;
+    const average=weapons.reduce((sum,room)=>sum+Math.min(650,enemyWeaponStats(room).range),0)/weapons.length;
+    const shield=enemyShieldRooms(enemy).find((room)=>room.hp>0);
+    const retreat=shield&&enemyShieldState(enemy,shield).charge<shield.capacity*.25?75:0;
+    return clamp(average*.8+retreat,320,600);
+  }
+  function enemyTacticalGoal(enemy,player,rocks,world){
+    const preferred=enemyTacticalRange(enemy),dist=distance(enemy,player),bearing=Math.atan2(enemy.y-player.y,enemy.x-player.x);
+    const sign=enemy.orbitSign??(Math.sin(enemy.phase||0)>=0?1:-1);
+    const offsets=dist<preferred-55?[0,sign*.25,-sign*.25]:dist>preferred+90?[sign*.22,0,-sign*.22]:[sign*.45,sign*.75,-sign*.45];
+    const choices=offsets.map((offset,index)=>{
+      const angle=bearing+offset,goal=safePoint({x:player.x+Math.cos(angle)*preferred,y:player.y+Math.sin(angle)*preferred},enemy.r,rocks,world);
+      return {goal,score:distance(enemy,goal)+index*30+(clearSegment(goal,player,4,rocks)?0:350)};
+    });
+    return choices.sort((a,b)=>a.score-b.score)[0].goal;
+  }
   function updateBattle(dt,time){
     if(!battle)return;const b=battle,p=b.player;b.shake=Math.max(0,b.shake-dt);
     navigatePlayer(dt);updateShields(dt);updateBoarding(dt);updateDrones(dt);
@@ -2532,20 +2550,19 @@
       fireWeapon(weapon,p,target);
     }
     for(const enemy of living){
-      const dx=p.x-enemy.x,dy=p.y-enemy.y,dist=Math.hypot(dx,dy)||1;
       const speed=enemy.speed*(enemy.slowTime>0?enemy.slowFactor:1)*enemySystemEfficiency(enemy,'engine');
-      enemy.pathTimer-=dt;enemy.moving=speed>0&&dist>220;
+      const goal=enemyTacticalGoal(enemy,p,b.asteroids,b.world);
+      enemy.pathTimer-=dt;enemy.moving=speed>0&&distance(enemy,goal)>18;
       if(enemy.moving){
         if(enemy.pathTimer<=0||!enemy.path.length){
-          const goal=safePoint(p,enemy.r,b.asteroids,b.world);
           enemy.path=routeAroundRocks(enemy,goal,enemy.r,b.asteroids,b.world);enemy.pathTimer=1.2;
         }
         if(enemy.path.length>1&&distance(enemy,enemy.path[0])<14)enemy.path.shift();
         const waypoint=enemy.path[0];
-        if(waypoint){const vx=waypoint.x-enemy.x,vy=waypoint.y-enemy.y,length=Math.hypot(vx,vy)||1;enemy.x+=vx/length*speed*dt;enemy.y+=vy/length*speed*dt;}
-      }else{enemy.x+=Math.cos(time*.001+enemy.phase)*speed*.32*dt;enemy.y+=Math.sin(time*.001+enemy.phase)*speed*.32*dt;}
+        if(waypoint){const vx=waypoint.x-enemy.x,vy=waypoint.y-enemy.y,length=Math.hypot(vx,vy)||1,step=Math.min(length,speed*dt);enemy.x+=vx/length*step;enemy.y+=vy/length*step;}
+      }
       if(resolveRockCollision(enemy,b.asteroids,b.world))enemy.pathTimer=0;
-      enemy.angle+=clamp(angleDifference(enemy.angle,Math.atan2(dy,dx)),-dt*2,dt*2);
+      enemy.angle+=clamp(angleDifference(enemy.angle,Math.atan2(p.y-enemy.y,p.x-enemy.x)),-dt*2,dt*2);
       fireEnemyWeapons(enemy,dt);
     }
     for(let i=b.projectiles.length-1;i>=0;i--){
@@ -2582,7 +2599,7 @@
         if(shot.evaded&&shot.guidance){shot.guidance=0;shot.remaining=Math.min(shot.remaining,600);}
         if(shot.evaded)(b.effects??=[]).push({x:p.x,y:p.y-p.r-20,text:'MISS',color:'#9ce5df',time:.6,duration:.6});
       }
-      let stop=travel,hit=false,target=null,hitRock=null,hitRoom=null,hitDrone=null,shielded=false,shieldAngle=0;
+      let stop=travel,hit=false,target=null,hitRock=null,hitRoom=null,hitDrone=null,shielded=false,shieldedEnemy=false,shieldAngle=0;
       if(shot.owner==='player'&&!shot.hullPass){
         const blocked=hullRay(worldToHull(shot,p),Math.atan2(dy,dx)-p.angle,save.modules.flatMap(moduleCells),travel/COMBAT_TILE)*COMBAT_TILE;
         if(blocked<travel-1e-7){stop=blocked;hit=true;}
@@ -2593,9 +2610,10 @@
       }
       const targets=shot.owner==='player'?b.enemies.filter((enemy)=>enemyAlive(enemy)&&!shot.hitIds.has(enemy)):(shot.evaded?[]:[p]);
       for(const candidate of targets){
-        const contact=shot.owner==='player'?(enemyShieldInterception(candidate,shot,dx,dy,stop)||rayEnemyRoom(shot,dx,dy,candidate,stop)):{distance:rayCircle(shot,dx,dy,candidate,candidate.r*.82),room:null};
+        const barrier=shot.owner==='player'?enemyShieldInterception(candidate,shot,dx,dy,stop):null;
+        const contact=shot.owner==='player'?(barrier||rayEnemyRoom(shot,dx,dy,candidate,stop,shot.hitRooms)):{distance:rayCircle(shot,dx,dy,candidate,candidate.r*.82),room:null};
         const entry=contact.distance;
-        if(entry<stop||(!hit&&entry<=stop)){stop=entry;hit=true;target=candidate;hitRock=null;hitRoom=contact.room;}
+        if(entry<stop||(!hit&&entry<=stop)){stop=entry;hit=true;target=candidate;hitRock=null;hitRoom=contact.room;shieldedEnemy=!!barrier;}
       }
       if(shot.owner==='enemy'&&!shot.evaded){
         const shield=shieldInterception(shot,dx,dy,p,stop);
@@ -2607,8 +2625,12 @@
       shot.x+=dx*stop;shot.y+=dy*stop;shot.remaining-=stop;shot.life-=step;shot.muzzleClearance=Math.max(0,(shot.muzzleClearance||0)-stop);shot.launchRemaining=Math.max(0,(shot.launchRemaining||0)-stop);
       if(hitDrone){hitDrone.hp=Math.max(0,hitDrone.hp-shot.damage);}
       else if(target&&shot.owner==='player'){
-        const penetrated=weaponImpact(shot,target,null,hitRoom);shot.hitIds.add(target);
-        if(penetrated&&shot.pierce>0){shot.pierce--;hit=false;}
+        const penetrated=weaponImpact(shot,target,null,hitRoom);
+        if(hitRoom)shot.hitRooms.add(hitRoom);else shot.hitIds.add(target);
+        if(penetrated&&shot.pierce>0&&!shieldedEnemy){
+          shot.pierce--;hit=false;
+          (b.effects??=[]).push({x:shot.x,y:shot.y,r:14,color:shot.color||'#d5e6f2',time:.18,duration:.18});
+        }
       }else if(target){const remaining=shielded?absorbShields(shot.damage,shieldAngle):shot.damage;if(remaining>0)damagePlayer(remaining,shot);if(!battle)return;}
       else if(hit&&shot.owner==='player')weaponImpact(shot,null,hitRock);
       else if(hitRock)damageAsteroid(hitRock,shot.damage);

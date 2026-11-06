@@ -87,5 +87,5 @@ test('each weapon has a distinct drawn silhouette, including pods and torpedo tu
 
 test('UI behavior details are derived from the real burst, guidance, and status settings',()=>{
   const g=game();assert.ok(g.weaponBehavior('gatling').includes('0.09s apart'));assert.ok(g.weaponBehavior('missile').includes('Homing'));assert.ok(g.weaponBehavior('torpedo').includes('Unguided'));
-  assert.ok(g.weaponBehavior('ion').includes('50% for 3s'));assert.ok(g.weaponBehavior('inferno').includes('5/s for 4s'));assert.ok(g.weaponBehavior('railgun').includes('2 ships'));
+  assert.ok(g.weaponBehavior('ion').includes('50% for 3s'));assert.ok(g.weaponBehavior('inferno').includes('5/s for 4s'));assert.ok(g.weaponBehavior('railgun').includes('2 aligned rooms or ships'));
 });
