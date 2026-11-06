@@ -6,14 +6,14 @@ const path=require('node:path');
 function game(){
   const sandbox={Math,performance:{now:()=>0},localStorage:{getItem:()=>null},document:{getElementById:()=>({getContext:()=>({})}),createElement:()=>({getContext:()=>({})})}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
-    globalThis.game={newSave,navigatePlayer,engineThrusters,angleForAvailableTorque,angleDifference,shipRadius,routeAroundRocks,
+    globalThis.game={newSave,navigatePlayer,engineThrusters,angleForAvailableTorque,angleDifference,shipRadius,routeAroundRocks,orderMove,
       setSave(value){save=value;},setBattle(value){battle=value;}};
   })();`);
   vm.runInNewContext(source,sandbox);return sandbox.game;
 }
 function setup(starter='wayfarer',rest={}){
   const g=game(),save=g.newSave(starter);g.setSave(save);
-  const player={x:1000,y:1000,angle:0,vx:0,vy:0,omega:0,targetAngle:0,dest:null,path:[],thrusters:{},r:g.shipRadius(),...rest};
+  const player={x:1000,y:1000,angle:0,vx:0,vy:0,omega:0,targetAngle:0,dest:null,path:[],thrusters:{},selected:true,r:g.shipRadius(),...rest};
   const battle={player,asteroids:[],world:{w:3000,h:3000}};g.setBattle(battle);return {g,save,player,battle};
 }
 function fly(g,player,seconds=120){
@@ -36,9 +36,11 @@ for(const starter of ['wayfarer','arsenal','bulwark'])test(`${starter} arrives a
     const {g,player}=setup(starter,{targetAngle}),destination={x:player.x+dx,y:player.y+dy};player.dest={...destination};player.path=[{...destination}];
     const result=fly(g,player);
     assert.equal(player.dest,null,`${starter} ${dx},${dy}: ${Math.hypot(player.x-destination.x,player.y-destination.y).toFixed(1)} away after ${result.seconds}s, ${result.turning.toFixed(1)} radians turning`);
-    assert.ok(Math.hypot(player.x-destination.x,player.y-destination.y)<25);
+    assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);
     assert.ok(Math.abs(g.angleDifference(player.angle,targetAngle))<.06,`arrival angle ${player.angle}, requested ${targetAngle}`);
-    assert.ok(Math.hypot(player.vx,player.vy)<2);
+    assert.equal(player.vx,0);assert.equal(player.vy,0);assert.equal(player.omega,0);assert.equal(player.angle,targetAngle);
+    for(let frame=0;frame<300;frame++)g.navigatePlayer(1/60);
+    assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);assert.equal(player.angle,targetAngle);assert.equal(Object.keys(player.thrusters).length,0);
     assert.ok(result.turning<Math.PI*6,`excessive turning: ${result.turning}`);
   }
 });
@@ -62,7 +64,7 @@ test('a destination change during translation settles at the new requested pose'
   const {g,player}=setup('bulwark');player.dest={x:1400,y:1200};player.path=[{...player.dest}];
   for(let frame=0;frame<180;frame++)g.navigatePlayer(1/60);
   const destination={x:850,y:1250};player.dest={...destination};player.path=[{...destination}];player.targetAngle=-.5;
-  const result=fly(g,player,160);assert.equal(player.dest,null);assert.ok(Math.hypot(player.x-destination.x,player.y-destination.y)<25);
+  const result=fly(g,player,160);assert.equal(player.dest,null);assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);
   assert.ok(Math.abs(g.angleDifference(player.angle,-.5))<.06);assert.ok(result.turning<Math.PI*6);
 });
 
@@ -71,5 +73,51 @@ test('a ship follows its wreck-avoidance waypoints and completes the move order'
   player.dest={...destination};player.path=g.routeAroundRocks(player,player.dest,player.r,battle.asteroids,battle.world);
   assert.ok(player.path.length>1);const result=fly(g,player,180);
   assert.equal(player.dest,null,`still ${Math.hypot(player.x-destination.x,player.y-destination.y)} away after ${result.seconds}s`);
-  assert.ok(Math.hypot(player.x-destination.x,player.y-destination.y)<25);
+  assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);
+});
+
+test('the final approach eases onto fractional coordinates and remains exactly stopped',()=>{
+  const {g,player}=setup('wayfarer',{x:1007.25,y:1002.75});const destination={x:1000.125,y:1000.375};
+  player.dest={...destination};player.path=[{...destination}];g.navigatePlayer(1/60);
+  assert.ok(player.arrival);assert.ok(player.x>destination.x&&player.x<1007.25);assert.notEqual(player.dest,null);
+  for(let frame=0;frame<30;frame++)g.navigatePlayer(1/60);
+  assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);assert.equal(player.dest,null);
+  for(let frame=0;frame<600;frame++)g.navigatePlayer(1/60);
+  assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);assert.equal(player.vx,0);assert.equal(player.vy,0);assert.equal(player.omega,0);
+});
+
+test('a ship holds the exact point while finishing its selected arrival rotation',()=>{
+  const {g,player}=setup('arsenal',{x:1006,y:1001,targetAngle:Math.PI/2}),destination={x:1000,y:1000};
+  player.dest={...destination};player.path=[{...destination}];for(let frame=0;frame<30;frame++)g.navigatePlayer(1/60);
+  assert.equal(player.x,1000);assert.equal(player.y,1000);assert.notEqual(player.dest,null);
+  assert.ok(Math.abs(g.angleDifference(player.angle,player.targetAngle))>.01);
+  fly(g,player);assert.equal(player.x,1000);assert.equal(player.y,1000);assert.equal(player.angle,Math.PI/2);assert.equal(player.omega,0);assert.equal(player.dest,null);
+});
+
+test('a new move cancels the arrival hold immediately, including during final correction',()=>{
+  for(const settlingFrames of [1,40]){
+    const {g,player}=setup('wayfarer',{x:1007,y:1000});g.orderMove({x:1000,y:1000});
+    for(let frame=0;frame<settlingFrames;frame++)g.navigatePlayer(1/60);assert.ok(player.arrival);
+    const destination={x:1250.25,y:1100.5};g.orderMove(destination);assert.equal(player.arrival,null);
+    fly(g,player);assert.equal(player.dest,null);assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);
+  }
+});
+
+test('a fast pass near the destination cannot trigger a premature arrival correction',()=>{
+  const {g,player}=setup('wayfarer',{x:1005,y:1000,vx:35});player.dest={x:1000,y:1000};player.path=[{...player.dest}];g.navigatePlayer(1/60);
+  assert.ok(!player.arrival);assert.notEqual(player.dest,null);
+});
+
+test('clicks inside a wreck still finish exactly at the adjusted reachable destination',()=>{
+  const {g,player,battle}=setup('wayfarer');battle.asteroids=[{x:1250,y:1000,r:35}];g.orderMove({x:1249,y:1000});
+  const destination={...player.dest};assert.notEqual(destination.x,1249);
+  fly(g,player,180);assert.equal(player.dest,null);assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);
+  assert.ok(Math.hypot(player.x-1250,player.y-1000)>35+player.r);
+});
+
+test('changing arrival rotation after stopping turns in place and settles exactly again',()=>{
+  const {g,player}=setup('wayfarer',{x:1005,y:1000});g.orderMove({x:1000,y:1000});
+  for(let frame=0;frame<30;frame++)g.navigatePlayer(1/60);assert.equal(player.dest,null);
+  player.targetAngle=.6;for(let frame=0;frame<1800;frame++)g.navigatePlayer(1/60);
+  assert.equal(player.x,1000);assert.equal(player.y,1000);assert.equal(player.angle,.6);assert.equal(player.omega,0);assert.equal(player.vx,0);assert.equal(player.vy,0);
 });
