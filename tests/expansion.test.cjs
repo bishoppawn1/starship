@@ -75,11 +75,11 @@ test('artwork follows translated hulls and scales its backing texture without li
   g.startBattle('pirate');assert.ok(g.getBattle().world.w>=g.shipRadius()*6+400);
 });
 
-test('weapon draws can repeat, aggregate quantities, omit other types, and never restock on revisit',()=>{
-  const g=game();g.math.random=()=>0;const stock=g.traderStock(),weapons=stock.filter((offer)=>g.MODULES[offer.type].range);
-  assert.equal(weapons.length,1);assert.equal(weapons[0].qty,5);
+test('trader draws can repeat, aggregate quantities, omit other types, and never restock on revisit',()=>{
+  const g=game();g.math.random=()=>0;const stock=g.traderStock();
+  assert.equal(stock.length,1);assert.equal(stock[0].qty,4);
   const save=g.newSave();save.metal=1000;g.setSave(save);const node={type:'trader',stockVersion:4,stock};g.openTrader(node);
-  assert.equal(g.buyTraderItem(weapons[0].type),true);assert.equal(weapons[0].qty,4);
+  assert.equal(g.buyTraderItem(stock[0].type),true);assert.equal(stock[0].qty,3);
   const before=JSON.stringify(node);g.openTrader(node);assert.equal(JSON.stringify(node),before);
 });
 
@@ -168,7 +168,7 @@ test('combat sends only damage beyond the remaining shield strength to the hull'
 
 test('purchased generators contribute only after installation and survive save/load without restocking',()=>{
   const g=game(),save=g.newSave();save.metal=500;g.setSave(save);
-  const node=save.map.nodes.find((n)=>n.type==='trader');g.openTrader(node);
+  const node=save.map.nodes.find((n)=>n.type==='trader');node.stock=[{type:'generator',qty:2,price:35}];g.openTrader(node);
   const offer=node.stock.find((item)=>item.type==='generator'),qty=offer.qty,metal=save.metal;
   assert.ok(offer);assert.equal(g.buyTraderItem('generator'),true);
   assert.equal(save.inventory.generator,1);assert.equal(offer.qty,qty-1);assert.equal(save.metal,metal-offer.price);assert.equal(g.totalPower(),8);
@@ -200,10 +200,10 @@ test('stacked generators raise equal system performance and lose output only whe
   g.persist();g.setSave(g.loadSave());assert.equal(g.totalPower(),14);
 });
 
-test('older traders gain a generator offer once while retaining other stock and sold-out generators',()=>{
+test('older traders keep sold-out stock without gaining guaranteed generator offers',()=>{
   const g=game(),node={type:'trader',stockVersion:4,stock:[{type:'weapon',qty:0,price:51},{type:'shield',qty:0,price:53}]};
-  g.upgradeTraderStock(node);assert.ok(node.stockVersion>=5);
+  g.upgradeTraderStock(node);assert.ok(node.stockVersion>=9);
   assert.deepEqual(node.stock[0],{type:'weapon',qty:0,price:51});assert.equal(node.stock[1].qty,0);
-  const offer=node.stock.find((item)=>item.type==='generator');assert.equal(offer.qty,1);assert.equal(offer.price,g.MODULES.generator.cost);
-  offer.qty=0;const before=JSON.stringify(node);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node),before);
+  assert.equal(node.stock.length,2);
+  const before=JSON.stringify(node);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node),before);
 });

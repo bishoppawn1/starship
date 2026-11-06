@@ -72,20 +72,18 @@ test('Tesla system damage and arc endpoints follow a rotated ship',()=>{
   near(b.effects[0].to.x,800);near(b.effects[0].to.y,544);assert.equal(first.hp,94);
 });
 
-test('new traders always carry every shield type and saved traders gain missing offers once',()=>{
+test('saved traders keep their shield selection and sold offers',()=>{
   const g=game();
-  for(let i=0;i<50;i++)for(const type of g.SHIELD_TYPES)assert.ok(g.traderStock().some((offer)=>offer.type===type&&offer.qty>0));
   for(const stockVersion of [2,3]){
-    const node={stockVersion,stock:[{type:'engine',qty:0,price:29}]};g.upgradeTraderStock(node);
-    for(const type of g.SHIELD_TYPES)assert.equal(node.stock.find((offer)=>offer.type===type).qty,1);
-    const shield=node.stock.find((offer)=>offer.type==='shield');shield.qty=0;shield.price=43;
-    const before=JSON.stringify(node);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node),before);assert.equal(shield.qty,0);assert.equal(shield.price,43);
+    const node={stockVersion,stock:[{type:'engine',qty:0,price:29},{type:'shield',qty:0,price:43}]};g.upgradeTraderStock(node);
+    assert.equal(node.stock.length,2);
+    const before=JSON.stringify(node);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node),before);assert.equal(node.stock[1].qty,0);assert.equal(node.stock[1].price,43);
   }
 });
 
 test('shield cards appear first, filter correctly, and can be bought from a saved trader',()=>{
   const g=game(),save=g.newSave();save.metal=250;g.setSave(save);
-  const node={type:'trader',stockVersion:3,stock:[{type:'weapon',qty:1,price:45}]};g.openTrader(node);
+  const node={type:'trader',stockVersion:3,stock:[{type:'weapon',qty:1,price:45},...g.SHIELD_TYPES.map(type=>({type,qty:1,price:g.MODULES[type].cost}))]};g.openTrader(node);
   let catalog=g.elements.get('catalog').innerHTML;assert.ok(catalog.indexOf('SHIELD')<catalog.indexOf('PULSE CANNON'));
   g.filter('shields');catalog=g.elements.get('catalog').innerHTML;assert.ok(!catalog.includes('PULSE CANNON'));
   for(const type of g.SHIELD_TYPES){
