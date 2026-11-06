@@ -15,7 +15,7 @@ function game(){
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
     globalThis.game={MODULES,newSave,loadSave,persist,normalizeCrew,crewAlive,crewHome,crewStatus,moduleStation,moduleCells,crewWorkPlan,crewAtStation,updateCrew,
       selectCrew,orderCrewMove,orderCrewWorld,hullPointWorld,selectCrewAtWorld,resumeCrewJob,hurtCrew,damagePlayer,hurtEnemy,enemyLayout,enemyAlive,
-      boardCrew,tryBoardCrew,boardingReady,recallCrew,recoverBoarders,orderBoardedRoom,updateBoarding,deployDrone,updateDrones,buyDroneParts,finishBattle,returnToMainMenu,
+      boardCrew,tryBoardCrew,boardingReady,recallCrew,recoverBoarders,orderBoardedRoom,updateBoarding,updateDroneAssembly,updateDrones,droneBayClear,setDroneDesign,finishBattle,returnToMainMenu,
       fireProjectile,updateBattle,openTrader,systemPower,renderCrew,renderOperations,renderCrewOrders,crewRoutes,
       setSave(value){save=value;for(const id of Object.keys(crewRoutes))delete crewRoutes[id];},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
       setMode(value){mode=value;},setScreen(value){screen=value;},stubFlight(){navigatePlayer=()=>{};}};
@@ -35,9 +35,9 @@ function setup(g){
 }
 function settle(g){for(let i=0;i<200;i++)g.updateCrew(.05);}
 
-test('old saves gain living crew and drone parts without reviving dead crew on reload',()=>{
+test('old saves gain living crew and discard obsolete drone parts without reviving dead crew on reload',()=>{
   const g=game(),save=g.newSave();delete save.droneParts;delete save.crew[0].hp;save.crew[1].hp=0;save.crew[1].aboard={enemy:0};g.setSave(save);g.persist();
-  const loaded=g.loadSave();assert.equal(loaded.crew[0].hp,100);assert.equal(loaded.crew[1].hp,0);assert.equal(loaded.crew[1].aboard,undefined);assert.equal(loaded.droneParts,5);
+  const loaded=g.loadSave();assert.equal(loaded.crew[0].hp,100);assert.equal(loaded.crew[1].hp,0);assert.equal(loaded.crew[1].aboard,undefined);assert.equal(loaded.droneParts,undefined);assert.ok(Array.isArray(loaded.drones));
 });
 
 test('crew damage is localized to the struck room and natural healing respects its delay',()=>{
@@ -91,35 +91,6 @@ test('surviving boarders are recovered at encounter end and on main-menu exit',(
   const g=game(),{save,person}=setup(g);Object.assign(person,g.moduleStation(save.modules[1]));g.boardCrew(person.id,0);g.finishBattle(true);assert.equal(person.aboard,undefined);assert.equal(save.wins,1);
   const next=setup(g);Object.assign(next.person,g.moduleStation(next.save.modules[1]));g.boardCrew(next.person.id,0);g.setScreen('playing');g.returnToMainMenu();assert.equal(next.person.aboard,undefined);assert.equal(g.getBattle(),null);
 });
-
-test('drone deployment consumes parts, enforces bay capacity and does not refund destroyed drones',()=>{
-  const g=game(),{save,battle}=setup(g);assert.equal(g.deployDrone('combat'),true);assert.equal(g.deployDrone('defense'),true);assert.equal(g.deployDrone('repair'),false);assert.equal(save.droneParts,3);
-  battle.drones[0].hp=0;assert.equal(g.deployDrone('repair'),true);assert.equal(save.droneParts,2);
-  save.modules[2].level=2;assert.equal(g.deployDrone('boarding'),true);assert.equal(save.droneParts,1);
-  save.modules[2].hp=0;assert.equal(g.deployDrone('combat'),false);assert.equal(save.droneParts,1);
-});
-
-test('combat drones fire real damage and defense drones intercept incoming fire',()=>{
-  const g=game(),{battle,enemy}=setup(g);g.deployDrone('combat');battle.drones[0].angle=Math.PI-1.1;g.updateDrones(1);assert.equal(battle.projectiles.length,0);battle.drones[0].angle=-1.1;g.updateDrones(1);assert.ok(battle.projectiles.some((shot)=>shot.owner==='player'&&shot.drone));
-  const before=enemy.hp;for(let i=0;i<20;i++)g.updateBattle(.05,0);assert.ok(enemy.hp<before);
-  g.deployDrone('defense');const defense=battle.drones[1];defense.cooldown=0;
-  g.fireProjectile('enemy',battle.player.x+150,battle.player.y,battle.player,20,100,400);const incoming=battle.projectiles.at(-1);g.updateDrones(.01);assert.ok(!battle.projectiles.includes(incoming));
-});
-
-test('disabled bays pause drones, repairs restore rooms, and boarding drones obey power',()=>{
-  const g=game(),{save,battle,enemy}=setup(g);g.deployDrone('repair');const drone=battle.drones[0];save.modules[0].hp=100;
-  for(let i=0;i<100;i++)g.updateDrones(.1);assert.ok(save.modules[0].hp>100);
-  save.modules[2].hp=0;const before=save.modules[0].hp;g.updateDrones(10);near(save.modules[0].hp,before);
-  save.modules[2].hp=75;g.deployDrone('boarding');const weapon=enemy.modules.find((room)=>room.type==='weapon'),hp=weapon.hp;g.updateBoarding(1);assert.ok(weapon.hp<hp);
-  save.modules[2].hp=0;const stopped=weapon.hp;g.updateBoarding(1);near(weapon.hp,stopped);
-});
-
-test('drone parts are limited persistent trader stock and do not refill on revisit',()=>{
-  const g=game(),save=g.newSave();save.metal=100;g.setSave(save);const node=save.map.nodes.find((node)=>node.type==='trader');g.openTrader(node);
-  assert.equal(g.buyDroneParts(),true);assert.equal(g.buyDroneParts(),true);assert.equal(g.buyDroneParts(),false);assert.equal(save.droneParts,11);assert.equal(save.metal,70);
-  g.persist();const loaded=g.loadSave();g.setSave(loaded);g.openTrader(loaded.map.nodes.find((item)=>item.id===node.id));assert.equal(g.buyDroneParts(),false);assert.equal(loaded.droneParts,11);
-});
-
 
 test('a two-person boarding team departs together after both reach the pad',()=>{
   const g=game(),{save,battle,person}=setup(g);assert.equal(g.boardCrew(person.id,0,2),true);
