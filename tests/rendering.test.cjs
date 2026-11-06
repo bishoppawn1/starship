@@ -28,6 +28,11 @@ test('arena backing pixels follow display density while aiming stays in world co
   const size=g.arenaDisplaySize(world,300,250,3);assert.ok(size.width<=300&&size.height<=250);assert.equal(size.pixelWidth,size.width*3);
   // Changing the display canvas never changes the arena's gameplay dimensions.
   assert.equal(world.w,1364);assert.equal(world.h,1136);
+  const largeWorld={w:2700,h:1944},player={x:1100,y:900};g.setBattle({world:largeWorld,player});g.fitArenaCanvas();
+  const center=g.canvasPoint({clientX:12+parseFloat(canvas.style.width)/2,clientY:24+parseFloat(canvas.style.height)/2});
+  assert.equal(center.x,player.x);assert.equal(center.y,player.y);
+  const right=g.canvasPoint({clientX:12+parseFloat(canvas.style.width),clientY:24+parseFloat(canvas.style.height)/2});
+  assert.equal(right.x,player.x+540);assert.equal(right.y,player.y);
 });
 
 test('rotation composites the high-resolution sprite with smooth sampling and a correct source crop',()=>{

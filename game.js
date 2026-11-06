@@ -219,7 +219,7 @@
 
   function newSave() {
     const data={
-      metal: 90, sector: 1, wins: 0, nextId: 6, starterLayoutVersion:2, weaponFootprintsVersion:2, inventory:{armor:1}, passengers:0, ammoCrates:0,
+      metal: 90, sector: 1, wins: 0, nextId: 6, starterLayoutVersion:2, weaponFootprintsVersion:2, inventory:{ion:1}, passengers:0, ammoCrates:0,
       modules: [
         { id: 1, type: 'core', x: 5, y: 4, rotation: 0, hp: 170, level: 1 },
         { id: 2, type: 'engine', x: 4, y: 2, rotation: 0, hp: 80, level: 1 },
@@ -1074,6 +1074,21 @@
     const live=save.modules.filter((module)=>module.hp>0),target=live[Math.floor(Math.random()*live.length)];
     target.hp=Math.max(1,target.hp-amount);return target;
   }
+  function awardCrew(name,color){
+    const core=commandCore(),point=moduleStation(core);
+    save.nextCrewId??=1;
+    let id;do{id=`crew-${save.nextCrewId++}`;}while(save.crew.some((person)=>person.id===id));
+    let displayName=name,suffix=2;
+    while(save.crew.some((person)=>person.name===displayName))displayName=`${name} ${suffix++}`;
+    save.crew.push({id,name:displayName,initial:name[0],color,task:'idle',...point});
+    log(`${displayName} joined the crew.`);
+    return displayName;
+  }
+  function awardWeapon(type){
+    save.inventory[type]=(save.inventory[type]||0)+1;
+    log(`${MODULES[type].name} recovered and stored in the hold.`);
+    return MODULES[type].name;
+  }
   function upgradeTraderStock(node){
     node.stock??=traderStock();
     for(const type of [...SHIELD_TYPES,...ENGINE_TYPES,'generator'])if(!node.stock.some((item)=>item.type===type))node.stock.push({type,qty:1,price:MODULES[type].cost});
@@ -1138,8 +1153,8 @@
         {label:'LAUNCH DECOYS · −12 METAL',disabled:save.metal<12,action:()=>{save.metal+=8;log('The freighter paid 20 metal after your 12-metal decoy launch.');concludeEvent('FREIGHTER ESCAPES','Your decoys cost 12 metal. The captain transfers 20 metal once clear of the skiffs.','◇');}},
         {label:'LEAVE THE CHANNEL',action:()=>concludeEvent('DISTRESS LEFT BEHIND','You mark the channel and continue without engaging.','◇')}
       ]);
-      if(variant===1)eventScene(node,'DISABLED ORE HAULER','A hauler has lost its drive. Its owner can pay for a tow, but the load will strain one of your engines.',[
-        {label:'TOW TO SAFETY · +28 METAL',action:()=>{save.metal+=28;const engine=activeModules(...ENGINE_TYPES)[0];if(engine)engine.hp=Math.max(1,engine.hp-12);log('Towed an ore hauler; 28 metal earned.');concludeEvent('HAULER DELIVERED','The owner pays 28 metal. The heavy tow strains your engine for 12 damage.','◇');}},
+      if(variant===1)eventScene(node,'DISABLED ORE HAULER','A hauler has lost its drive. Its mechanic offers to join your crew if you tow the vessel clear; the load will strain an engine.',[
+        {label:'TOW TO SAFETY · +CREW, ENGINE −12 HP',action:()=>{const engine=activeModules(...ENGINE_TYPES)[0];if(engine)engine.hp=Math.max(1,engine.hp-12);const recruit=awardCrew('TAMSIN','#91d6b5');concludeEvent('HAULER DELIVERED',`${recruit} joins your crew after the tow. The heavy load strains one engine for 12 damage. Assign a job in the crew panel.`,'◇');}},
         {label:'TRANSFER REPAIR METAL · NET +12',disabled:save.metal<10,action:()=>{save.metal+=12;log('Hauler owner paid 22 metal for 10 metal of repairs.');concludeEvent('DRIVE RESTARTED','Your crew uses 10 metal to patch the drive; the owner pays 22 for the help.','◇');}},
         {label:'CONTINUE ON YOUR ROUTE',action:()=>concludeEvent('HAULER MARKED','You send its coordinates to the nearest outpost.','◇')}
       ]);
@@ -1181,17 +1196,17 @@
       return;
     }
     if(node.type==='derelict'){
-      if(variant===0)eventScene(node,'RESEARCH VESSEL','An unpowered research ship still has a hot security grid. Its exterior alloy is safe; the sealed hold is not.',[
+      if(variant===0)eventScene(node,'RESEARCH VESSEL','An unpowered research ship still has a hot security grid. A working ion blaster is locked in its hold; the exterior alloy is easier to reach.',[
         {label:'STRIP EXTERIOR · +12 METAL',action:()=>{save.metal+=12;log('12 metal stripped from research vessel exterior.');concludeEvent('EXTERIOR SALVAGED','The crew leaves the security grid untouched.','▣');}},
-        {label:'BREACH THE HOLD · +34 METAL',action:()=>{save.metal+=34;const target=damageRandomModule(20);log('34 metal taken from a guarded hold; a room was hit.');concludeEvent('HOLD BREACHED',`The cache yields 34 metal. A security charge hits your ${MODULES[target.type].name.toLowerCase()} for 20.`,'▣');}}
+        {label:'BREACH THE HOLD · +ION BLASTER, HULL −20 HP',action:()=>{const target=damageRandomModule(20);awardWeapon('ion');concludeEvent('ION BLASTER RECOVERED',`The weapon is in your hold for installation at a trader. A security charge hits your ${MODULES[target.type].name.toLowerCase()} for 20.`,'▣');}}
       ]);
-      if(variant===1)eventScene(node,'ABANDONED MEDICAL SHIP','Emergency repair drones still wait in their cradles. They can patch your hull, or be broken down for parts.',[
+      if(variant===1)eventScene(node,'ABANDONED MEDICAL SHIP','A medic is sheltering aboard an abandoned hospital ship. Emergency repair drones still wait in their cradles.',[
         {label:'DEPLOY REPAIR DRONES · REPAIR 35 HULL',disabled:hullRatio()>=.999,action:()=>{repairAll(35);log('Medical ship drones repaired 35 hull.');concludeEvent('REPAIRS COMPLETE','The drones weld damaged rooms before their batteries expire.','▣');}},
-        {label:'RECYCLE DRONES · +14 METAL',action:()=>{save.metal+=14;log('14 metal recycled from medical drones.');concludeEvent('DRONES RECYCLED','Their chassis and motors go into your metal hold.','▣');}}
+        {label:'RESCUE THE MEDIC · +CREW',action:()=>{const recruit=awardCrew('MIRA','#bca8f1');concludeEvent('MEDIC RESCUED',`${recruit} joins your crew. Assign a repair job or another role in the crew panel.`,'▣');}}
       ]);
-      if(variant===2)eventScene(node,'SILENT GUNSHIP','The derelict gunship has intact ammunition lockers and a reinforced alloy keel.',[
+      if(variant===2)eventScene(node,'SILENT GUNSHIP','The derelict gunship has intact ammunition lockers and a working laser repeater in its exterior mount.',[
         {label:'TAKE AMMUNITION · +1 CRATE',action:()=>{save.ammoCrates++;log('One ammo crate taken from a gunship.');concludeEvent('AMMUNITION RECOVERED','The sealed rounds add six shots to your next battle.','▣');}},
-        {label:'CUT OUT THE KEEL · +16 METAL',action:()=>{save.metal+=16;log('16 metal cut from a derelict gunship.');concludeEvent('KEEL RECOVERED','The crew recovers reinforced alloy instead of ammunition.','▣');}}
+        {label:'RECOVER LASER REPEATER · +WEAPON',action:()=>{awardWeapon('laser');concludeEvent('LASER REPEATER RECOVERED','The working weapon is secured in your hold. Visit a trader to install it on your ship.','▣');}}
       ]);
       return;
     }
@@ -1369,16 +1384,16 @@
     hideEvent();
     const count=kind==='rescue'?2:save.sector>3&&Math.random()<.35?2:1;
     const cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),layout=enemyLayout(kind!=='rescue'),enemyCells=count*layout.cells;
-    const width=Math.max(960+cellCount*12+enemyCells*6,shipRadius()*6+400),world={w:width,h:width*5/6};
+    const width=Math.max(2400+cellCount*16+enemyCells*8,shipRadius()*7+900),world={w:width,h:Math.max(1800,width*.72)};
     const enemies=[];
     for(let i=0;i<count;i++){
       const modules=layout.modules.map((room)=>({...room,hp:room.hp+(room.type==='core'?save.sector*4:0),maxHp:room.maxHp+(room.type==='core'?save.sector*4:0)}));
       const hp=modules.reduce((sum,room)=>sum+room.hp,0);
-      enemies.push({x:world.w*.77+i*40,y:world.h*(count===1?.5:i===0?.31:.69),angle:Math.PI,hp,maxHp:hp,r:layout.r,modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),name:kind==='rescue'?'PIRATE SKIFF':'RAIDER'});
+      enemies.push({x:world.w*.5+220+i*70,y:world.h*.5+(count===1?0:i===0?-135:135),angle:Math.PI,hp,maxHp:hp,r:layout.r,modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),name:kind==='rescue'?'PIRATE SKIFF':'RAIDER'});
     }
-    const player={x:world.w*.22,y:world.h*.5,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,path:[],selected:false,r:shipRadius(),thrusters:{}};
+    const player={x:world.w*.5-260,y:world.h*.5,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,path:[],selected:false,r:shipRadius(),thrusters:{}};
     const ammo=12+activeModules('cargo').length*6+save.ammoCrates*6;save.ammoCrates=0;
-    battle={kind,world,player,enemies,asteroids:makeAsteroids(world,Math.min(5,2+Math.ceil(cellCount/12)+count),player,enemies),projectiles:[],stars:Array.from({length:125},()=>({x:rand(0,world.w),y:rand(0,world.h),s:Math.random()<.17?2:1})),ammo,maxAmmo:ammo,shake:0,shields:{}};
+    battle={kind,world,player,enemies,asteroids:makeAsteroids(world,Math.min(14,8+Math.ceil(cellCount/12)+count),player,enemies),projectiles:[],stars:Array.from({length:Math.min(650,Math.round(world.w*world.h/9500))},()=>({x:rand(0,world.w),y:rand(0,world.h),s:Math.random()<.17?2:1})),ammo,maxAmmo:ammo,shake:0,shields:{}};
     persist();
     for(const module of save.modules)module.cooldown=rand(.25,.8);
     setMode('combat');$('combatWaveLabel').textContent=kind==='rescue'?'DEFEND THE FREIGHTER':'HOSTILE CONTACT';
@@ -1941,13 +1956,19 @@
     }
     g.restore();
   }
+  function arenaViewport(world){return {w:Math.min(1080,world.w),h:Math.min(760,world.h)};}
+  function arenaCamera(){
+    const {world,player}=battle,view=arenaViewport(world);
+    return {w:view.w,h:view.h,x:clamp((player?.x??world.w/2)-view.w/2,0,world.w-view.w),y:clamp((player?.y??world.h/2)-view.h/2,0,world.h-view.h)};
+  }
   function drawArena(time){
     if(!battle)return;const b=battle,w=b.world.w,h=b.world.h,p=b.player;
-    ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.scale(canvas.width/w,canvas.height/h);
-    ctx.fillStyle='#071522';ctx.fillRect(0,0,w,h);
+    const view=arenaCamera();
+    ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.scale(canvas.width/view.w,canvas.height/view.h);ctx.translate(-view.x,-view.y);
+    ctx.fillStyle='#071522';ctx.fillRect(view.x,view.y,view.w,view.h);
     ctx.strokeStyle='#1d3449';ctx.lineWidth=2;
-    for(let x=0;x<w;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke();}
-    for(let y=0;y<h;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke();}
+    for(let x=Math.floor(view.x/48)*48;x<view.x+view.w;x+=48){ctx.beginPath();ctx.moveTo(x,view.y);ctx.lineTo(x,view.y+view.h);ctx.stroke();}
+    for(let y=Math.floor(view.y/48)*48;y<view.y+view.h;y+=48){ctx.beginPath();ctx.moveTo(view.x,y);ctx.lineTo(view.x+view.w,y);ctx.stroke();}
     for(const star of b.stars){ctx.fillStyle=star.s===2?'#8cbdc4':'#4f7386';ctx.fillRect(star.x,star.y,star.s,star.s);}
     ctx.strokeStyle='#4b7488';ctx.lineWidth=4;ctx.strokeRect(3,3,w-6,h-6);
     for(const rock of b.asteroids){
@@ -1987,8 +2008,8 @@
       ctx.globalAlpha=1;
     }
     for(const shot of b.projectiles)if(!(shot.delay>0))drawProjectile(ctx,shot);
-    ctx.fillStyle='#a6c8d0';ctx.font='14px monospace';ctx.fillText(`SECTOR ${String(save.sector).padStart(2,'0')}  //  ${Math.round(hullRatio()*100)}% HULL`,20,h-19);
-    if(p.selected){ctx.fillStyle='#92dfe0';ctx.fillText(`SPEED ${Math.round(Math.hypot(p.vx,p.vy))}  TURN ${Math.round(Math.abs(p.omega)*180/Math.PI)}°/s`,w-270,h-19);}
+    ctx.fillStyle='#a6c8d0';ctx.font='14px monospace';ctx.fillText(`SECTOR ${String(save.sector).padStart(2,'0')}  //  ${Math.round(hullRatio()*100)}% HULL`,view.x+20,view.y+view.h-19);
+    if(p.selected){ctx.fillStyle='#92dfe0';ctx.fillText(`SPEED ${Math.round(Math.hypot(p.vx,p.vy))}  TURN ${Math.round(Math.abs(p.omega)*180/Math.PI)}°/s`,view.x+view.w-270,view.y+view.h-19);}
   }
   function arenaDisplaySize(world,availableWidth,availableHeight,density){
     const scale=Math.min(availableWidth/world.w,availableHeight/world.h);
@@ -2000,11 +2021,11 @@
     if(!battle)return;
     const arena=canvas.parentElement;
     if(arena.clientWidth<=0||arena.clientHeight<=0)return;
-    const size=arenaDisplaySize(battle.world,arena.clientWidth,arena.clientHeight,window.devicePixelRatio);
+    const size=arenaDisplaySize(arenaViewport(battle.world),arena.clientWidth,arena.clientHeight,window.devicePixelRatio);
     canvas.style.width=`${size.width}px`;canvas.style.height=`${size.height}px`;
     if(canvas.width!==size.pixelWidth||canvas.height!==size.pixelHeight){canvas.width=size.pixelWidth;canvas.height=size.pixelHeight;}
   }
-  function canvasPoint(event){const rect=canvas.getBoundingClientRect();return{x:(event.clientX-rect.left)/rect.width*battle.world.w,y:(event.clientY-rect.top)/rect.height*battle.world.h};}
+  function canvasPoint(event){const rect=canvas.getBoundingClientRect(),view=arenaCamera();return{x:view.x+(event.clientX-rect.left)/rect.width*view.w,y:view.y+(event.clientY-rect.top)/rect.height*view.h};}
   function selectPlayer(point=null){
     if(!battle)return;const p=battle.player;p.selected=true;
     if(point){
