@@ -62,7 +62,8 @@
             <button id="revisitTrader" class="primary-button full-width" type="button" hidden>DOCK AT TRADER ◆</button>
           </div>
           <div id="traderTools" hidden>
-            <p class="muted small">Buy parts, then rotate and install them. Select an installed room and choose MOVE ROOM to rearrange it for free. Esc cancels placement; uninstalled parts stay in your hold.</p>
+            <p class="muted small">Move your ship rooms for free while docked. Drag a room, or choose Rearrange Ship and click a room followed by its new position. Buy parts below to expand your ship.</p>
+            <div class="refit-controls"><button id="rearrangeShip" class="outline-button full-width" type="button" aria-pressed="false">REARRANGE SHIP · FREE</button><button id="cancelRoomMove" class="outline-button full-width" type="button" hidden>CANCEL ROOM MOVE</button><p id="refitStatus" class="muted small" role="status" aria-live="polite">Drag any room to move it, or choose Rearrange Ship to use clicks.</p></div>
             <div id="marketSummary" class="market-summary"></div>
             <div id="marketFilters" class="market-filters" aria-label="Market categories"><button type="button" data-filter="all" aria-pressed="true">ALL</button><button type="button" data-filter="weapons" aria-pressed="false">WEAPONS</button><button type="button" data-filter="systems" aria-pressed="false">SYSTEMS</button><button type="button" data-filter="shields" aria-pressed="false">SHIELDS</button><button type="button" data-filter="crew" aria-pressed="false">CREW</button></div>
             <div id="catalog" class="catalog market-catalog"></div>

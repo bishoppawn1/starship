@@ -414,6 +414,7 @@
   const storedSave = loadSave();
   let save = storedSave || newSave(), hasSave = !!storedSave, screen = 'menu', mode = 'hangar', selectedCatalog = null, selectedModuleId = 1;
   let movingModuleId=null, refittingFootprint=false, selectedCrewId=null;
+  let rearrangingShip=false, roomDrag=null, suppressBuildClick=false;
   const BUILD_ZOOMS=[.4,.5,.65,.8,1,1.25,1.6,2];
   const buildView={x:0,y:0,cols:GRID_W,rows:GRID_H,zoomIndex:4};
   const COMBAT_ZOOMS=[1,1.25,1.5,1.75,2,2.5];
@@ -671,6 +672,55 @@
     persist();renderAll();
   }
 
+  function buildPointerPoint(event){
+    const rect=$('buildGrid').getBoundingClientRect();
+    if(event.clientX<rect.left||event.clientX>=rect.right||event.clientY<rect.top||event.clientY>=rect.bottom)return null;
+    return {x:buildView.x+Math.floor((event.clientX-rect.left)/rect.width*buildView.cols),y:buildView.y+Math.floor((event.clientY-rect.top)/rect.height*buildView.rows)};
+  }
+  function startRoomDrag(event){
+    suppressBuildClick=false;
+    if(mode!=='trade'||selectedCatalog||event.button!==0||event.pointerType==='touch')return;
+    const point=buildPointerPoint(event),module=point&&occupancy().get(`${point.x},${point.y}`);
+    if(!module)return;
+    roomDrag={id:module.id,pointer:event.pointerId,startX:event.clientX,startY:event.clientY,offsetX:point.x-module.x,offsetY:point.y-module.y,active:false};
+  }
+  function updateRoomDrag(event){
+    const drag=roomDrag;if(!drag||drag.pointer!==event.pointerId||mode!=='trade')return;
+    if(!drag.active){
+      if(Math.hypot(event.clientX-drag.startX,event.clientY-drag.startY)<5)return;
+      selectedModuleId=drag.id;if(!beginModuleMove()){roomDrag=null;return;}
+      drag.active=true;$('buildGrid').setPointerCapture?.(event.pointerId);
+    }
+    event.preventDefault();const point=buildPointerPoint(event);
+    hoverCell=point?{x:point.x-drag.offsetX,y:point.y-drag.offsetY}:null;renderGrid();
+  }
+  function finishRoomDrag(event){
+    const drag=roomDrag;if(!drag||drag.pointer!==event.pointerId)return;
+    roomDrag=null;if(!drag.active)return;
+    event.preventDefault();suppressBuildClick=true;
+    const grid=$('buildGrid');if(grid.hasPointerCapture?.(event.pointerId))grid.releasePointerCapture(event.pointerId);
+    const point=buildPointerPoint(event);
+    if(mode==='trade'&&point)onGridClick(point.x-drag.offsetX,point.y-drag.offsetY);else cancelRoomMove();
+  }
+  function cancelRoomMove(){
+    if(movingModuleId===null)return false;
+    roomDrag=null;movingModuleId=null;selectedCatalog=null;refittingFootprint=false;hoverCell=null;renderAll();return true;
+  }
+  function toggleRearrangeShip(){
+    if(mode!=='trade')return false;
+    roomDrag=null;movingModuleId=null;selectedCatalog=null;refittingFootprint=false;selectedCrewId=null;hoverCell=null;
+    rearrangingShip=!rearrangingShip;renderAll();return true;
+  }
+  function renderRefitControls(){
+    const moving=save.modules.find((module)=>module.id===movingModuleId),grid=$('buildGrid');
+    $('rearrangeShip').textContent=rearrangingShip?'FINISH REARRANGING':'REARRANGE SHIP · FREE';
+    $('rearrangeShip').setAttribute('aria-pressed',String(rearrangingShip));
+    $('cancelRoomMove').hidden=!moving;
+    $('refitStatus').textContent=moving?`Moving ${MODULES[moving.type].name}. Click a clear connected position to place it. Q / E rotate${MODULES[moving.type].range?' · F flips':''}. Escape cancels.`:rearrangingShip?'Click a room to pick it up, then click its new position. Moving rooms is free.':'Drag any room to move it, or choose Rearrange Ship to use clicks.';
+    grid.classList[mode==='trade'&&rearrangingShip?'add':'remove']('rearranging-ship');
+    grid.classList[moving?'add':'remove']('moving-room');
+  }
+
   function rebuildGridCells(){
     const grid=$('buildGrid');
     grid.textContent='';gridButtons.length=0;
@@ -684,13 +734,18 @@
       const point=()=>({x:+cell.dataset.x,y:+cell.dataset.y});
       cell.addEventListener('mouseenter',()=>{hoverCell=point();renderGrid();});
       cell.addEventListener('focus',()=>{hoverCell=point();renderGrid();});
-      cell.addEventListener('click',(event)=>{const p=point(),rect=cell.getBoundingClientRect(),click={x:p.x+(event.clientX-rect.left)/rect.width,y:p.y+(event.clientY-rect.top)/rect.height};const person=!selectedCatalog&&save.crew.find((person)=>crewHome(person)&&distance(person,click)<.32);if(person){selectCrew(person.id);return;}onGridClick(p.x,p.y);});
+      cell.addEventListener('click',(event)=>{const p=point(),rect=cell.getBoundingClientRect(),click={x:p.x+(event.clientX-rect.left)/rect.width,y:p.y+(event.clientY-rect.top)/rect.height};const person=!selectedCatalog&&!(mode==='trade'&&rearrangingShip)&&save.crew.find((person)=>crewHome(person)&&distance(person,click)<.32);if(person){selectCrew(person.id);return;}onGridClick(p.x,p.y);});
       cell.addEventListener('contextmenu',(event)=>{event.preventDefault();const p=point();orderCrewMove(p.x,p.y);});
       grid.append(cell);gridButtons.push(cell);
     }
   }
   function createGrid() {
     const grid=$('buildGrid');rebuildGridCells();
+    grid.addEventListener('pointerdown',startRoomDrag);
+    grid.addEventListener('pointermove',updateRoomDrag);
+    grid.addEventListener('pointerup',finishRoomDrag);
+    grid.addEventListener('pointercancel',()=>{const active=roomDrag?.active;roomDrag=null;if(active)cancelRoomMove();});
+    grid.addEventListener('click',(event)=>{if(suppressBuildClick&&event.detail){suppressBuildClick=false;event.preventDefault();event.stopImmediatePropagation();}},true);
     grid.addEventListener('mouseleave',()=>{hoverCell=null;renderGrid();});
     let wheelAccum=0;
     $('buildViewport').addEventListener('wheel',(event)=>{
@@ -734,7 +789,7 @@
     const item=tradeNode.stock?.find((entry)=>entry.type===type);
     if(!item||item.qty<1||save.metal<item.price)return false;
     save.metal-=item.price;item.qty--;save.inventory[type]=(save.inventory[type]||0)+1;
-    movingModuleId=null;selectedCatalog=type;buildFlipped=false;selectedModuleId=null;persist();log(`${MODULES[type].name} purchased at a trader.`);renderAll();toast('Purchased · choose a clear hull position to install');return true;
+    movingModuleId=null;rearrangingShip=false;roomDrag=null;selectedCatalog=type;buildFlipped=false;selectedModuleId=null;persist();log(`${MODULES[type].name} purchased at a trader.`);renderAll();toast('Purchased · choose a clear hull position to install');return true;
   }
   function renderCatalog() {
     if(mode!=='trade'||!tradeNode){$('catalog').innerHTML='';return;}
@@ -750,7 +805,7 @@
     $('catalog').innerHTML=(partCards+recruitCards())||'<p class="muted small">No offers in this category at this trader.</p>';
     $('catalog').querySelectorAll('[data-recruit]').forEach((button)=>button.addEventListener('click',()=>buyRecruit(button.dataset.recruit)));
     $('catalog').querySelectorAll('[data-buy]').forEach((button)=>button.addEventListener('click',()=>buyTraderItem(button.dataset.buy)));
-    $('catalog').querySelectorAll('[data-install]').forEach((button)=>button.addEventListener('click',()=>{movingModuleId=null;selectedCatalog=selectedCatalog===button.dataset.install?null:button.dataset.install;buildFlipped=false;selectedModuleId=null;renderAll();}));
+    $('catalog').querySelectorAll('[data-install]').forEach((button)=>button.addEventListener('click',()=>{movingModuleId=null;rearrangingShip=false;roomDrag=null;selectedCatalog=selectedCatalog===button.dataset.install?null:button.dataset.install;buildFlipped=false;selectedModuleId=null;renderAll();}));
     paintWeaponThumbnails($('catalog'));
     $('traderRepair').disabled=save.metal<15||hullRatio()>=.999;
   }
@@ -762,7 +817,7 @@
       cell.dataset.x=buildView.x+index%buildView.cols;cell.dataset.y=buildView.y+Math.floor(index/buildView.cols);
       const x=+cell.dataset.x,y=+cell.dataset.y,key=`${x},${y}`,module=occupied.get(key);
       cell.className='grid-cell';cell.style.removeProperty('--module-color');cell.textContent='';
-      if(module){cell.classList.add('occupied');if(module.id===selectedModuleId)cell.classList.add('selected');cell.style.setProperty('--module-color',MODULES[module.type].color);cell.setAttribute('aria-label',`${MODULES[module.type].name}, level ${module.level}, ${Math.ceil(module.hp)} health`);}
+      if(module){cell.classList.add('occupied');if(module.id===selectedModuleId)cell.classList.add('selected');if(module.id===movingModuleId)cell.classList.add('moving-source');cell.style.setProperty('--module-color',MODULES[module.type].color);cell.setAttribute('aria-label',`${MODULES[module.type].name}, level ${module.level}, ${Math.ceil(module.hp)} health`);}
       else if(ghost.has(key)){cell.classList.add('ghost');if(!valid)cell.classList.add('invalid');cell.style.setProperty('--module-color',MODULES[selectedCatalog].color);cell.setAttribute('aria-label',`${MODULES[selectedCatalog].name} placement ${valid?'valid':'invalid'}`);}
       else if(reserved.has(key)){cell.classList.add('reserved');cell.setAttribute('aria-label',`${ENGINE_TYPES.includes(reserved.get(key))?'Engine exhaust':reserved.get(key)==='droneControl'?'Drone launch':'Weapon mount'} clearance, keep empty`);}
       else cell.setAttribute('aria-label',`Empty cell ${x+1}, ${y+1}`);
@@ -774,11 +829,11 @@
     $('buildFlipWeapon').setAttribute('aria-pressed',String(buildFlipped));
     $('buildFlipWeapon').textContent=buildFlipped?'FLIP WEAPON ↔ · MIRRORED':'FLIP WEAPON ↔';
     $('buildCoordinates').textContent=`${Math.round(BUILD_ZOOMS[buildView.zoomIndex]*100)}% · X ${buildView.x}…${buildView.x+buildView.cols-1} · Y ${buildView.y}…${buildView.y+buildView.rows-1}`;
-    drawHangar();
+    renderRefitControls();drawHangar();
   }
   function onGridClick(x,y) {
     const existing=occupancy().get(`${x},${y}`);
-    if(existing&&!selectedCatalog){selectedModuleId=existing.id;renderAll();return;}
+    if(existing&&!selectedCatalog){selectedModuleId=existing.id;if(mode==='trade'&&rearrangingShip)beginModuleMove();else renderAll();return;}
     if(mode!=='trade'||!selectedCatalog){toast('Visit a trader to buy and install modules.');return;}
     const place=placementAt(selectedCatalog,x,y,buildRotation);
     if(!place.valid){toast('Connect rooms and keep exhaust and a weapon arc clear to space.');return;}
@@ -800,6 +855,7 @@
   }
   function beginModuleMove(refit=false){
     const module=selectedModule();if(mode!=='trade'||!module)return false;
+    selectedCrewId=null;hoverCell={x:module.x,y:module.y};
     movingModuleId=module.id;refittingFootprint=refit;selectedCatalog=module.type;buildRotation=module.rotation;buildWeaponFacing=module.weaponFacing||0;buildFlipped=!!module.flipped;
     $('buildRotationLabel').textContent=`${buildRotation*90}°`;renderAll();return true;
   }
@@ -824,7 +880,7 @@
     if(module.type==='ammoAssembly')$('ammoRecipe').addEventListener('change',(event)=>{if(!AMMO[event.target.value])return;module.ammoRecipe=event.target.value;module.ammoProgress=0;persist();renderAmmo();});
     if(module.footprint&&mode==='trade')$('refitFootprint').addEventListener('click',()=>beginModuleMove(true));
     if(mode==='trade')$('moveModule').addEventListener('click',()=>{
-      if(movingModuleId===module.id){movingModuleId=null;selectedCatalog=null;renderAll();}else beginModuleMove();
+      if(movingModuleId===module.id)cancelRoomMove();else beginModuleMove();
     });
     if(def.range&&!def.guidance)$('weaponRange').addEventListener('change',(event)=>{
       if(!['hangar','trade'].includes(mode))return;
@@ -1164,9 +1220,9 @@
 
   function selectedCrew(){return save.crew.find((person)=>person.id===selectedCrewId);}
   function selectCrew(id){
-    selectedCrewId=id;selectedCatalog=null;movingModuleId=null;
+    selectedCrewId=id;selectedCatalog=null;movingModuleId=null;rearrangingShip=false;roomDrag=null;
     if(battle)battle.player.selected=false;
-    renderCrew();drawHangar();
+    renderCrew();renderGrid();
     if(mode==='combat')$('combatHint').textContent='CREW SELECTED · RIGHT CLICK A FLOOR CELL TO MOVE';
   }
   function orderCrewMove(x,y){
@@ -1634,7 +1690,7 @@
 
   function setMode(next){
     mode=next;
-    if(next!=='trade'){selectedCatalog=null;movingModuleId=null;tradeNode=null;}
+    if(next!=='trade'){selectedCatalog=null;movingModuleId=null;rearrangingShip=false;roomDrag=null;refittingFootprint=false;tradeNode=null;}
     const shipView=next==='hangar'||next==='trade';
     $('hangarScreen').hidden=!shipView;$('combatScreen').hidden=next!=='combat';$('mapScreen').hidden=next!=='map';
     $('hangarTools').hidden=next!=='hangar';$('traderTools').hidden=next!=='trade';$('combatTools').hidden=next!=='combat';$('mapTools').hidden=next!=='map';
@@ -2843,6 +2899,8 @@
     $('cancelNew').addEventListener('click',()=>{$('menuConfirm').hidden=true;$('menuNew').focus();});
     $('menuQuit').addEventListener('click',quitGame);
     $('quitReturn').addEventListener('click',showMainMenu);
+    $('rearrangeShip').addEventListener('click',toggleRearrangeShip);
+    $('cancelRoomMove').addEventListener('click',cancelRoomMove);
     $('buildWeaponFacing').addEventListener('click',()=>{buildWeaponFacing=buildWeaponFacing?0:1;renderGrid();});
     $('buildFlipWeapon').addEventListener('click',flipBuild);
     $('buildRotateLeft').addEventListener('click',()=>rotateBuild(-1));$('buildRotateRight').addEventListener('click',()=>rotateBuild(1));
@@ -2875,7 +2933,7 @@
       if(event.key.toLowerCase()==='q'){if(mode==='combat')rotateArrival(-1);else if(mode==='trade')rotateBuild(-1);}
       if(event.key.toLowerCase()==='e'){if(mode==='combat')rotateArrival(1);else if(mode==='trade')rotateBuild(1);}
       if(mode==='combat'&&['-','_','=','+'].includes(event.key)){event.preventDefault();changeCombatZoom(['-','_'].includes(event.key)?1:-1);}
-      if(event.key==='Escape'&&mode==='trade'&&!eventOpen){selectedCatalog=null;movingModuleId=null;renderAll();}
+      if(event.key==='Escape'&&mode==='trade'&&!eventOpen){if(!cancelRoomMove()){selectedCatalog=null;rearrangingShip=false;roomDrag=null;renderAll();}}
     });
     log('Ship systems online. Plot a route on the sector map.');
     renderAll();showMainMenu();requestAnimationFrame(frame);
