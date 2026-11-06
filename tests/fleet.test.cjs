@@ -117,6 +117,22 @@ test('piercing rounds damage each crossed ship once and stop after the configure
   g.updateBattle(.2,0);near(first.hp,990);near(second.hp,990);near(third.hp,1000);assert.equal(b.projectiles.length,0);
 });
 
+test('rail and Gauss rounds pierce two rooms of one ship but stop at an active shield',()=>{
+  for(const type of ['railgun','gauss']){
+    const g=game(),{b}=combat(g),layout=g.enemyLayout(false),target={...enemy(650,500),...layout,angle:0};
+    const engine=target.modules.find((room)=>room.type==='engine'),core=target.modules.find((room)=>room.type==='core'),shield=target.modules.find((room)=>room.type==='shield');
+    shield.hp=0;target.hp=target.modules.reduce((sum,room)=>sum+room.hp,0);b.enemies=[target];
+    g.fireProjectile('player',550,500,{x:900,y:500},20,700,500,{family:'rail',pierce:g.MODULES[type].pierce});
+    for(let i=0;i<10;i++)g.updateBattle(.05,0);
+    assert.equal(engine.hp,60,type);assert.equal(core.hp,110,type);assert.equal(b.projectiles.length,0,type);
+    shield.hp=85;shield.charge=100;target.hp=target.modules.reduce((sum,room)=>sum+room.hp,0);
+    const engineHp=engine.hp,coreHp=core.hp;
+    g.fireProjectile('player',550,500,{x:900,y:500},20,700,500,{family:'rail',pierce:1});
+    for(let i=0;i<10;i++)g.updateBattle(.05,0);
+    assert.equal(engine.hp,engineHp);assert.equal(core.hp,coreHp);assert.equal(shield.charge,shield.capacity-20);
+  }
+});
+
 test('salvos stay inside the mounted firing arc even when the target is near an arc edge',()=>{
   const g=game();
   for(const type of ['gatling','flak','scattergun','swarm','gauss']){

@@ -188,3 +188,12 @@
 .drone-assembly label{display:grid;gap:6px;line-height:1.5}
 .drone-assembly select{width:100%;background:#101e2e;border:1px solid #3b566d;color:var(--text);padding:7px;font-size:11px}
 .drone-assembly small{color:var(--cyan);font-size:9px;line-height:1.6}
+
+.refit-controls { border:1px solid #36566b; padding:10px; margin:0 0 14px; background:#102535; }
+.refit-controls button { white-space:normal; }
+.refit-controls button[aria-pressed="true"] { color:#102535; background:var(--cyan); border-color:var(--cyan); }
+.refit-controls p { margin:9px 0 0; line-height:1.5; }
+#cancelRoomMove { margin-top:8px; color:var(--gold); }
+.build-grid.rearranging-ship .grid-cell.occupied { cursor:grab; }
+.build-grid.moving-room .grid-cell { cursor:crosshair; }
+.grid-cell.moving-source { outline:1px dashed var(--gold); outline-offset:-3px; }

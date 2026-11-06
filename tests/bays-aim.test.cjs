@@ -14,7 +14,7 @@ function game(){
     document:{getElementById:(id)=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,querySelectorAll:()=>[]}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
     globalThis.game={MODULES,newSave,loadSave,persist,moduleCells,moduleStation,moduleGeometry,canPlace,canPlaceFootprint,moduleClearance,droneBayDoor,droneBayClear,
-      updateDroneAssembly,updateDrones,recoverDrones,droneBayCapacity,droneCount,assemblyTime,setDroneDesign,normalizeDrones,updateBoarding,enemyLayout,fireProjectile,
+      updateDroneAssembly,updateDrones,updateCrew,recoverDrones,droneBayCapacity,droneCount,assemblyTime,setDroneDesign,normalizeDrones,updateBoarding,enemyLayout,fireProjectile,
       weaponGeometry,weaponWorld,weaponAim,turnWeapon,fireWeapon,updateBattle,drawExteriorHardware,renderOperations,renderInspector,openTrader,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},select(id){selectedModuleId=id;},setMode(value){mode=value;},
       stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;}};
@@ -32,7 +32,8 @@ function battle(g){
   const modules=g.enemyLayout(true).modules,enemy={x:800,y:500,angle:Math.PI,r:90,modules,hp:modules.reduce((sum,m)=>sum+m.hp,0),maxHp:modules.reduce((sum,m)=>sum+m.hp,0),crew:[],speed:0,path:[],pathTimer:100,cooldown:100,phase:0,name:'TEST'};
   const b={kind:'pirate',world:{w:3000,h:2200},player:{x:500,y:500,angle:0,r:80,thrusters:{},vx:0,vy:0,omega:0},enemies:[enemy],drones:g.getSave().drones,asteroids:[],projectiles:[],effects:[],ammo:100,maxAmmo:100,shake:0,teleportCooldown:0};g.setBattle(b);g.setMode('combat');g.stubFlight();return b;
 }
-function launch(g){for(let i=0;i<120;i++)g.updateDrones(.05);return g.getSave().drones[0];}
+function deliver(g,seconds=12){const save=g.getSave();if(!save.crew.length)save.crew.push({id:'dockhand',task:'drone',hp:100,...g.moduleStation(save.modules[0])});for(let t=0;t<seconds;t+=.05){g.updateCrew(.05);g.updateDrones(.05);}}
+function launch(g){for(let i=0;i<120;i++){g.updateCrew(.05);g.updateDrones(.05);}return g.getSave().drones[0];}
 
 test('every bay orientation reserves an outside door and rejects obstruction beyond its first two cells',()=>{
   const g=game();for(let rotation=0;rotation<4;rotation++){
@@ -53,7 +54,7 @@ test('later construction cannot cap the far end of an otherwise open launch lane
 
 test('assembly builds one free drone before combat and bay launches it automatically along the open door',()=>{
   const g=game(),save=setup(g);const metal=save.metal;g.updateDrones(15);assert.equal(save.drones.length,1);assert.equal(save.drones[0].phase,'stored');assert.equal(save.metal,metal);assert.equal(save.droneParts,undefined);
-  const b=battle(g);g.updateDrones(.1);const drone=save.drones[0],door=g.droneBayDoor(save.modules[1]);assert.equal(drone.phase,'launching');assert.ok(drone.launchProgress>0);
+  deliver(g);assert.equal(save.drones[0].phase,'ready');const b=battle(g);g.updateDrones(.1);const drone=save.drones[0],door=g.droneBayDoor(save.modules[1]);assert.equal(drone.phase,'launching');assert.ok(drone.launchProgress>0);
   const local={x:(drone.x-b.player.x)/30+2,y:(drone.y-b.player.y)/30+2};near(local.y,door.y);assert.ok(local.x>door.x);
   launch(g);assert.equal(drone.phase,'active');assert.equal(b.drones,save.drones);assert.equal(save.drones.length,1);
 });
@@ -65,18 +66,18 @@ test('a bay alone or an assembly alone cannot operate a drone',()=>{
 
 test('blocked legacy bays remain inactive until refitted, without preventing unrelated construction',()=>{
   const g=game(),save=setup(g);save.modules.push(room(4,'core',4,0));g.updateDrones(15);battle(g);g.updateDrones(5);assert.equal(save.drones[0].phase,'stored');assert.equal(g.droneBayClear(save.modules[1]),false);
-  assert.equal(g.canPlace('armor',0,4,0),true);save.modules.pop();g.updateDrones(.1);assert.equal(save.drones[0].phase,'launching');
+  assert.equal(g.canPlace('armor',0,4,0),true);save.modules.pop();deliver(g);assert.ok(['launching','active'].includes(save.drones[0].phase));
 });
 
 test('bay capacity queues ready drones and a destroyed drone is replaced automatically without cost',()=>{
-  const g=game(),save=setup(g);save.modules.push({...room(4,'droneAssembly',2,2),droneType:'defense'},{...room(5,'droneAssembly',4,2),droneType:'combat'});g.updateDrones(15);battle(g);g.updateDrones(.1);
+  const g=game(),save=setup(g);save.modules.push({...room(4,'droneAssembly',2,2),droneType:'defense'},{...room(5,'droneAssembly',4,2),droneType:'combat'});g.updateDrones(15);deliver(g);battle(g);g.updateDrones(.1);
   assert.equal(save.drones.filter((drone)=>drone.phase==='launching').length,2);assert.equal(save.drones.filter((drone)=>drone.phase==='stored').length,1);
   const first=save.drones[0],assembly=first.assembly,metal=save.metal;first.hp=0;g.updateDrones(.1);assert.equal(save.drones.find((drone)=>drone.assembly===assembly),undefined);
-  assert.equal(save.drones.filter((drone)=>drone.phase==='stored').length,0);g.updateDrones(15);assert.ok(save.drones.some((drone)=>drone.assembly===assembly));assert.equal(save.metal,metal);
+  deliver(g);assert.equal(save.drones.filter((drone)=>drone.phase==='stored').length,0);g.updateDrones(15);assert.ok(save.drones.some((drone)=>drone.assembly===assembly));assert.equal(save.metal,metal);
 });
 
 test('repair drones operate outside combat and disabled bays pause them',()=>{
-  const g=game(),save=setup(g,'repair');save.modules[0].hp=100;g.updateDrones(15);for(let i=0;i<100;i++)g.updateDrones(.05);assert.ok(save.modules[0].hp>100);
+  const g=game(),save=setup(g,'repair');save.modules[0].hp=100;g.updateDrones(15);deliver(g);for(let i=0;i<100;i++)g.updateDrones(.05);assert.ok(save.modules[0].hp>100);
   const before=save.modules[0].hp;save.modules[1].hp=0;g.updateDrones(10);near(save.modules[0].hp,before);
 });
 
@@ -92,14 +93,14 @@ test('preflight drone design changes rebuild the assembly and combat locks the d
 });
 
 test('automatically launched combat and defense drones keep their real combat effects',()=>{
-  const g=game(),save=setup(g);save.modules.push({...room(4,'droneAssembly',2,2),droneType:'defense'});g.updateDrones(15);const b=battle(g);launch(g);
+  const g=game(),save=setup(g);save.modules.push({...room(4,'droneAssembly',2,2),droneType:'defense'});g.updateDrones(15);deliver(g);const b=battle(g);launch(g);
   const combat=save.drones.find((drone)=>drone.type==='combat');combat.angle=-.011;combat.cooldown=0;g.updateDrones(.01);assert.ok(b.projectiles.some((shot)=>shot.drone));
   const before=b.enemies[0].hp;for(let i=0;i<30;i++)g.updateBattle(.05,0);assert.equal(b.enemies[0].hp,before);assert.ok(b.enemies[0].modules.find((room)=>room.type==='shield').charge<100);
   save.drones.find((drone)=>drone.type==='defense').cooldown=0;g.fireProjectile('enemy',650,500,b.player,20,100,400);const incoming=b.projectiles.at(-1);g.updateDrones(.01);assert.ok(!b.projectiles.includes(incoming));
 });
 
 test('boarding drones visibly launch, fly to the target and sabotage it automatically',()=>{
-  const g=game(),save=setup(g,'boarding');g.updateDrones(15);const b=battle(g);let boarded=false;
+  const g=game(),save=setup(g,'boarding');g.updateDrones(15);deliver(g);const b=battle(g);let boarded=false;
   for(let i=0;i<600;i++){g.updateDrones(.05);g.updateBoarding(.05);if(save.drones[0]?.phase==='boarding'){boarded=true;break;}}
   assert.equal(boarded,true);const weapon=b.enemies[0].modules.find((room)=>room.type==='weapon'),before=weapon.hp;g.updateBoarding(1);assert.ok(weapon.hp<before);
 });
