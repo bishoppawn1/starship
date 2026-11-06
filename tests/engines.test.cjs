@@ -111,7 +111,7 @@ test('larger drives accelerate an equal-mass ship more when its engines are satu
   for(const type of ['smallEngine','engine','heavyEngine']){
     const g=game(),save=g.newSave();save.crew=[];save.modules=[core(1,0)];
     // A heavy hull requires more force than even the largest single drive.
-    for(let i=0;i<80;i++)save.modules.push({id:10+i,type:'cargo',x:2+i*3,y:0,rotation:0,hp:65,level:1});
+    for(let i=0;i<80;i++)save.modules.push({id:10+i,type:'armor',footprint:{shape:[[0,0],[1,0],[2,0]],station:null},x:2+i*3,y:0,rotation:0,hp:65,level:1});
     const drive={id:2,type,x:0,y:0,rotation:0,hp:g.MODULES[type].hp,level:1};save.modules.push(drive);
     const cells=g.MODULES[type].shape.length;
     for(let i=cells;i<6;i++)save.modules.push({id:100+i,type:'smallEngine',x:10+i,y:10,rotation:0,hp:0,level:1});

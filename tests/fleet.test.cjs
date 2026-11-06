@@ -240,10 +240,10 @@ test('trader moves keep room identity, damage, upgrades, range, and crew, withou
 test('moving a connecting room cannot disconnect other rooms and leaving a trader cancels the move',()=>{
   const g=game(),save=g.newSave();save.modules=[
     {id:1,type:'core',x:4,y:4,rotation:0,hp:170,level:1},
-    {id:2,type:'cargo',x:6,y:4,rotation:0,hp:65,level:1},
+    {id:2,type:'armor',footprint:{shape:[[0,0],[1,0],[2,0]],station:null},x:6,y:4,rotation:0,hp:65,level:1},
     {id:3,type:'core',x:9,y:4,rotation:0,hp:170,level:1}];g.setSave(save);
   g.openTrader({type:'trader',stock:[]});g.selectModule(2);g.beginModuleMove();
-  assert.equal(g.canPlace('cargo',4,3,0),false);
+  assert.equal(g.canPlace('armor',4,3,0),false);
   const before=JSON.stringify(save.modules);g.setMode('hangar');g.onGridClick(4,3);assert.equal(JSON.stringify(save.modules),before);
 });
 

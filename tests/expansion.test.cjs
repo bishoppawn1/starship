@@ -70,7 +70,7 @@ test('artwork follows translated hulls and scales its backing texture without li
   for(const module of save.modules){module.x-=10000;module.y+=20000;}
   const shifted=g.shipArtFrame();assert.equal(shifted.x,original.x-10000);assert.equal(shifted.y,original.y+20000);assert.equal(shifted.w,original.w);
   battle(g,save).enemies=[];g.drawArena(0);const call=g.draws.find((args)=>args[0]===g.shipSprite);assert.ok(call);assert.equal(call[1],0);assert.equal(call[2],0);
-  save.modules=[core(0,0)];for(let i=0;i<100;i++)save.modules.push({id:i+2,type:'cargo',x:2+i*3,y:0,rotation:0,hp:65,level:1});
+  save.modules=[core(0,0)];for(let i=0;i<100;i++)save.modules.push({id:i+2,type:'armor',footprint:{shape:[[0,0],[1,0],[2,0]],station:null},x:2+i*3,y:0,rotation:0,hp:65,level:1});
   const frame=g.shipArtFrame();assert.ok(frame.w>300);assert.ok(frame.w*24*frame.scale<=8192+1e-7);
   g.startBattle('pirate');assert.ok(g.getBattle().world.w>=g.shipRadius()*6+400);
 });

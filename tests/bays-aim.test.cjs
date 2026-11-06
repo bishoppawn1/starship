@@ -47,7 +47,7 @@ test('every bay orientation reserves an outside door and rejects obstruction bey
 });
 
 test('later construction cannot cap the far end of an otherwise open launch lane',()=>{
-  const g=game(),save=g.newSave(),bay=room(2,'droneControl',10,10);save.modules=[room(1,'core',8,10),bay,...[10,13,16].map((x,i)=>room(10+i,'cargo',x,9))];g.setSave(save);
+  const g=game(),save=g.newSave(),bay=room(2,'droneControl',10,10);save.modules=[room(1,'core',8,10),bay,...[10,13,16].map((x,i)=>({...room(10+i,'armor',x,9),footprint:{shape:[[0,0],[1,0],[2,0]],station:null}}))];g.setSave(save);
   assert.equal(g.droneBayClear(bay),true);assert.equal(g.canPlaceFootprint('armor',19,9,0),true);assert.equal(g.canPlace('armor',19,9,0),false);
 });
 
