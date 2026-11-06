@@ -25,6 +25,8 @@
     shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:100, recharge:10, description: 'A 100-strength full-hull shield. Shared power and a crew operator improve recharge.' },
     focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:160, recharge:16, arc:105, description: 'A 160-strength shield covering a 105° sector, with faster recharge.' },
     generator: { name: 'Small Power Generator', short: 'G', color: '#e5be72', shape: [[0,0],[1,0]], station: [0,0], hp: 65, cost: 35, generation: 2, description: 'Compact two-cell generator. Adds 2 shared power; each upgrade adds 1 more. No crew or power required.' },
+    teleporter: { name: 'Crew Teleporter', short: 'T', color: '#a5e2d7', shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 80, cost: 75, description: 'Send selected crew from this pad to an enemy within 600 units. Recall them after a 12-second recharge. Requires shared power.' },
+    droneControl: { name: 'Drone Control', short: 'D', color: '#b9cde4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 65, description: 'Automated combat, defense, repair and boarding programs. Two active drones, plus one per upgrade. Each launch consumes one drone part. Requires shared power.' },
     armor: { name: 'Armor Plating', short: 'A', color: C.armor, shape: [[0,0],[1,0],[0,1]], station: null, hp: 115, cost: 20, description: 'Open, durable floor that can absorb damage.' },
     cargo: { name: 'Ammo Hold', short: 'M', color: C.cargo, shape: [[0,0],[1,0],[2,0]], station: [1,0], hp: 65, cost: 25, description: 'Adds ammo capacity and a loading point for crew.' }
   };
@@ -98,7 +100,7 @@
   }
   const SHIELD_TYPES=Object.keys(MODULES).filter((type)=>type==='shield'||MODULES[type].shield);
   const ENGINE_TYPES=Object.keys(MODULES).filter((type)=>MODULES[type].thrust).sort((a,b)=>MODULES[a].thrust-MODULES[b].thrust);
-  const BUYABLE = [...ENGINE_TYPES,...WEAPON_TYPES,'shield','focusShield','generator','armor','cargo'];
+  const BUYABLE = [...ENGINE_TYPES,...WEAPON_TYPES,'shield','focusShield','generator','teleporter','droneControl','armor','cargo'];
   const CREW = [
     { id: 'vega', name: 'VEGA', initial: 'V', color: '#f4bd77', task: 'gun', x: 5.5, y: 4.5 },
     { id: 'moss', name: 'MOSS', initial: 'M', color: '#8fddb5', task: 'repair', x: 6.5, y: 4.5 },
@@ -120,7 +122,7 @@
       const type=WEAPON_TYPES[Math.floor(Math.random()*WEAPON_TYPES.length)],existing=stock.find((offer)=>offer.type===type);
       if(existing)existing.qty++;else stock.push({type,qty:1,price:Math.max(1,MODULES[type].cost+Math.floor(rand(-5,11)))});
     }
-    const supports=[...SHIELD_TYPES,...ENGINE_TYPES,'generator',['armor','cargo'][Math.floor(Math.random()*2)]];
+    const supports=[...SHIELD_TYPES,...ENGINE_TYPES,'generator','teleporter','droneControl',['armor','cargo'][Math.floor(Math.random()*2)]];
     for(const type of supports)stock.push({type,qty:1+Number(Math.random()<.25),price:Math.max(1,MODULES[type].cost+Math.floor(rand(-5,11)))});
     return stock;
   }
@@ -145,7 +147,7 @@
     const core=save.modules.find((module)=>module.type==='core'),point=moduleStation(core);
     save.nextCrewId??=1;let crewId;do{crewId=`crew-${save.nextCrewId++}`;}while(save.crew.some((person)=>person.id===crewId));
     save.metal-=recruit.price;recruit.hired=true;
-    save.crew.push({id:crewId,name:recruit.name,initial:recruit.initial,color:recruit.color,task:'idle',...point});
+    save.crew.push({id:crewId,name:recruit.name,initial:recruit.initial,color:recruit.color,task:'idle',hp:100,hurtTime:0,...point});
     persist();log(`${recruit.name} joined the crew.`);renderAll();toast(`${recruit.name} recruited · assign a job in the crew panel`);return true;
   }
   function recruitCards(){
@@ -162,7 +164,7 @@
       const type=col===2&&row===1?'trader':col===4&&row===1?'outpost':pool.pop();
       if(variantOffsets[type]===undefined)variantOffsets[type]=Math.floor(Math.random()*3);
       const variant=(variantOffsets[type]+(usedVariants[type]||0))%3;usedVariants[type]=(usedVariants[type]||0)+1;
-      nodes.push({id:`${col}-${row}`,col,row,mapX:80+col*168+rand(-16,16),mapY:110+row*190+rand(-31,31),type,variant,links:[],stockVersion:type==='trader'?6:undefined,stock:type==='trader'?traderStock():undefined});
+      nodes.push({id:`${col}-${row}`,col,row,mapX:80+col*168+rand(-16,16),mapY:110+row*190+rand(-31,31),type,variant,links:[],stockVersion:type==='trader'?7:undefined,stock:type==='trader'?traderStock():undefined});
     }
     nodes.push({id:'5-1',col:5,row:1,mapX:920,mapY:300,type:'exit',links:[]});
     const byId=new Map(nodes.map((node)=>[node.id,node]));
@@ -177,7 +179,7 @@
     return {version:2,base,nodes,current:'0-1',visited:['0-1'],resolved:['0-1']};
   }
   function commandCore(data=save){return data.modules.find((module)=>module.type==='core');}
-  function systemDemand(module){const def=MODULES[module.type];return ENGINE_TYPES.includes(module.type)||def.range||SHIELD_TYPES.includes(module.type)?2:0;}
+  function systemDemand(module){const def=MODULES[module.type];return ENGINE_TYPES.includes(module.type)||def.range||SHIELD_TYPES.includes(module.type)||['teleporter','droneControl'].includes(module.type)?2:0;}
   function coreOutput(data=save){const core=commandCore(data);return core?.hp>0?8+2*((core.powerLevel||1)-1):0;}
   function generatorOutput(module){const base=MODULES[module.type].generation;return module.hp>0&&base?base+module.level-1:0;}
   function auxiliaryOutput(data=save){return data.modules.reduce((sum,module)=>sum+generatorOutput(module),0);}
@@ -212,7 +214,7 @@
       const performance=systemPower(module),shield=SHIELD_TYPES.includes(module.type),stats=shield?shieldStats(module):null;
       const strength=shield?(battle?shieldState(module).charge:module.hp>0?stats.capacity:0):0;
       return `<div class="power-row"><span title="Grid ${module.x}, ${module.y}">${MODULES[module.type].name} <small>(${module.x}, ${module.y})</small></span><strong>${module.hp>0?`${Math.round(performance*100)}% POWER`:'OFFLINE'}</strong><div class="power-meter" role="meter" aria-label="${MODULES[module.type].name} performance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(performance*100)}"><span style="width:${performance*100}%"></span></div>${shield?`<span class="shield-strength">SHIELD ${Math.round(strength)} / ${stats.capacity}</span><div class="power-meter shield-meter"><span style="width:${strength/stats.capacity*100}%"></span></div>`:''}</div>`;
-    }).join('')}</div><small>The command core and generators share power evenly across active systems. Lower power slows weapons, engine thrust, and shield recharge.</small>`;
+    }).join('')}</div><small>The command core and generators share power evenly across active systems. Lower power slows weapons, engine thrust, shield recharge, drone actions, and teleporter recharge.</small>`;
     const rows=panel.querySelector?.('.power-rows');if(rows)rows.scrollTop=scrollTop;
     $('upgradeCorePower').addEventListener('click',upgradeCorePower);
   }
@@ -227,10 +229,10 @@
         { id: 4, type: 'weapon', x: 6, y: 3, rotation: 0, hp: 75, level: 1 },
         { id: 5, type: 'weapon', x: 6, y: 5, rotation: 1, weaponFacing:1, hp: 75, level: 1 }
       ],
-      crew: CREW.map(({id,name,initial,color,task,x,y}) => ({id,name,initial,color,task,x,y})),
+      crew: CREW.map(({id,name,initial,color,task,x,y}) => ({id,name,initial,color,task,x,y,hp:100,hurtTime:0})),
       map: makeMap(1)
     };
-    normalizeSystems(data);return data;
+    data.droneParts=5;normalizeSystems(data);return data;
   }
   function migrateStarter(data) {
     if(data.starterLayoutVersion===2)return;
@@ -260,14 +262,24 @@
       data.nextId = Math.max(data.nextId || 1, ...data.modules.map((module) => module.id + 1));
       data.nextCrewId=Number.isInteger(data.nextCrewId)?data.nextCrewId:1;
       for(const person of data.crew){Object.assign(person,crewAppearance(person));if(!TASKS[person.task])person.task='idle';if(!Number.isFinite(person.x)||!Number.isFinite(person.y))Object.assign(person,moduleStation(data.modules.find((module)=>module.type==='core')));}
-      normalizeSystems(data);
+      normalizeSystems(data);normalizeCrew(data);
       return data;
     } catch (_) { return null; }
   }
 
+  function crewAlive(person){return person.hp===undefined||person.hp>0;}
+  function crewHome(person){return crewAlive(person)&&!person.aboard;}
+  function normalizeCrew(data){
+    data.droneParts=Number.isFinite(data.droneParts)?Math.max(0,Math.floor(data.droneParts)):5;
+    for(const person of data.crew){
+      person.hp=Number.isFinite(person.hp)?clamp(person.hp,0,100):100;
+      person.hurtTime=Number.isFinite(person.hurtTime)?Math.max(0,person.hurtTime):0;
+      delete person.aboard;delete person.boardOrder;delete person.manualGoal;
+    }
+  }
   const storedSave = loadSave();
   let save = storedSave || newSave(), hasSave = !!storedSave, screen = 'menu', mode = 'hangar', selectedCatalog = null, selectedModuleId = 1;
-  let movingModuleId=null, refittingFootprint=false;
+  let movingModuleId=null, refittingFootprint=false, selectedCrewId=null;
   const BUILD_ZOOMS=[.4,.5,.65,.8,1,1.25,1.6,2];
   const buildView={x:0,y:0,cols:GRID_W,rows:GRID_H,zoomIndex:4};
   let tradeNode=null, marketFilter='all';
@@ -534,7 +546,8 @@
       const point=()=>({x:+cell.dataset.x,y:+cell.dataset.y});
       cell.addEventListener('mouseenter',()=>{hoverCell=point();renderGrid();});
       cell.addEventListener('focus',()=>{hoverCell=point();renderGrid();});
-      cell.addEventListener('click',()=>{const p=point();onGridClick(p.x,p.y);});
+      cell.addEventListener('click',(event)=>{const p=point(),rect=cell.getBoundingClientRect(),click={x:p.x+(event.clientX-rect.left)/rect.width,y:p.y+(event.clientY-rect.top)/rect.height};const person=!selectedCatalog&&save.crew.find((person)=>crewHome(person)&&distance(person,click)<.32);if(person){selectCrew(person.id);return;}onGridClick(p.x,p.y);});
+      cell.addEventListener('contextmenu',(event)=>{event.preventDefault();const p=point();orderCrewMove(p.x,p.y);});
       grid.append(cell);gridButtons.push(cell);
     }
   }
@@ -688,16 +701,18 @@
   function renderCrew(){
     $('crewList').innerHTML=save.crew.map((person)=>{
       const template=crewAppearance(person);
-      return `<div class="crew-card"><div class="crew-top"><span class="crew-avatar" style="--crew-color:${template.color}">${template.initial}</span><strong>${template.name}</strong><small>${crewStatus(person)}</small></div><select data-crew="${person.id}" aria-label="${template.name} assignment">${Object.entries(TASKS).map(([value,label])=>`<option value="${value}" ${person.task===value?'selected':''}>${label}</option>`).join('')}</select></div>`;
+      return `<div class="crew-card ${selectedCrewId===person.id?'crew-selected':''}"><div class="crew-top"><button type="button" class="crew-avatar crew-select" data-select-crew="${person.id}" aria-label="Select ${template.name}" aria-pressed="${selectedCrewId===person.id}" style="--crew-color:${template.color}">${template.initial}</button><strong>${template.name}</strong><small>${crewStatus(person)}</small></div><div class="crew-health" role="meter" aria-label="${template.name} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.ceil(person.hp??100)}"><span style="width:${person.hp??100}%"></span><b>${Math.ceil(person.hp??100)} / 100</b></div><select ${!crewAlive(person)||person.aboard?'disabled':''} data-crew="${person.id}" aria-label="${template.name} assignment">${Object.entries(TASKS).map(([value,label])=>`<option value="${value}" ${person.task===value?'selected':''}>${label}</option>`).join('')}</select></div>`;
     }).join('');
+    $('crewList').querySelectorAll('[data-select-crew]').forEach((button)=>button.addEventListener('click',()=>selectCrew(button.dataset.selectCrew)));
+    renderCrewOrders();
     $('crewList').querySelectorAll('select').forEach((select)=>select.addEventListener('change',()=>{
-      const person=save.crew.find((member)=>member.id===select.dataset.crew);person.task=select.value;delete crewRoutes[person.id];updateCrew(0);
+      const person=save.crew.find((member)=>member.id===select.dataset.crew);person.task=select.value;delete person.manualGoal;delete person.boardOrder;delete crewRoutes[person.id];updateCrew(0);
       persist();log(`${crewAppearance(person).name} assigned to ${TASKS[person.task].toLowerCase()}.`);renderCrew();
     }));
   }
 
   function renderHud(){
-    renderSystems();
+    renderSystems();renderOperations();
     $('sectorDisplay').textContent=String(save.sector).padStart(2,'0');$('metalDisplay').textContent=save.metal;$('hullDisplay').textContent=`${Math.round(hullRatio()*100)}%`;
     $('jumpButton').disabled=mode==='combat'||eventOpen;
     $('jumpButton').textContent=mode==='combat'?'IN COMBAT':mode==='map'?'RETURN TO SHIP':'OPEN SECTOR MAP ↗';
@@ -735,6 +750,7 @@
     g.closePath();g.fill();g.stroke();
   }
   function drawCrewSprite(g,person,size=TILE){
+    if(!crewAlive(person))return;
     const template=crewAppearance(person),x=Math.round(person.x*size),y=Math.round(person.y*size);
     g.fillStyle='#091421';g.fillRect(x-5,y-7,10,13);
     g.fillStyle='#53677c';g.fillRect(x-4,y-6,8,4);
@@ -743,6 +759,8 @@
     g.fillStyle='#294358';g.fillRect(x-2,y,2,3);g.fillRect(x+1,y,2,3);
     g.fillStyle='#101b2b';g.fillRect(x-4,y+4,3,3);g.fillRect(x+1,y+4,3,3);
     g.fillStyle='#fff1c6';g.fillRect(x+4,y,1,2);
+    if(selectedCrewId===person.id){g.strokeStyle='#f7e7a6';g.lineWidth=1;g.strokeRect(x-7,y-9,14,18);}
+    if((person.hp??100)<100){g.fillStyle='#291b28';g.fillRect(x-6,y-11,12,2);g.fillStyle='#8ce0b1';g.fillRect(x-6,y-11,12*person.hp/100,2);}
   }
   function drawStation(g,module,throttle=0){
     const def=MODULES[module.type],geom=moduleGeometry(module),station=geom.station;
@@ -777,6 +795,7 @@
         g.fillStyle=module.hp>0?'#ffe7a0':'#665c49';g.fillRect(px+11,py+8,2,8);g.fillRect(px+8,py+11,8,2);
         g.fillStyle='#847d69';g.fillRect(px+3,py+8,2,8);g.fillRect(px+19,py+8,2,8);
       }
+      if(['teleporter','droneControl'].includes(module.type)){g.fillStyle=module.type==='teleporter'?'#62c8ba':'#94adce';g.fillRect(px+7,py+7,10,10);g.fillStyle='#152b3a';g.fillRect(px+9,py+9,6,6);g.fillStyle='#f0e8ab';g.fillRect(px+11,py+10,2,4);}
       if(module.type==='cargo'){
         g.fillStyle='#865e42';g.fillRect(px+7,py+7,10,10);
         g.fillStyle='#e9ca83';g.fillRect(px+8,py+8,8,2);g.fillRect(px+11,py+8,2,8);
@@ -953,7 +972,8 @@
       drawStation(g,module,thrusters[module.id]||0);
     }
     for(const module of save.modules)drawExteriorHardware(g,module,thrusters[module.id]||0);
-    for(const person of save.crew)drawCrewSprite(g,person);
+    for(const person of save.crew)if(crewHome(person))drawCrewSprite(g,person);
+    for(const drone of battle?.drones||[])if(drone.type==='repair'&&drone.hp>0)drawDroneSprite(g,drone.x*TILE,drone.y*TILE,'repair');
     if(showSelection){
       const selected=selectedModule();
       if(selected){
@@ -996,9 +1016,205 @@
     const path=[];let key=to;while(key!==from){const [x,y]=key.split(',').map(Number);path.unshift({x:x+.5,y:y+.5});key=previous.get(key);}
     return path;
   }
+  const DRONE_PROGRAMS={combat:{name:'Combat',color:'#efb77d'},defense:{name:'Defense',color:'#89ddd8'},repair:{name:'Repair',color:'#a6ddb0'},boarding:{name:'Boarding',color:'#d8a2df'}};
+  function selectedCrew(){return save.crew.find((person)=>person.id===selectedCrewId);}
+  function selectCrew(id){
+    selectedCrewId=id;selectedCatalog=null;movingModuleId=null;
+    if(battle)battle.player.selected=false;
+    renderCrew();drawHangar();
+    if(mode==='combat')$('combatHint').textContent='CREW SELECTED · RIGHT CLICK A FLOOR CELL TO MOVE';
+  }
+  function orderCrewMove(x,y){
+    const person=selectedCrew(),point={x:Math.floor(x)+.5,y:Math.floor(y)+.5};
+    if(!person||!crewAlive(person)){toast('Select a living crew member first.');return false;}
+    if(person.aboard){toast('Recall this crew member before giving home-ship orders.');return false;}
+    if(!occupancy().has(`${Math.floor(x)},${Math.floor(y)}`)||(!walkPath(person,point).length&&distance(person,point)>.12)){toast('Choose a reachable floor cell on your ship.');return false;}
+    person.manualGoal=point;person.workModuleId=null;delete person.boardOrder;delete crewRoutes[person.id];updateCrew(0);persist();renderCrew();return true;
+  }
+  function resumeCrewJob(){
+    const person=selectedCrew();if(!person||!crewHome(person))return;
+    delete person.manualGoal;delete person.boardOrder;delete crewRoutes[person.id];updateCrew(0);persist();renderCrew();
+  }
+  function enemyLocal(point,enemy){const dx=point.x-enemy.x,dy=point.y-enemy.y,c=Math.cos(enemy.angle),s=Math.sin(enemy.angle);return {x:(dx*c+dy*s)/ENEMY_TILE,y:(-dx*s+dy*c)/ENEMY_TILE};}
+  function actorWorld(actor,enemy){const c=Math.cos(enemy.angle),s=Math.sin(enemy.angle);return {x:enemy.x+(actor.x*c-actor.y*s)*ENEMY_TILE,y:enemy.y+(actor.x*s+actor.y*c)*ENEMY_TILE};}
+  function selectCrewAtWorld(point){
+    let nearest=null,best=14;
+    for(const person of save.crew)if(crewAlive(person)){
+      const pos=person.aboard?actorWorld(person.aboard,battle.enemies[person.aboard.enemy]):hullPointWorld(person,battle.player);
+      const d=distance(pos,point);if(d<best){best=d;nearest=person;}
+    }
+    if(nearest){selectCrew(nearest.id);return true;}return false;
+  }
+  function hullPointWorld(point,player){const b=shipBounds(),x=(point.x-b.cx)*COMBAT_TILE,y=(point.y-b.cy)*COMBAT_TILE,c=Math.cos(player.angle),s=Math.sin(player.angle);return {x:player.x+x*c-y*s,y:player.y+x*s+y*c};}
+  function orderCrewWorld(point){
+    const person=selectedCrew();if(!person||!crewAlive(person))return false;
+    if(person.aboard){
+      const enemy=battle.enemies[person.aboard.enemy],local=enemyLocal(point,enemy);
+      const room=enemy.modules.findIndex((room)=>room.cells.some(([x,y])=>Math.abs(x-local.x)<=.5&&Math.abs(y-local.y)<=.5));
+      if(room<0){toast('Right click a floor cell on the boarded ship, or use RECALL.');return false;}
+      return orderBoardedRoom(person,room);
+    }
+    const local=worldToHull(point,battle.player);return orderCrewMove(local.x,local.y);
+  }
+  function hurtCrew(person,amount){
+    if(!crewAlive(person)||amount<=0)return;
+    person.hp=Math.max(0,(person.hp??100)-amount);person.hurtTime=5;
+    if(person.hp===0){delete person.manualGoal;delete person.boardOrder;delete person.aboard;person.workModuleId=null;delete crewRoutes[person.id];log(`${crewAppearance(person).name} was killed.`);persist();}
+  }
+  function boardingPad(){return activeModules('teleporter')[0];}
+  function boardingReady(enemy){return !!battle&&!!enemy&&!!boardingPad()&&(battle.teleportCooldown||0)<=0&&enemyAlive(enemy)&&distance(enemy,battle.player)<=600;}
+  function boardCrew(id,enemyIndex,teamSize=1){
+    const person=save.crew.find((person)=>person.id===id),pad=boardingPad(),enemy=battle?.enemies[enemyIndex];
+    if(!person||!crewHome(person)||!pad||!enemy||!enemyAlive(enemy))return false;
+    const point=moduleStation(pad);if(!walkPath(person,point).length&&distance(person,point)>.12)return false;
+    const team=[person,...save.crew.filter((other)=>other!==person&&crewHome(other)&&!other.boardOrder&&!other.manualGoal).sort((a,b)=>distance(a,point)-distance(b,point))].slice(0,teamSize);
+    const members=team.filter((member)=>walkPath(member,point).length||distance(member,point)<.12);
+    for(const member of members){delete member.manualGoal;member.boardOrder={enemy:enemyIndex,pad:pad.id,team:members.map((member)=>member.id)};member.workModuleId=null;delete crewRoutes[member.id];}
+    updateCrew(0);renderCrew();return true;
+  }
+  function tryBoardCrew(person){
+    const order=person.boardOrder,enemy=battle?.enemies[order?.enemy];
+    if(!order)return;
+    const pad=save.modules.find((module)=>module.id===order.pad);
+    if(!enemy||!enemyAlive(enemy)||!pad||pad.hp<=0){delete person.boardOrder;return;}
+    if(!boardingReady(enemy)||systemPower(pad)<=0)return;
+    const team=save.crew.filter((member)=>crewHome(member)&&order.team.includes(member.id)&&member.boardOrder?.enemy===order.enemy&&member.boardOrder.pad===order.pad);
+    if(team.some((member)=>distance(member,moduleStation(pad))>=.12))return;
+    const room=Math.max(0,enemy.modules.findIndex((room)=>room.type==='weapon'&&room.hp>0));
+    team.forEach((member,i)=>{const [x,y]=enemy.modules[room].cells[i%enemy.modules[room].cells.length];member.aboard={enemy:order.enemy,room,x,y,path:[]};delete member.boardOrder;delete crewRoutes[member.id];});
+    battle.teleportCooldown=12;renderCrew();
+  }
+  function recallCrew(id,emergency=false){
+    const person=save.crew.find((person)=>person.id===id);if(!person?.aboard||!crewAlive(person))return false;
+    const enemy=battle?.enemies[person.aboard.enemy];
+    if(!emergency&&(!enemy||!boardingReady(enemy)))return false;
+    const pad=boardingPad()||commandCore();Object.assign(person,moduleStation(pad));delete person.aboard;delete person.manualGoal;delete crewRoutes[person.id];
+    if(battle&&!emergency)battle.teleportCooldown=12;return true;
+  }
+  function recoverBoarders(){for(const person of save.crew){if(person.aboard)recallCrew(person.id,true);delete person.boardOrder;}}
+  function enemyPath(enemy,start,end){
+    const cells=new Set(enemy.modules.flatMap((room)=>room.cells.map(([x,y])=>`${x},${y}`))),key=(p)=>`${Math.round(p.x)},${Math.round(p.y)}`,from=key(start),to=key(end);
+    if(from===to)return distance(start,end)>.08?[{...end}]:[];
+    const queue=[from],previous=new Map([[from,null]]);
+    for(let i=0;i<queue.length&&!previous.has(to);i++){
+      const [x,y]=queue[i].split(',').map(Number);
+      for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const next=`${x+dx},${y+dy}`;if(cells.has(next)&&!previous.has(next)){previous.set(next,queue[i]);queue.push(next);}}
+    }
+    if(!previous.has(to))return null;
+    const path=[];for(let cell=to;cell!==from;cell=previous.get(cell)){const [x,y]=cell.split(',').map(Number);path.unshift({x,y});}return path;
+  }
+  function orderBoardedRoom(person,roomIndex){
+    if(!person.aboard||!battle)return false;const enemy=battle.enemies[person.aboard.enemy],room=enemy.modules[roomIndex];if(!room)return false;
+    const [x,y]=room.cells[0],path=enemyPath(enemy,person.aboard,{x,y});if(path===null)return false;
+    person.aboard.path=path;person.aboard.destination=roomIndex;return true;
+  }
+  function moveActor(actor,path,travel){
+    while(path?.length&&travel>0){const next=path[0],d=distance(actor,next);if(d<=travel){Object.assign(actor,next);travel-=d;path.shift();}else{actor.x+=(next.x-actor.x)/d*travel;actor.y+=(next.y-actor.y)/d*travel;break;}}
+  }
+  function updateBoarding(dt){
+    if(!battle)return;
+    const pad=boardingPad();battle.teleportCooldown=Math.max(0,(battle.teleportCooldown||0)-dt*(pad?systemPower(pad):0));
+    battle.enemies.forEach((enemy,index)=>{
+      const boarders=save.crew.filter((person)=>crewAlive(person)&&person.aboard?.enemy===index),bots=(battle.drones||[]).filter((drone)=>drone.type==='boarding'&&drone.enemy===index&&drone.hp>0);
+      if(!enemyAlive(enemy)){for(const person of boarders)recallCrew(person.id,true);for(const drone of bots)drone.hp=0;return;}
+      const attackers=[...boarders.map((person)=>({actor:person.aboard,person})),...bots.map((actor)=>({actor}))];
+      for(const {actor,person} of attackers){
+        if(!person){const bay=save.modules.find((module)=>module.id===actor.bay);if(!bay||!systemPower(bay))continue;}
+        if(!person&&!actor.path?.length&&enemy.modules[actor.room]?.hp===0){const next=enemy.modules.findIndex((room)=>room.type!=='armor'&&room.hp>0);if(next>=0){const [x,y]=enemy.modules[next].cells[0];actor.path=enemyPath(enemy,actor,{x,y})||[];actor.destination=next;}}
+        moveActor(actor,actor.path,dt*2.1*(person?1:systemPower(save.modules.find((module)=>module.id===actor.bay))));
+        if(actor.destination!==undefined&&!actor.path?.length){actor.room=actor.destination;delete actor.destination;}
+        const room=enemy.modules.findIndex((room)=>room.cells.some(([x,y])=>Math.round(actor.x)===x&&Math.round(actor.y)===y));if(room>=0)actor.room=room;
+      }
+      const guards=(enemy.crew||[]).filter((guard)=>guard.hp>0);
+      for(const guard of guards){
+        const target=attackers.filter(({actor})=>actor.hp===undefined||actor.hp>0).sort((a,b)=>distance(a.actor,guard)-distance(b.actor,guard))[0];if(!target)continue;
+        const dest=target.actor;
+        if(distance(guard,dest)>.7){const path=enemyPath(enemy,guard,{x:Math.round(dest.x),y:Math.round(dest.y)});moveActor(guard,path,dt*1.8);}
+        const room=enemy.modules.findIndex((room)=>room.cells.some(([x,y])=>Math.round(guard.x)===x&&Math.round(guard.y)===y));if(room>=0)guard.room=room;
+        if(distance(guard,dest)<=1.1){if(target.person)hurtCrew(target.person,dt*8);else dest.hp=Math.max(0,dest.hp-dt*8);}
+      }
+      for(const {actor,person} of attackers){
+        if(person&&!crewAlive(person)||actor.hp===0||actor.path?.length)continue;
+        if(!person){const bay=save.modules.find((module)=>module.id===actor.bay);if(!bay||!systemPower(bay))continue;}
+        const power=person?1:systemPower(save.modules.find((module)=>module.id===actor.bay));
+        const guard=guards.filter((guard)=>guard.hp>0&&distance(actor,guard)<=1.2)[0];
+        if(guard){guard.hp=Math.max(0,guard.hp-dt*10*power);}
+        else{const room=enemy.modules[actor.room];if(room?.hp>0)hurtEnemy(enemy,dt*5*power,room,null,false);}
+      }
+      if(attackers.length&&enemy.crew?.length&&enemy.crew.every((guard)=>guard.hp<=0)){enemy.captured=true;const core=enemy.modules.find((room)=>room.type==='core');if(core)core.hp=0;enemy.hp=0;for(const person of boarders)if(crewAlive(person))recallCrew(person.id,true);}
+    });
+  }
+  function droneBayCapacity(bay){return bay.level+1;}
+  function droneCount(bay){return (battle?.drones||[]).filter((drone)=>drone.bay===bay.id&&drone.hp>0).length;}
+  function deployDrone(type,enemyIndex=battle?.droneTarget??0){
+    if(!battle||!DRONE_PROGRAMS[type]||(save.droneParts||0)<1)return false;
+    const bay=activeModules('droneControl').find((bay)=>droneCount(bay)<droneBayCapacity(bay));if(!bay)return false;
+    const enemy=battle.enemies[enemyIndex];if(['combat','boarding'].includes(type)&&(!enemy||!enemyAlive(enemy)))return false;
+    if(type==='boarding'&&distance(enemy,battle.player)>600)return false;
+    save.droneParts--;const point=moduleStation(bay),drone={id:(battle.nextDroneId=(battle.nextDroneId||0)+1),type,bay:bay.id,hp:60,cooldown:.5,x:point.x,y:point.y,angle:rand(0,TAU),enemy:enemyIndex,path:[]};
+    if(type==='boarding'){drone.room=Math.max(0,enemy.modules.findIndex((room)=>room.type==='weapon'&&room.hp>0));[drone.x,drone.y]=enemy.modules[drone.room].cells[0];}
+    if(['combat','defense'].includes(type)){drone.x=battle.player.x;drone.y=battle.player.y;}
+    (battle.drones??=[]).push(drone);persist();renderOperations();return true;
+  }
+  function buyDroneParts(){
+    if(mode!=='trade'||!tradeNode||(tradeNode.dronePacks||0)<1||save.metal<15)return false;
+    tradeNode.dronePacks--;save.metal-=15;save.droneParts=(save.droneParts||0)+3;persist();renderOperations();renderHud();return true;
+  }
+  function updateDrones(dt){
+    if(!battle)return;
+    for(const drone of battle.drones||[]){
+      if(drone.hp<=0)continue;const bay=save.modules.find((module)=>module.id===drone.bay),power=bay?systemPower(bay):0;
+      drone.powered=power>0;if(!power)continue;drone.cooldown=Math.max(0,drone.cooldown-dt*power);
+      if(drone.type==='repair'){
+        let room=save.modules.find((module)=>module.id===drone.target&&module.hp<maxHp(module));
+        if(!room){room=save.modules.filter((module)=>module.hp<maxHp(module)).sort((a,b)=>a.hp/maxHp(a)-b.hp/maxHp(b))[0];drone.target=room?.id;drone.path=room?walkPath(drone,moduleStation(room)):[];}
+        if(room){moveActor(drone,drone.path,dt*2.8*power);if(distance(drone,moduleStation(room))<.16)room.hp=Math.min(maxHp(room),room.hp+dt*4*power);}
+        continue;
+      }
+      if(drone.type==='boarding')continue;
+      const player=battle.player;drone.angle+=dt*1.1*power;
+      const radius=player.r+35;drone.x=player.x+Math.cos(drone.angle)*radius;drone.y=player.y+Math.sin(drone.angle)*radius;
+      if(drone.cooldown>0)continue;
+      if(drone.type==='combat'){
+        const chosen=battle.enemies[drone.enemy],enemy=chosen&&enemyAlive(chosen)?chosen:battle.enemies.filter(enemyAlive).sort((a,b)=>distance(a,drone)-distance(b,drone))[0];
+        if(enemy&&distance(enemy,drone)<700&&hullRay(worldToHull(drone,player),Math.atan2(enemy.y-drone.y,enemy.x-drone.x)-player.angle,save.modules.flatMap(moduleCells),distance(enemy,drone)/COMBAT_TILE)>=distance(enemy,drone)/COMBAT_TILE-1e-7){fireProjectile('player',drone.x,drone.y,enemy,6,800,750,{drone:true,color:'#f3ad7d',family:'laser'});drone.cooldown=1.6;}
+      }else{
+        const incoming=battle.projectiles.filter((shot)=>shot.owner==='enemy'&&!(shot.delay>0)&&distance(shot,player)<player.r+230).sort((a,b)=>distance(a,player)-distance(b,player))[0];
+        if(incoming){battle.projectiles.splice(battle.projectiles.indexOf(incoming),1);(battle.effects??=[]).push({x:drone.x,y:drone.y,to:{x:incoming.x,y:incoming.y},color:'#89ddd8',time:.2,duration:.2});drone.cooldown=.8;}
+      }
+    }
+  }
+  function drawDroneSprite(g,x,y,type){
+    g.fillStyle='#132535';g.fillRect(x-7,y-5,14,10);g.fillRect(x-10,y-2,20,4);g.fillStyle=DRONE_PROGRAMS[type].color;g.fillRect(x-5,y-3,10,6);g.fillStyle='#e5f4df';g.fillRect(x-2,y-2,4,2);
+  }
+  function drawEnemyCrew(g,enemy){
+    const index=battle.enemies.indexOf(enemy);
+    for(const guard of enemy.crew||[])if(guard.hp>0)drawCrewSprite(g,{...guard,x:guard.x,y:guard.y,color:'#ed8580',initial:'P'},ENEMY_TILE);
+    for(const person of save.crew)if(crewAlive(person)&&person.aboard?.enemy===index)drawCrewSprite(g,{...person,x:person.aboard.x,y:person.aboard.y},ENEMY_TILE);
+    for(const drone of battle.drones||[])if(drone.type==='boarding'&&drone.enemy===index&&drone.hp>0)drawDroneSprite(g,drone.x*ENEMY_TILE,drone.y*ENEMY_TILE,'boarding');
+  }
+  function renderCrewOrders(){
+    const panel=$('crewOrders');if(!panel)return;const person=selectedCrew();
+    if(!person){panel.innerHTML='<p class="muted small">Click a crew portrait or person. Right click a floor cell to send them there. Living crew heal 3 HP/s at home after 5 seconds without damage.</p>';return;}
+    panel.innerHTML=`<strong>${crewAppearance(person).name} · ${crewStatus(person)}</strong><p class="muted small">Right click a floor cell to move. Manual orders pause the assigned job.</p>${crewAlive(person)?person.aboard?`<button data-recall="${person.id}" ${!boardingReady(battle.enemies[person.aboard.enemy])?'disabled':''}>RECALL CREW</button>${battle.enemies[person.aboard.enemy].modules.map((room,i)=>`<button data-board-room="${i}" type="button">MOVE TO ${room.type.toUpperCase()}</button>`).join('')}`:`<button id="resumeCrewJob" type="button">RESUME ASSIGNED JOB</button>${battle?battle.enemies.map((enemy,i)=>enemyAlive(enemy)?`<button data-board-crew="${i}" ${!boardingPad()?'disabled':''}>BOARD TEAM (UP TO 2) · ${enemy.name} ${i+1}</button>`:'').join(''):''}`:'<p class="muted small">Crew lost. Recruit replacements at a trader.</p>'}`;
+    panel.querySelector?.('#resumeCrewJob')?.addEventListener('click',resumeCrewJob);
+    panel.querySelectorAll('[data-board-crew]').forEach((button)=>button.addEventListener('click',()=>boardCrew(person.id,+button.dataset.boardCrew,2)));
+    panel.querySelectorAll('[data-recall]').forEach((button)=>button.addEventListener('click',()=>{recallCrew(person.id);renderCrew();}));
+    panel.querySelectorAll('[data-board-room]').forEach((button)=>button.addEventListener('click',()=>orderBoardedRoom(person,+button.dataset.boardRoom)));
+  }
+  function renderOperations(){
+    renderCrewOrders();const panel=$('dronePanel');if(!panel)return;
+    const bays=save.modules.filter((module)=>module.type==='droneControl'),capacity=bays.reduce((sum,bay)=>sum+droneBayCapacity(bay),0),active=(battle?.drones||[]).filter((drone)=>drone.hp>0).length;
+    panel.innerHTML=`<strong>DRONE PARTS ${save.droneParts??5} · ${active} / ${capacity} ACTIVE</strong><p class="muted small">One part per deployment. Combat fires lasers; defense intercepts shots; repair fixes rooms; boarding fights and sabotages. Disabled bays pause their drones. Dismissed drones do not refund parts.</p>${mode==='trade'?`<button id="buyDroneParts" ${(tradeNode?.dronePacks||0)<1||save.metal<15?'disabled':''}>BUY 3 PARTS · ◆ 15 · ${tradeNode?.dronePacks||0} PACKS</button>`:''}${Object.entries(DRONE_PROGRAMS).map(([type,def])=>`<button data-deploy-drone="${type}" ${!battle||!activeModules('droneControl').some((bay)=>droneCount(bay)<droneBayCapacity(bay))||!(save.droneParts>0)?'disabled':''}>DEPLOY ${def.name.toUpperCase()}</button>`).join('')}${battle?`<p class="muted small">TELEPORTER ${boardingPad()?`${Math.ceil(battle.teleportCooldown||0)}s RECHARGE · 600 RANGE`:'NOT INSTALLED / OFFLINE'}</p>${battle.enemies.map((enemy,i)=>enemyAlive(enemy)?`<button data-drone-target="${i}" aria-pressed="${(battle.droneTarget??0)===i}">TARGET ${enemy.name} ${i+1}</button>`:'').join('')}${(battle.drones||[]).filter((drone)=>drone.hp>0).map((drone)=>`<div class="drone-row">${DRONE_PROGRAMS[drone.type].name.toUpperCase()} · ${Math.ceil(drone.hp)} HP${drone.powered===false?' · OFFLINE':''}<button data-stop-drone="${drone.id}">DISMISS</button></div>`).join('')}`:''}`;
+    panel.querySelector?.('#buyDroneParts')?.addEventListener('click',buyDroneParts);
+    panel.querySelectorAll('[data-deploy-drone]').forEach((button)=>button.addEventListener('click',()=>{if(!deployDrone(button.dataset.deployDrone))toast('A powered bay, free slot, part and valid target are required. Boarding drones need a target within 600 units.');}));
+    panel.querySelectorAll('[data-drone-target]').forEach((button)=>button.addEventListener('click',()=>{battle.droneTarget=+button.dataset.droneTarget;renderOperations();}));
+    panel.querySelectorAll('[data-stop-drone]').forEach((button)=>button.addEventListener('click',()=>{const drone=battle.drones.find((drone)=>drone.id===+button.dataset.stopDrone);if(drone)drone.hp=0;renderOperations();}));
+  }
+
   function crewWorkPlan(extraPerson=null){
-    const people=[...save.crew];
-    if(extraPerson&&!people.includes(extraPerson))people.push(extraPerson);
+    const people=save.crew.filter((person)=>crewHome(person)&&!person.manualGoal&&!person.boardOrder);
+    if(extraPerson&&crewHome(extraPerson)&&!extraPerson.manualGoal&&!extraPerson.boardOrder&&!people.includes(extraPerson))people.push(extraPerson);
     const assignments=new Map(),occupied=occupancy(),components=new Map();
     // Crew may only reserve consoles in their connected floor component.
     function component(point){
@@ -1048,6 +1264,7 @@
   }
   function crewGoal(person,route={},plan=crewWorkPlan(person)){
     const core=save.modules.find((module)=>module.type==='core'),work=plan.get(person);
+    if(person.manualGoal||person.boardOrder){const point=person.manualGoal||moduleStation(save.modules.find((module)=>module.id===person.boardOrder.pad)||core);return {module:occupancy().get(`${Math.floor(point.x)},${Math.floor(point.y)}`)||core,point,working:false};}
     let module=work||core;
     if(person.task==='load'&&work&&route.phase!=='drop'){
       const sources=activeModules('cargo');
@@ -1056,6 +1273,10 @@
     return {module,point:moduleStation(module),working:!!work};
   }
   function crewStatus(person){
+    if(!crewAlive(person))return 'DEAD';
+    if(person.aboard)return 'BOARDING';
+    if(person.boardOrder)return 'TO TELEPORTER';
+    if(person.manualGoal)return 'MANUAL';
     const route=crewRoutes[person.id];
     if(route?.path?.length&&distance(person,route.path[0])>.08)return 'WALKING';
     if(person.task==='idle')return 'STAND BY';
@@ -1064,9 +1285,13 @@
   function updateCrew(dt){
     const plan=crewWorkPlan();
     for(const person of save.crew){
+      if(!crewAlive(person))continue;
+      const healingTime=Math.max(0,dt-(person.hurtTime||0));person.hurtTime=Math.max(0,(person.hurtTime||0)-dt);
+      if(person.aboard)continue;
+      person.hp=Math.min(100,(person.hp??100)+healingTime*3);
       let route=crewRoutes[person.id];
       if(!route){route={path:[],target:'',phase:'pickup'};crewRoutes[person.id]=route;}
-      const goal=crewGoal(person,route,plan),target=`${person.task}:${goal.module.id}:${route.phase}`;
+      const goal=crewGoal(person,route,plan),target=`${person.task}:${goal.module.id}:${route.phase}:${person.manualGoal?`${goal.point.x},${goal.point.y}`:person.boardOrder?'board':''}`;
       route.working=goal.working;
       if(route.target!==target){route.path=walkPath(person,goal.point);route.target=target;}
       let travel=dt*2.4;
@@ -1075,6 +1300,7 @@
         if(d<=travel){person.x=next.x;person.y=next.y;travel-=d;route.path.shift();}
         else {person.x+=(next.x-person.x)/d*travel;person.y+=(next.y-person.y)/d*travel;travel=0;}
       }
+      if(person.boardOrder&&!route.path.length&&distance(person,goal.point)<.12)tryBoardCrew(person);
       if(person.task==='load'&&goal.working&&battle&&!route.path.length&&distance(person,goal.point)<.12){
         if(route.phase==='drop'){battle.ammo=Math.min(battle.maxAmmo,battle.ammo+2);route.phase='pickup';}
         else route.phase='drop';
@@ -1084,7 +1310,7 @@
   }
   function crewAtStation(task,module){
     const point=moduleStation(module);
-    return Math.min(1,save.crew.filter((person)=>person.task===task&&(person.workModuleId===undefined||person.workModuleId===module.id)&&distance(person,point)<.16).length);
+    return Math.min(1,save.crew.filter((person)=>crewHome(person)&&!person.manualGoal&&!person.boardOrder&&person.task===task&&(person.workModuleId===undefined||person.workModuleId===module.id)&&distance(person,point)<.16).length);
   }
 
   function setMode(next){
@@ -1156,7 +1382,7 @@
     let id;do{id=`crew-${save.nextCrewId++}`;}while(save.crew.some((person)=>person.id===id));
     let displayName=name,suffix=2;
     while(save.crew.some((person)=>person.name===displayName))displayName=`${name} ${suffix++}`;
-    save.crew.push({id,name:displayName,initial:name[0],color,task:'idle',...point});
+    save.crew.push({id,name:displayName,initial:name[0],color,task:'idle',hp:100,hurtTime:0,...point});
     log(`${displayName} joined the crew.`);
     return displayName;
   }
@@ -1166,10 +1392,10 @@
     return MODULES[type].name;
   }
   function upgradeTraderStock(node){
-    node.stock??=traderStock();
-    for(const type of [...SHIELD_TYPES,...ENGINE_TYPES,'generator'])if(!node.stock.some((item)=>item.type===type))node.stock.push({type,qty:1,price:MODULES[type].cost});
+    node.stock??=traderStock();node.dronePacks??=2;
+    for(const type of [...SHIELD_TYPES,...ENGINE_TYPES,'generator','teleporter','droneControl'])if(!node.stock.some((item)=>item.type===type))node.stock.push({type,qty:1,price:MODULES[type].cost});
     if(!Array.isArray(node.recruits))node.recruits=traderRecruits();
-    node.stockVersion=6;
+    node.stockVersion=7;
   }
 
   function openTrader(node){
@@ -1345,13 +1571,13 @@
   }
   function startNewGame(){
     save=newSave();battle=null;pendingNodeId=null;eventOpen=false;$('eventOverlay').hidden=true;
-    selectedModuleId=1;selectedCatalog=null;buildRotation=0;buildWeaponFacing=0;buildFlipped=false;hoverCell=null;
+    selectedCrewId=null;selectedModuleId=1;selectedCatalog=null;buildRotation=0;buildWeaponFacing=0;buildFlipped=false;hoverCell=null;
     for(const id of Object.keys(crewRoutes))delete crewRoutes[id];
     logEntries.length=0;persist();log('New journey initiated.');showGame();
   }
   function returnToMainMenu(){
     if(screen!=='playing')return;
-    if(battle){battle=null;for(const module of save.modules)delete module.cooldown;}
+    if(battle){recoverBoarders();battle=null;for(const module of save.modules)delete module.cooldown;}
     pendingNodeId=null;eventOpen=false;$('eventOverlay').hidden=true;
     persist();showMainMenu();
   }
@@ -1470,6 +1696,8 @@
     const player={x:world.w*.5-260,y:world.h*.5,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,path:[],selected:false,r:shipRadius(),thrusters:{}};
     const ammo=12+activeModules('cargo').length*6+save.ammoCrates*6;save.ammoCrates=0;
     battle={kind,world,player,enemies,asteroids:makeAsteroids(world,Math.min(14,8+Math.ceil(cellCount/12)+count),player,enemies),projectiles:[],stars:Array.from({length:Math.min(650,Math.round(world.w*world.h/9500))},()=>({x:rand(0,world.w),y:rand(0,world.h),s:Math.random()<.17?2:1})),ammo,maxAmmo:ammo,shake:0,shields:{}};
+    battle.drones=[];battle.teleportCooldown=0;
+    enemies.forEach((enemy)=>{enemy.crew=enemy.modules.filter((room)=>room.type==='core'||room.type==='weapon').map((room,i)=>({id:`guard-${i}`,hp:70,room:enemy.modules.indexOf(room),x:room.cells[0][0],y:room.cells[0][1]}));});
     persist();
     for(const module of save.modules)module.cooldown=rand(.25,.8);
     setMode('combat');$('combatWaveLabel').textContent=kind==='rescue'?'DEFEND THE FREIGHTER':'HOSTILE CONTACT';
@@ -1478,12 +1706,12 @@
     log(`${count} hostile ${count===1?'ship':'ships'} engaged.`);renderAll();
   }
   function finishBattle(victory){
-    if(!battle)return;const kind=battle.kind;battle=null;setMode('hangar');
+    if(!battle)return;recoverBoarders();const kind=battle.kind,captured=battle.enemies.some((enemy)=>enemy.captured);battle=null;setMode('hangar');
     for(const module of save.modules)delete module.cooldown;
     if(victory){
-      const reward=(kind==='rescue'?48:30)+save.sector*4;save.metal+=reward;save.wins++;
+      const reward=(kind==='rescue'?48:30)+save.sector*4+(captured?12:0);save.metal+=reward;save.wins++;
       log(`${kind==='rescue'?'Freighter rescued':'Pirates defeated'}; ${reward} metal earned.`);
-      concludeEvent(kind==='rescue'?'FREIGHTER SAVED':'PIRATES DEFEATED',kind==='rescue'?`The freighter escapes and transfers ${reward} metal in thanks. Repair your ship before the next jump.`:`The raider breaks apart. Your crew recovers ${reward} metal from the wreck. Repair your ship before the next jump.`,kind==='rescue'?'◇':'✦');
+      concludeEvent(kind==='rescue'?'FREIGHTER SAVED':captured?'SHIP CAPTURED':'PIRATES DEFEATED',captured?`Your assault defeats the defending crew. Surviving boarders return home, and the intact ship yields ${reward} metal, including a 12-metal capture bonus.`:kind==='rescue'?`The freighter escapes and transfers ${reward} metal in thanks. Repair your ship before the next jump.`:`The raider breaks apart. Your crew recovers ${reward} metal from the wreck. Repair your ship before the next jump.`,kind==='rescue'?'◇':'✦');
     }else{
       pendingNodeId=null;log('Command core destroyed.');
       showEvent({type:'MISSION LOST // CORE FAILURE',icon:'✕',title:'SHIP LOST',body:'Your command core was destroyed. Start a new run to build another ship and try again.',choices:[{label:'START A NEW RUN →',action:()=>{save=newSave();selectedModuleId=1;selectedCatalog=null;for(const id of Object.keys(crewRoutes))delete crewRoutes[id];persist();hideEvent();logEntries.length=0;log('New journey initiated.');openHangar();}}]});
@@ -1721,7 +1949,7 @@
       if(battle.player.dest)battle.player.path=routeAroundRocks(battle.player,battle.player.dest,battle.player.r,battle.asteroids,battle.world);
     }
   }
-  function hurtEnemy(target,amount,room=null,point=null) {
+  function hurtEnemy(target,amount,room=null,point=null,crewDamage=true) {
     if(!enemyAlive(target))return;
     if(!target.modules?.some((part)=>part.type==='core')){
       target.hp=Math.max(0,target.hp-amount);
@@ -1731,6 +1959,10 @@
     const struck=room?.hp>0?room:nearestEnemyRoom(target,point||{x:target.x,y:target.y});
     if(!struck)return;
     struck.hp=Math.max(0,struck.hp-amount);
+    const roomIndex=target.modules.indexOf(struck);
+    for(const person of save.crew)if(crewDamage&&person.aboard&&person.aboard.enemy===battle?.enemies.indexOf(target)&&person.aboard.room===roomIndex)hurtCrew(person,amount*1.5);
+    for(const guard of target.crew||[])if(crewDamage&&guard.room===roomIndex)guard.hp=Math.max(0,guard.hp-amount*1.5);
+    for(const drone of battle?.drones||[])if(crewDamage&&drone.type==='boarding'&&drone.enemy===battle.enemies.indexOf(target)&&drone.room===roomIndex)drone.hp=Math.max(0,drone.hp-amount*1.5);
     target.hp=target.modules.reduce((sum,part)=>sum+Math.max(0,part.hp),0);
     if(struck.hp===0){
       if(struck.type==='core'){log(`${target.name} command core destroyed.`);toast(`${target.name} destroyed`);}
@@ -1841,12 +2073,14 @@
     }
     if(!target){const weights=live.map((module)=>module.type==='core'?1:2);let roll=rand(0,weights.reduce((a,b)=>a+b,0));target=live[0];for(let i=0;i<live.length;i++){roll-=weights[i];if(roll<=0){target=live[i];break;}}}
     target.hp=Math.max(0,target.hp-amount);battle.shake=.12;
+    for(const person of save.crew)if(crewHome(person)&&moduleCells(target).some(([x,y])=>Math.floor(person.x)===x&&Math.floor(person.y)===y))hurtCrew(person,amount*1.5);
+    for(const drone of battle.drones||[])if(drone.type==='repair'&&moduleCells(target).some(([x,y])=>Math.floor(drone.x)===x&&Math.floor(drone.y)===y))drone.hp=Math.max(0,drone.hp-amount*1.5);
     if(target.hp===0){log(`${MODULES[target.type].name} disabled!`);toast(`${MODULES[target.type].name} disabled!`);}
     if(save.modules.find((module)=>module.type==='core').hp<=0)finishBattle(false);
   }
   function updateBattle(dt,time){
     if(!battle)return;const b=battle,p=b.player;b.shake=Math.max(0,b.shake-dt);
-    navigatePlayer(dt);updateShields(dt);
+    navigatePlayer(dt);updateShields(dt);updateBoarding(dt);updateDrones(dt);
     for(const module of save.modules){
       if(module.hp<=0||module.hp>=maxHp(module))continue;
       const repairers=crewAtStation('repair',module);
@@ -1921,7 +2155,7 @@
         shot.evasionChecked=true;shot.evaded=Math.random()<evasionChance();
         if(shot.evaded)(b.effects??=[]).push({x:p.x,y:p.y-p.r-20,text:'MISS',color:'#9ce5df',time:.6,duration:.6});
       }
-      let stop=travel,hit=false,target=null,hitRock=null,hitRoom=null,shielded=false,shieldAngle=0;
+      let stop=travel,hit=false,target=null,hitRock=null,hitRoom=null,hitDrone=null,shielded=false,shieldAngle=0;
       if(shot.owner==='player'&&!shot.hullPass){
         const blocked=hullRay(worldToHull(shot,p),Math.atan2(dy,dx)-p.angle,save.modules.flatMap(moduleCells),travel/COMBAT_TILE)*COMBAT_TILE;
         if(blocked<travel-1e-7){stop=blocked;hit=true;}
@@ -1942,8 +2176,10 @@
           stop=shield.distance;hit=true;target=p;hitRock=null;shielded=true;shieldAngle=shield.angle;
         }
       }
+      if(shot.owner==='enemy'&&!shot.evaded)for(const drone of b.drones||[])if(drone.hp>0&&['combat','defense'].includes(drone.type)){const entry=rayCircle(shot,dx,dy,drone,9);if(entry<stop){stop=entry;hit=true;target=null;hitRock=null;shielded=false;hitDrone=drone;}}
       shot.x+=dx*stop;shot.y+=dy*stop;shot.remaining-=stop;shot.life-=step;shot.launchRemaining=Math.max(0,(shot.launchRemaining||0)-stop);
-      if(target&&shot.owner==='player'){
+      if(hitDrone){hitDrone.hp=Math.max(0,hitDrone.hp-shot.damage);}
+      else if(target&&shot.owner==='player'){
         weaponImpact(shot,target,null,hitRoom);shot.hitIds.add(target);
         if(shot.pierce>0){shot.pierce--;hit=false;}
       }else if(target){const remaining=shielded?absorbShields(shot.damage,shieldAngle):shot.damage;if(remaining>0)damagePlayer(remaining,shot);if(!battle)return;}
@@ -2000,6 +2236,7 @@
         g.fillStyle='#ef9a87';g.fillRect(cx-13,cy-16,26*room.hp/room.maxHp,3);
       }
     }
+    drawEnemyCrew(g,enemy);
     g.restore();
     if((enemy.modules||[]).some((module)=>module.ionTime>0)){g.fillStyle='#80dce9';g.fillRect(enemy.x-16,enemy.y-r-6,5,5);}
     if(enemy.slowTime>0){g.fillStyle='#9ceaf0';g.fillRect(enemy.x-24,enemy.y-r-6,5,5);}
@@ -2038,8 +2275,8 @@
   }
   function arenaViewport(world){return {w:Math.min(1080,world.w),h:Math.min(760,world.h)};}
   function arenaCamera(){
-    const {world,player}=battle,view=arenaViewport(world);
-    return {w:view.w,h:view.h,x:clamp((player?.x??world.w/2)-view.w/2,0,world.w-view.w),y:clamp((player?.y??world.h/2)-view.h/2,0,world.h-view.h)};
+    const {world,player}=battle,view=arenaViewport(world),person=save.crew.find((person)=>person.id===selectedCrewId),focus=person?.aboard?battle.enemies[person.aboard.enemy]:player;
+    return {w:view.w,h:view.h,x:clamp((focus?.x??world.w/2)-view.w/2,0,world.w-view.w),y:clamp((focus?.y??world.h/2)-view.h/2,0,world.h-view.h)};
   }
   function drawArena(time){
     if(!battle)return;const b=battle,w=b.world.w,h=b.world.h,p=b.player;
@@ -2079,6 +2316,7 @@
     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(shipSprite,(minX-art.x)*TILE*art.scale,(minY-art.y)*TILE*art.scale,width*TILE*art.scale,height*TILE*art.scale,(minX-bounds.cx)*COMBAT_TILE,(minY-bounds.cy)*COMBAT_TILE,width*COMBAT_TILE,height*COMBAT_TILE);
     ctx.restore();
     drawShields(p);
+    for(const drone of b.drones||[])if(drone.hp>0&&['combat','defense'].includes(drone.type))drawDroneSprite(ctx,drone.x,drone.y,drone.type);
     for(const effect of b.effects||[]){
       ctx.globalAlpha=effect.time/effect.duration;ctx.fillStyle=effect.color;
       if(effect.text){ctx.font='14px monospace';ctx.fillText(effect.text,effect.x,effect.y-(1-effect.time/effect.duration)*15);}
@@ -2107,6 +2345,7 @@
   }
   function canvasPoint(event){const rect=canvas.getBoundingClientRect(),view=arenaCamera();return{x:view.x+(event.clientX-rect.left)/rect.width*view.w,y:view.y+(event.clientY-rect.top)/rect.height*view.h};}
   function selectPlayer(point=null){
+    selectedCrewId=null;renderCrew();
     if(!battle)return;const p=battle.player;p.selected=true;
     if(point){
       const dx=point.x-p.x,dy=point.y-p.y,cos=Math.cos(p.angle),sin=Math.sin(p.angle),bounds=shipBounds();
@@ -2137,6 +2376,8 @@
     $('crewList').querySelectorAll('.crew-card').forEach((card,index)=>{
       const person=save.crew[index];
       card.querySelector('small').textContent=crewStatus(person);
+      const meter=card.querySelector('.crew-health');if(meter){meter.setAttribute('aria-valuenow',Math.ceil(person.hp??100));meter.querySelector('span').style.width=`${person.hp??100}%`;meter.querySelector('b').textContent=`${Math.ceil(person.hp??100)} / 100`;}
+      const select=card.querySelector('select');if(select)select.disabled=!crewAlive(person)||!!person.aboard;
     });
   }
   function frame(time){
@@ -2174,8 +2415,9 @@
     canvas.addEventListener('wheel',(event)=>{event.preventDefault();rotateArrival(event.deltaY>0?1:-1);},{passive:false});
     canvas.addEventListener('pointerdown',(event)=>{
       if(!battle)return;const point=canvasPoint(event);
-      if(event.button===2){event.preventDefault();orderMove(point);return;}
+      if(event.button===2){event.preventDefault();if(selectedCrewId){orderCrewWorld(point);return;}orderMove(point);return;}
       if(event.button!==0)return;
+      if(selectCrewAtWorld(point))return;
       if(distance(point,battle.player)<battle.player.r+14)selectPlayer(point);
       else if(event.pointerType==='touch')orderMove(point);
     });
@@ -2183,6 +2425,7 @@
       if(event.target instanceof HTMLSelectElement||event.target instanceof HTMLInputElement)return;
       if(screen==='menu'){if(event.key==='Escape')$('menuConfirm').hidden=true;return;}
       if(screen!=='playing')return;
+      if(event.key==='Escape'&&selectedCrewId){selectedCrewId=null;renderCrew();}
       if(['hangar','trade'].includes(mode)&&event.key.startsWith('Arrow')){const pan={ArrowLeft:[-3,0],ArrowRight:[3,0],ArrowUp:[0,-3],ArrowDown:[0,3]}[event.key];if(pan){event.preventDefault();panBuild(...pan);return;}}
       if(event.key.toLowerCase()==='f'&&mode==='trade'&&selectedCatalog&&MODULES[selectedCatalog].range){event.preventDefault();flipBuild();}
       if(event.key.toLowerCase()==='q'){if(mode==='combat')rotateArrival(-1);else if(mode==='trade')rotateBuild(-1);}

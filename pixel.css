@@ -165,3 +165,16 @@
   .side-panel > * { flex-shrink:0; }
   .stage-panel { height:100%; min-height:0; }
 }
+
+/* Crew orders, health and autonomous support systems. */
+.crew-selected{outline:1px solid var(--accent,#80d9da)}
+.crew-select{padding:0;cursor:pointer;border:1px solid transparent;flex-shrink:0}
+.crew-select[aria-pressed="true"]{border-color:#f4dfa4}
+.crew-health{position:relative;height:14px;background:#302633;margin:6px 0 9px;overflow:hidden}
+.crew-health span{display:block;height:100%;background:#477d68}
+.crew-health b{position:absolute;inset:0;text-align:center;font-size:9px;line-height:14px;color:#eef8ee}
+.crew-orders,.drone-panel{display:grid;gap:8px;margin-top:12px;font-size:10px}
+.crew-orders button,.drone-panel button{padding:9px 6px;font-size:9px;line-height:1.4;background:#142537;color:var(--text);border:1px solid #3b566d;text-align:left}
+.crew-orders button:hover:not(:disabled),.drone-panel button:hover:not(:disabled){background:#20394a;border-color:var(--cyan)}
+.drone-panel [aria-pressed="true"]{border-color:#88d7cf;color:#a5f1de}
+.drone-row{display:flex;align-items:center;justify-content:space-between;gap:4px;font-size:9px}
