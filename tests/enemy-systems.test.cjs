@@ -84,7 +84,7 @@ test('enemy cannon, laser and missile shots use their real families, rates, rang
     const {b,enemy}=setup(g,type),room=enemy.modules.find(m=>m.type==='weapon'),stats=g.enemyWeaponStats(room);room.cooldown=0;g.fireEnemyWeapons(enemy,.1);
     assert.equal(b.projectiles.length,1,type);const shot=b.projectiles[0];assert.equal(shot.family,stats.family);near(Math.hypot(shot.vx,shot.vy),stats.speed);assert.equal(shot.damage,stats.damage);assert.equal(enemy.ammo,22-stats.ammo);assert.equal(room.cooldown,stats.reload);
     if(type==='missile'){assert.equal(shot.target,b.player);assert.ok(shot.guidance>0);assert.equal(shot.remaining,Infinity);}else assert.equal(shot.guidance,0);
-    enemy.ammo=0;room.cooldown=0;g.fireEnemyWeapons(enemy,.1);assert.equal(b.projectiles.length,type==='laser'?2:1);
+    enemy.ammo=0;room.cooldown=0;g.fireEnemyWeapons(enemy,.1);assert.equal(b.projectiles.length,stats.ammo===0?2:1);
   }
 });
 
