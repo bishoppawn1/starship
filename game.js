@@ -2103,12 +2103,12 @@
   function navigatePlayer(dt){
     const p=battle.player,engines=engineThrusters(),cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0);
     const mass=Math.max(2,cellCount*.3),inertia=mass*p.r*p.r*.42,lever=Math.max(20,p.r*.58);
-    let desiredX=-p.vx*1.6,desiredY=-p.vy*1.6,heading=p.targetAngle;
+    let desiredX=-p.vx*1.6,desiredY=-p.vy*1.6,heading=p.dest?p.angle:p.targetAngle;
     if(p.dest){
       if(p.path.length>1&&distance(p,p.path[0])<34)p.path.shift();
       const waypoint=p.path[0]||p.dest;
       const dx=waypoint.x-p.x,dy=waypoint.y-p.y,dist=Math.hypot(dx,dy),speed=Math.hypot(p.vx,p.vy);
-      if(p.path.length<=1&&dist<22&&speed<12){p.dest=null;p.path=[];}
+      if(p.path.length<=1&&dist<12&&speed<2){p.dest=null;p.path=[];}
       else{
         desiredX=clamp(dx*.38-p.vx*2.4,-55,55);desiredY=clamp(dy*.38-p.vy*2.4,-55,55);
         const magnitude=Math.hypot(desiredX,desiredY),factor=Math.min(1,55/(magnitude||1));desiredX*=factor;desiredY*=factor;
@@ -2116,17 +2116,33 @@
           const rx=p.x-rock.x,ry=p.y-rock.y,d=Math.hypot(rx,ry)||1,clearance=rock.r+p.r+WRECK_BERTH+12;
           if(d<clearance){const strength=(clearance-d)/clearance*105;desiredX+=rx/d*strength;desiredY+=ry/d*strength;}
         }
-        if(dist>34&&Math.hypot(desiredX,desiredY)>9){
-          let thrustX=0,thrustY=0;for(const engine of engines){thrustX+=Math.cos(engine.direction)*engine.force;thrustY+=Math.sin(engine.direction)*engine.force;}
-          const bodyThrustAngle=Math.atan2(thrustY,thrustX);
-          heading=Math.atan2(desiredY,desiredX)-bodyThrustAngle;
+        if(Math.hypot(desiredX,desiredY)>1){
+          // Forward and reverse engines can produce the same world force at different hull headings.
+          // Prefer the reachable heading with less turning, without assuming all engines face forward.
+          const directions=new Map();
+          for(const engine of engines)if(engine.force>0)directions.set(engine.module.rotation,(directions.get(engine.module.rotation)||0)+engine.force);
+          const strongest=Math.max(...directions.values(),1),accelerationAngle=Math.atan2(desiredY,desiredX);
+          const options=[...directions].map(([rotation,force])=>({heading:accelerationAngle-rotation*Math.PI/2,force}));
+          options.sort((a,b)=>(Math.abs(angleForAvailableTorque(p,a.heading,engines))+.2*strongest/a.force)-(Math.abs(angleForAvailableTorque(p,b.heading,engines))+.2*strongest/b.force));
+          if(options.length)heading=options[0].heading;
         }
       }
     }
-    const desiredTorque=clamp(inertia*(angleForAvailableTorque(p,heading,engines)*2-p.omega*3.6),-22000,22000);
-    const desired=[mass*desiredX,mass*desiredY,desiredTorque/lever*1.25],coeff=engines.map((engine)=>{
+    const turn=angleForAvailableTorque(p,heading,engines);
+    // Turning first prevents sustained sideways acceleration from becoming an orbit.
+    if(p.dest){const alignment=Math.max(0,Math.cos(turn));desiredX*=alignment**4;desiredY*=alignment**4;}
+    // Leave headroom for opposing engines to cancel translation during a turn.
+    const positiveTorque=engines.reduce((sum,engine)=>sum+Math.max(0,engine.torque),0)*.45;
+    const negativeTorque=engines.reduce((sum,engine)=>sum+Math.max(0,-engine.torque),0)*.45;
+    const braking=(turn>=0?negativeTorque:positiveTorque)/inertia;
+    const targetOmega=Math.sign(turn)*Math.min(1,Math.abs(turn)*1.5,braking>0?Math.sqrt(2*braking*Math.abs(turn))*.7:Math.abs(turn)*.5);
+    const desiredTorque=clamp(inertia*(targetOmega-p.omega)*3,-Math.min(22000,negativeTorque),Math.min(22000,positiveTorque));
+    const directions=new Set(engines.filter((engine)=>engine.force>0).map((engine)=>engine.module.rotation));
+    // Without counterthrust, some translation is unavoidable; do not let position damping veto the turn.
+    const yawWeight=[...directions].some((rotation)=>directions.has((rotation+2)%4))?1.25:4;
+    const desired=[mass*desiredX,mass*desiredY,desiredTorque/lever*yawWeight],coeff=engines.map((engine)=>{
       const direction=p.angle+engine.direction;
-      return [Math.cos(direction)*engine.force,Math.sin(direction)*engine.force,engine.torque/lever*1.25];
+      return [Math.cos(direction)*engine.force,Math.sin(direction)*engine.force,engine.torque/lever*yawWeight];
     });
     const throttles=engines.map(()=>0);
     for(let pass=0;pass<12;pass++)for(let i=0;i<engines.length;i++){

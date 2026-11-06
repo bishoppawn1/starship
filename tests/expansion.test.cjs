@@ -207,3 +207,13 @@ test('older traders keep sold-out stock without gaining guaranteed generator off
   assert.equal(node.stock.length,2);
   const before=JSON.stringify(node);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node),before);
 });
+
+test('a projectile stronger than full overlapping shields carries only the excess through to player hull',()=>{
+  const g=game(),save=g.newSave();save.modules=[core(0,0),{id:2,type:'shield',x:2,y:0,rotation:0,level:1,hp:85},{id:3,type:'focusShield',x:2,y:2,rotation:0,level:1,hp:75}];save.crew=[];
+  const b=battle(g,save);for(const module of save.modules.slice(1))g.shieldState(module).delay=100;
+  const before=save.modules.reduce((sum,module)=>sum+module.hp,0);
+  g.fireProjectile('enemy',700,500,b.player,280,400,400);g.updateBattle(.5,0);
+  near(save.modules.reduce((sum,module)=>sum+module.hp,0),before-20);
+  for(const module of save.modules.slice(1))assert.equal(g.shieldState(module).charge,0);
+  assert.equal(b.projectiles.length,0);
+});

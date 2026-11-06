@@ -128,3 +128,9 @@ test('enemy art includes the shield console, numeric strength, and each actual w
   const other=ship(g,'laser',false);assert.notEqual(g.enemySprite(other),first);
   b.enemies=[enemy];enemy.modules.find(m=>m.type==='shield').hp=0;g.draws.length=0;g.drawEnemy(enemy);assert.ok(g.draws.some(([fn,text])=>fn==='fillText'&&text==='SHIELD 0 / 100'));assert.ok(!g.draws.some(([fn])=>fn==='arc'));
 });
+
+test('a projectile stronger than an entire enemy shield applies the exact excess to a hull room',()=>{
+  const g=game(),{b,enemy,shield}=setup(g),before=enemy.hp;shield.shieldDelay=100;
+  fire(g,enemy,140);g.updateBattle(.5,0);
+  assert.equal(shield.charge,0);near(enemy.hp,before-40);assert.equal(b.projectiles.length,0);
+});
