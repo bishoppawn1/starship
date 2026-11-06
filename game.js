@@ -126,12 +126,11 @@
 
   function traderStock(){
     const stock=[];
-    for(let i=0;i<5;i++){
-      const type=WEAPON_TYPES[Math.floor(Math.random()*WEAPON_TYPES.length)],existing=stock.find((offer)=>offer.type===type);
+    const count=4+Math.floor(Math.random()*5);
+    for(let i=0;i<count;i++){
+      const type=BUYABLE[Math.floor(Math.random()*BUYABLE.length)],existing=stock.find((offer)=>offer.type===type);
       if(existing)existing.qty++;else stock.push({type,qty:1,price:Math.max(1,MODULES[type].cost+Math.floor(rand(-5,11)))});
     }
-    const supports=['ammoAssembly',...SHIELD_TYPES,...ENGINE_TYPES,'generator','teleporter','droneControl','droneAssembly',['armor','cargo'][Math.floor(Math.random()*2)]];
-    for(const type of supports)stock.push({type,qty:1+Number(Math.random()<.25),price:Math.max(1,MODULES[type].cost+Math.floor(rand(-5,11)))});
     return stock;
   }
   function crewAppearance(person){
@@ -172,19 +171,56 @@
       const type=col===2&&row===1?'trader':col===4&&row===1?'outpost':pool.pop();
       if(variantOffsets[type]===undefined)variantOffsets[type]=Math.floor(Math.random()*3);
       const variant=(variantOffsets[type]+(usedVariants[type]||0))%3;usedVariants[type]=(usedVariants[type]||0)+1;
-      nodes.push({id:`${col}-${row}`,col,row,mapX:80+col*168+rand(-16,16),mapY:110+row*190+rand(-31,31),type,variant,links:[],stockVersion:type==='trader'?8:undefined,stock:type==='trader'?traderStock():undefined});
+      nodes.push({id:`${col}-${row}`,col,row,mapX:80+col*168+rand(-16,16),mapY:110+row*190+rand(-31,31),type,variant,links:[],stockVersion:type==='trader'?9:undefined,stock:type==='trader'?traderStock():undefined});
     }
     nodes.push({id:'5-1',col:5,row:1,mapX:920,mapY:300,type:'exit',links:[]});
-    const byId=new Map(nodes.map((node)=>[node.id,node]));
-    const connect=(a,b)=>{if(!byId.get(a).links.includes(b))byId.get(a).links.push(b);if(!byId.get(b).links.includes(a))byId.get(b).links.push(a);};
-    for(let row=0;row<3;row++)connect('0-1',`1-${row}`);
-    for(let col=1;col<4;col++)for(let row=0;row<3;row++){
-      connect(`${col}-${row}`,`${col+1}-${row}`);
-      if(Math.random()<.65)connect(`${col}-${row}`,`${col+1}-${clamp(row+(Math.random()<.5?-1:1),0,2)}`);
+    return reshapeMap({version:2,base,nodes,current:'0-1',visited:['0-1'],resolved:['0-1']});
+  }
+  function reshapeMap(map){
+    const nodes=map.nodes,heading=rand(0,TAU),start=nodes.find((node)=>node.type==='start')||nodes[0],exit=nodes.find((node)=>node.type==='exit')||nodes.at(-1);
+    Object.assign(start,{mapX:500+380*Math.cos(heading),mapY:300+225*Math.sin(heading)});
+    Object.assign(exit,{mapX:500-380*Math.cos(heading),mapY:300-225*Math.sin(heading)});
+    const placed=[start,exit];
+    for(const node of nodes)if(node!==start&&node!==exit){
+      let best=null,bestScore=-Infinity;
+      for(let attempt=0;attempt<400;attempt++){
+        const angle=rand(0,TAU),radius=Math.sqrt(Math.random()),point={x:500+330*radius*Math.cos(angle),y:300+205*radius*Math.sin(angle)};
+        const score=Math.min(...placed.map((other)=>Math.hypot((point.x-other.mapX)/118,(point.y-other.mapY)/82)));
+        if(score>bestScore){best=point;bestScore=score;}
+        if(score>=1.1)break;
+      }
+      node.mapX=best.x;node.mapY=best.y;placed.push(node);
     }
-    for(let row=0;row<3;row++)connect(`4-${row}`,'5-1');
-    for(let col=1;col<=4;col++)for(let row=0;row<2;row++)if(Math.random()<.55)connect(`${col}-${row}`,`${col}-${row+1}`);
-    return {version:2,base,nodes,current:'0-1',visited:['0-1'],resolved:['0-1']};
+    const byId=new Map(nodes.map((node)=>[node.id,node]));
+    for(const node of nodes)node.links=[];
+    const connect=(a,b)=>{if(!a.links.includes(b.id)){a.links.push(b.id);b.links.push(a.id);}};
+    const crossed=(a,b)=>{
+      const side=(p,q,r)=>(q.mapX-p.mapX)*(r.mapY-p.mapY)-(q.mapY-p.mapY)*(r.mapX-p.mapX);
+      return nodes.some((c)=>c.links.some((id)=>{
+        const d=byId.get(id);if(!d||c.id>=d.id||[c.id,d.id].includes(a.id)||[c.id,d.id].includes(b.id))return false;
+        return side(a,b,c)*side(a,b,d)<0&&side(c,d,a)*side(c,d,b)<0;
+      }));
+    };
+    const linked=new Set([start]);
+    while(linked.size<nodes.length){
+      let best=null,shortest=Infinity;
+      for(const a of linked)for(const b of nodes)if(!linked.has(b)){
+        const d=distance({x:a.mapX,y:a.mapY},{x:b.mapX,y:b.mapY});
+        if(d<shortest){best=[a,b];shortest=d;}
+      }
+      connect(...best);linked.add(best[1]);
+    }
+    const shuffled=[...nodes];for(let i=shuffled.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[shuffled[i],shuffled[j]]=[shuffled[j],shuffled[i]];}
+    for(const node of shuffled){
+      const candidates=nodes.filter((other)=>other!==node&&!node.links.includes(other.id))
+        .sort((a,b)=>Math.hypot(node.mapX-a.mapX,node.mapY-a.mapY)-Math.hypot(node.mapX-b.mapX,node.mapY-b.mapY));
+      for(const other of candidates){
+        if(node.links.length>=2&&!(node.links.length<4&&other.links.length<4&&Math.random()<.28))break;
+        if(Math.hypot(node.mapX-other.mapX,node.mapY-other.mapY)>330||crossed(node,other))continue;
+        connect(node,other);break;
+      }
+    }
+    map.version=3;return map;
   }
   function commandCore(data=save){return data.modules.find((module)=>module.type==='core');}
   function systemDemand(module){const def=MODULES[module.type];return module.type==='ammoAssembly'||ENGINE_TYPES.includes(module.type)||def.range||SHIELD_TYPES.includes(module.type)||['teleporter','droneControl','droneAssembly'].includes(module.type)?2:0;}
@@ -320,7 +356,8 @@
       const data = JSON.parse(raw);
       if (!Array.isArray(data.modules) || !Array.isArray(data.crew) || !Number.isFinite(data.metal)) return null;
       if (!data.modules.some((module) => module.type === 'core')) return null;
-      if (data.map?.version!==2) data.map = makeMap(data.sector || 1);
+      if(data.map?.version===2)reshapeMap(data.map);
+      else if(data.map?.version!==3)data.map=makeMap(data.sector||1);
       if(!data.inventory||typeof data.inventory!=='object')data.inventory={};
       if(!Number.isFinite(data.passengers))data.passengers=0;
       if(!Number.isFinite(data.ammoCrates))data.ammoCrates=0;
@@ -356,6 +393,8 @@
   let movingModuleId=null, refittingFootprint=false, selectedCrewId=null;
   const BUILD_ZOOMS=[.4,.5,.65,.8,1,1.25,1.6,2];
   const buildView={x:0,y:0,cols:GRID_W,rows:GRID_H,zoomIndex:4};
+  const COMBAT_ZOOMS=[1,1.25,1.5,1.75,2,2.5];
+  let combatZoomIndex=0;
   let tradeNode=null, marketFilter='all';
   let buildRotation = 0, buildWeaponFacing = 0, buildFlipped = false, hoverCell = null, battle = null, eventOpen = false, pendingNodeId = null;
   let toastTimer = null, lastFrame = performance.now(), lastHudRefresh = 0;
@@ -1100,6 +1139,7 @@
     const path=[];let key=to;while(key!==from){const [x,y]=key.split(',').map(Number);path.unshift({x:x+.5,y:y+.5});key=previous.get(key);}
     return path;
   }
+
   function selectedCrew(){return save.crew.find((person)=>person.id===selectedCrewId);}
   function selectCrew(id){
     selectedCrewId=id;selectedCatalog=null;movingModuleId=null;
@@ -1493,11 +1533,11 @@
       const cls=(node.id===current.id||id===current.id)?'active':map.visited.includes(node.id)&&map.visited.includes(id)?'visited':'';
       return `<line class="${cls}" x1="${node.mapX??80+node.col*168}" y1="${node.mapY??110+node.row*190}" x2="${target.mapX??80+target.col*168}" y2="${target.mapY??110+target.row*190}" />`;
     })).join('');
-    container.innerHTML=map.nodes.map((node)=>{
+    container.innerHTML=map.nodes.map((node,index)=>{
       const isCurrent=node.id===current.id,isAvailable=available.has(node.id),visited=map.visited.includes(node.id);
       const info=EVENT_TYPES[node.type]||{name:'CURRENT',icon:'✦'};
       const cls=isCurrent?'current':isAvailable?`available${visited?' revisited':''}`:visited?'visited':'future';
-      return `<button type="button" class="map-node ${cls} type-${node.type}" data-node="${node.id}" style="left:${(node.mapX??80+node.col*168)/10}%;top:${(node.mapY??110+node.row*190)/6}%" ${!isAvailable||!activeModules(...ENGINE_TYPES).length?'disabled':''} aria-label="Sector ${String(save.sector).padStart(2,'0')} ${info.name}${visited?', visited':''}${isAvailable?', available next':''}"><span>${info.icon}</span><strong>${info.name}</strong><small>${isCurrent?'YOU ARE HERE':visited?'VISITED':`BEACON ${node.col}${node.row+1}`}</small></button>`;
+      return `<button type="button" class="map-node ${cls} type-${node.type}" data-node="${node.id}" style="left:${node.mapX/10}%;top:${node.mapY/6}%" ${!isAvailable||!activeModules(...ENGINE_TYPES).length?'disabled':''} aria-label="Sector ${String(save.sector).padStart(2,'0')} ${info.name}${visited?', visited':''}${isAvailable?', available next':''}"><span>${info.icon}</span><strong>${info.name}</strong><small>${isCurrent?'YOU ARE HERE':visited?'VISITED':`BEACON ${String(index+1).padStart(2,'0')}`}</small></button>`;
     }).join('');
     container.querySelectorAll('.map-node.available').forEach((button)=>button.addEventListener('click',()=>openMapEvent(button.dataset.node)));
     $('nextSectorButton').hidden=current.type!=='exit';
@@ -1550,9 +1590,8 @@
   function upgradeTraderStock(node){
     node.supplyPacks??=4;
     node.stock??=traderStock();delete node.dronePacks;
-    for(const type of ['ammoAssembly',...SHIELD_TYPES,...ENGINE_TYPES,'generator','teleporter','droneControl','droneAssembly'])if(!node.stock.some((item)=>item.type===type))node.stock.push({type,qty:1,price:MODULES[type].cost});
     if(!Array.isArray(node.recruits))node.recruits=traderRecruits();
-    node.stockVersion=8;
+    node.stockVersion=9;
   }
 
   function openTrader(node){
@@ -1572,11 +1611,12 @@
       body:save.passengers?`The station has room for ${save.passengers} survivors aboard your ship. Its technicians also offer hull repairs.`:'The technicians can repair damaged rooms here. Return any time you need their help.',choices});
   }
   function chartShortcut(node){
-    const candidates=save.map.nodes.filter((target)=>target.id!==node.id&&!node.links.includes(target.id)&&Math.abs(target.col-node.col)>=2);
-    candidates.sort((a,b)=>Math.abs(b.col-node.col)-Math.abs(a.col-node.col)||Math.abs(a.row-node.row)-Math.abs(b.row-node.row));
+    const candidates=save.map.nodes.filter((target)=>target.id!==node.id&&!node.links.includes(target.id)&&Math.hypot(target.mapX-node.mapX,target.mapY-node.mapY)>260);
+    candidates.sort((a,b)=>Math.hypot(b.mapX-node.mapX,b.mapY-node.mapY)-Math.hypot(a.mapX-node.mapX,a.mapY-node.mapY));
     const target=candidates[0];if(!target)return null;
     node.links.push(target.id);target.links.push(node.id);return target;
   }
+  function beaconNumber(node){return String(save.map.nodes.findIndex((item)=>item.id===node.id)+1).padStart(2,'0');}
   function eventScene(node,title,body,choices){const info=EVENT_TYPES[node.type];showEvent({type:`BEACON // ${info.name}`,icon:info.icon,title,body,choices});}
   function openMapEvent(id){
     if(!availableNodes().includes(id))return;
@@ -1645,7 +1685,7 @@
         {label:'WAIT FOR THE STORM TO PASS',action:()=>concludeEvent('CLEAR SKIES','You hold position until the charged dust thins.','◈')}
       ]);
       if(variant===1)eventScene(node,'GRAVITY LENS','A stable gravity lens links this beacon to a distant lane. The crew can chart a shortcut or mine its trapped alloy.',[
-        {label:'CHART THE SHORTCUT',action:()=>{const target=chartShortcut(node);log('A gravity-lens shortcut was added to the sector chart.');concludeEvent('ROUTE OPENED',target?`A new two-way route to beacon ${target.col}${target.row+1} appears on the chart.`:'The lens leads back to known space.','◈');}},
+        {label:'CHART THE SHORTCUT',action:()=>{const target=chartShortcut(node);log('A gravity-lens shortcut was added to the sector chart.');concludeEvent('ROUTE OPENED',target?`A new two-way route to beacon ${beaconNumber(target)} appears on the chart.`:'The lens leads back to known space.','◈');}},
         {label:'MINE TRAPPED ALLOY · +14 METAL',action:()=>{save.metal+=14;log('14 metal mined from the gravity lens.');concludeEvent('ALLOY MINED','The crew pries fragments from the lens instead of charting a route.','◈');}}
       ]);
       if(variant===2)eventScene(node,'MAGNETIC TIDE','A narrow magnetic tide is pulling scrap toward a dead satellite. Your crew can skim its edge or shut down and wait.',[
@@ -1671,7 +1711,7 @@
     }
     if(node.type==='relay'){
       if(variant===0)eventScene(node,'BROKEN ROUTE RELAY','Its memory contains a route to a distant beacon. The copper antenna could instead be recycled.',[
-        {label:'RESTORE THE DISTANT ROUTE',action:()=>{const target=chartShortcut(node);log('A relay shortcut was added to the sector chart.');concludeEvent('RELAY RESTORED',target?`The chart now connects to beacon ${target.col}${target.row+1}.`:'The relay points only to lanes you already know.','⌁');}},
+        {label:'RESTORE THE DISTANT ROUTE',action:()=>{const target=chartShortcut(node);log('A relay shortcut was added to the sector chart.');concludeEvent('RELAY RESTORED',target?`The chart now connects to beacon ${beaconNumber(target)}.`:'The relay points only to lanes you already know.','⌁');}},
         {label:'RECYCLE THE ANTENNA · +14 METAL',action:()=>{save.metal+=14;log('14 metal recovered from a relay.');concludeEvent('ANTENNA RECYCLED','The relay goes dark as its copper is stowed aboard.','⌁');}}
       ]);
       if(variant===1)eventScene(node,'OLD NAVIGATION BUOY','A retired patrol buoy has sealed emergency ammunition and a recyclable steel chassis.',[
@@ -1679,7 +1719,7 @@
         {label:'RECYCLE THE CHASSIS · +11 METAL',action:()=>{save.metal+=11;log('11 metal recovered from a patrol buoy.');concludeEvent('CHASSIS RECYCLED','The buoy is broken down into useful steel.','⌁');}}
       ]);
       if(variant===2)eventScene(node,'ABANDONED JUMP MARKER','A jump marker is out of alignment. Replacement couplers would reopen a distant two-way lane.',[
-        {label:'REPLACE COUPLERS · −8 METAL',disabled:save.metal<8,action:()=>{save.metal-=8;const target=chartShortcut(node);log('A jump marker shortcut was restored for 8 metal.');concludeEvent('JUMP MARKER ONLINE',target?`The marker now connects to beacon ${target.col}${target.row+1}.`:'The marker points only to known lanes.','⌁');}},
+        {label:'REPLACE COUPLERS · −8 METAL',disabled:save.metal<8,action:()=>{save.metal-=8;const target=chartShortcut(node);log('A jump marker shortcut was restored for 8 metal.');concludeEvent('JUMP MARKER ONLINE',target?`The marker now connects to beacon ${beaconNumber(target)}.`:'The marker points only to known lanes.','⌁');}},
         {label:'LEAVE THE MARKER DARK',action:()=>concludeEvent('MARKER BYPASSED','You keep your couplers and follow the original lanes.','⌁')}
       ]);
       return;
@@ -2466,7 +2506,7 @@
     }
     g.restore();
   }
-  function arenaViewport(world){return {w:Math.min(1080,world.w),h:Math.min(760,world.h)};}
+  function arenaViewport(world){const zoom=COMBAT_ZOOMS[combatZoomIndex];return {w:Math.min(1080*zoom,world.w),h:Math.min(760*zoom,world.h)};}
   function arenaCamera(){
     const {world,player}=battle,view=arenaViewport(world),person=save.crew.find((person)=>person.id===selectedCrewId),focus=person?.aboard?battle.enemies[person.aboard.enemy]:player;
     return {w:view.w,h:view.h,x:clamp((focus?.x??world.w/2)-view.w/2,0,world.w-view.w),y:clamp((focus?.y??world.h/2)-view.h/2,0,world.h-view.h)};
@@ -2535,6 +2575,12 @@
     const size=arenaDisplaySize(arenaViewport(battle.world),arena.clientWidth,arena.clientHeight,window.devicePixelRatio);
     canvas.style.width=`${size.width}px`;canvas.style.height=`${size.height}px`;
     if(canvas.width!==size.pixelWidth||canvas.height!==size.pixelHeight){canvas.width=size.pixelWidth;canvas.height=size.pixelHeight;}
+    $('combatZoomLabel').textContent=`${Math.round(100/COMBAT_ZOOMS[combatZoomIndex])}%`;
+  }
+  function changeCombatZoom(direction){
+    if(!battle)return;
+    combatZoomIndex=clamp(combatZoomIndex+direction,0,COMBAT_ZOOMS.length-1);
+    fitArenaCanvas();
   }
   function canvasPoint(event){const rect=canvas.getBoundingClientRect(),view=arenaCamera();return{x:view.x+(event.clientX-rect.left)/rect.width*view.w,y:view.y+(event.clientY-rect.top)/rect.height*view.h};}
   function selectPlayer(point=null){
@@ -2587,7 +2633,7 @@
     createGrid();
     window.addEventListener('resize',()=>{if(screen==='playing'&&mode==='combat')fitArenaCanvas();});
     if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(mode==='combat')fitArenaCanvas();}).observe(canvas.parentElement);
-    $('menuContinue').addEventListener('click',()=>{if(canContinue())showGame();});
+    $('menuContinue').addEventListener('click',()=>{if(canContinue()){persist();showGame();}});
     $('menuNew').addEventListener('click',()=>{if(canContinue())$('menuConfirm').hidden=false;else showStarterPicker();});
     $('confirmNew').addEventListener('click',showStarterPicker);
     $('cancelStarter').addEventListener('click',()=>{$('starterPicker').hidden=true;$('menuNew').focus();});
@@ -2598,6 +2644,7 @@
     $('buildFlipWeapon').addEventListener('click',flipBuild);
     $('buildRotateLeft').addEventListener('click',()=>rotateBuild(-1));$('buildRotateRight').addEventListener('click',()=>rotateBuild(1));
     $('combatRotateLeft').addEventListener('click',()=>rotateArrival(-1));$('combatRotateRight').addEventListener('click',()=>rotateArrival(1));
+    $('combatZoomOut').addEventListener('click',()=>changeCombatZoom(1));$('combatZoomIn').addEventListener('click',()=>changeCombatZoom(-1));
     $('selectShipButton').addEventListener('click',()=>selectPlayer());$('jumpButton').addEventListener('click',toggleMap);$('resetButton').addEventListener('click',returnToMainMenu);
     $('leaveTrader').addEventListener('click',()=>{persist();openMap();renderAll();});
     $('revisitTrader').addEventListener('click',()=>{const node=currentMapNode();if(node?.type==='trader')openTrader(node);});
@@ -2606,7 +2653,7 @@
     $('marketFilters').querySelectorAll('button').forEach((button)=>button.addEventListener('click',()=>{marketFilter=button.dataset.filter;$('marketFilters').querySelectorAll('button').forEach((item)=>item.setAttribute('aria-pressed',String(item===button)));renderCatalog();}));
     $('nextSectorButton').addEventListener('click',goNextSector);
     canvas.addEventListener('contextmenu',(event)=>event.preventDefault());
-    canvas.addEventListener('wheel',(event)=>{event.preventDefault();rotateArrival(event.deltaY>0?1:-1);},{passive:false});
+    canvas.addEventListener('wheel',(event)=>{event.preventDefault();const delta=event.deltaY||event.deltaX;if(event.shiftKey)changeCombatZoom(delta>0?1:-1);else rotateArrival(delta>0?1:-1);},{passive:false});
     canvas.addEventListener('pointerdown',(event)=>{
       if(!battle)return;const point=canvasPoint(event);
       if(event.button===2){event.preventDefault();if(selectedCrewId){orderCrewWorld(point);return;}orderMove(point);return;}
@@ -2624,6 +2671,7 @@
       if(event.key.toLowerCase()==='f'&&mode==='trade'&&selectedCatalog&&MODULES[selectedCatalog].range){event.preventDefault();flipBuild();}
       if(event.key.toLowerCase()==='q'){if(mode==='combat')rotateArrival(-1);else if(mode==='trade')rotateBuild(-1);}
       if(event.key.toLowerCase()==='e'){if(mode==='combat')rotateArrival(1);else if(mode==='trade')rotateBuild(1);}
+      if(mode==='combat'&&['-','_','=','+'].includes(event.key)){event.preventDefault();changeCombatZoom(['-','_'].includes(event.key)?1:-1);}
       if(event.key==='Escape'&&mode==='trade'&&!eventOpen){selectedCatalog=null;movingModuleId=null;renderAll();}
     });
     log('Ship systems online. Plot a route on the sector map.');

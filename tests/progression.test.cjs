@@ -13,7 +13,7 @@ function game() {
   };
   let source = fs.readFileSync(path.join(__dirname, '..', 'game.js'), 'utf8');
   source = source.replace('  init();\n})();', `
-    globalThis.game = {MODULES,newSave,makeMap,canPlace,moduleClearance,
+    globalThis.game = {MODULES,newSave,makeMap,reshapeMap,canPlace,moduleClearance,
       setSave(value) { save = value; },getSave() { return save; }};
   })();`);
   vm.runInNewContext(source, sandbox);
@@ -43,16 +43,28 @@ test('sector charts stay connected and include reachable limited-stock traders',
     }
     assert.equal(reached.size, map.nodes.length);
     assert.equal(byId.get('5-1').type, 'exit');
-    assert.equal(map.version, 2);
+    assert.equal(map.version, 3);
+    assert.ok(new Set(map.nodes.map(node=>Math.round(node.mapX/20))).size>=8);
+    assert.ok(new Set(map.nodes.map(node=>Math.round(node.mapY/20))).size>=8);
     assert.ok(map.nodes.some(node => node.type === 'trader'));
     assert.ok(map.nodes.some(node => node.type === 'outpost'));
     assert.ok(map.nodes.some(node => node.type === 'lifeboat'));
     for (const node of map.nodes.filter(node => node.type === 'trader')) {
-      assert.ok(node.stock.length<=5+Object.values(g.MODULES).filter((def)=>!def.range&&def.cost>0).length);
-      assert.ok(node.stock.some(item=>item.type==='generator'&&item.qty>0));
-      assert.equal(node.stock.filter(item=>g.MODULES[item.type].range).reduce((sum,item)=>sum+item.qty,0),5);
+      assert.ok(node.stock.length>=1&&node.stock.length<=8);
+      assert.ok(node.stock.reduce((sum,item)=>sum+item.qty,0)>=4);
+      assert.ok(node.stock.reduce((sum,item)=>sum+item.qty,0)<=8);
       assert.equal(new Set(node.stock.map(item => item.type)).size, node.stock.length);
       assert.ok(node.stock.every(item => item.qty > 0 && item.price > 0));
     }
   }
+});
+
+test('reshaping an older chart preserves beacon progress and trader inventory',()=>{
+  const g=game(),map=g.makeMap(2),trader=map.nodes.find(node=>node.type==='trader');
+  map.current=trader.id;map.visited.push(trader.id);map.resolved.push(trader.id);
+  trader.stock[0].qty=0;const stock=JSON.stringify(trader.stock);
+  map.version=2;g.reshapeMap(map);
+  assert.equal(map.version,3);assert.equal(map.current,trader.id);
+  assert.ok(map.visited.includes(trader.id));assert.ok(map.resolved.includes(trader.id));
+  assert.equal(JSON.stringify(trader.stock),stock);
 });

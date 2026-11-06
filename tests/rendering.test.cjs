@@ -12,7 +12,7 @@ function game(){
   const sandbox={Math,performance:{now:()=>0},requestAnimationFrame(){},localStorage:{getItem:()=>null},window:{devicePixelRatio:2},
     document:{getElementById:(id)=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
-    globalThis.art={newSave,arenaDisplaySize,fitArenaCanvas,canvasPoint,drawArena,shipBounds,SPRITE_SCALE,
+    globalThis.art={newSave,arenaDisplaySize,arenaViewport,fitArenaCanvas,canvasPoint,changeCombatZoom,drawArena,shipBounds,SPRITE_SCALE,
       setBattle(value){battle=value;},setSave(value){save=value;},shipSprite,
       frameStep(time,previous){lastFrame=previous;screen='playing';mode='combat';battle={};let delta;
         updateBattle=(dt)=>{delta=dt;};drawArena=()=>{};updateCrew=()=>{};refreshCrewStatus=()=>{};frame(time);return delta;}};
@@ -33,6 +33,11 @@ test('arena backing pixels follow display density while aiming stays in world co
   assert.equal(center.x,player.x);assert.equal(center.y,player.y);
   const right=g.canvasPoint({clientX:12+parseFloat(canvas.style.width),clientY:24+parseFloat(canvas.style.height)/2});
   assert.equal(right.x,player.x+540);assert.equal(right.y,player.y);
+  g.changeCombatZoom(1);
+  assert.equal(g.arenaViewport(largeWorld).w,1350);
+  const zoomedRight=g.canvasPoint({clientX:12+parseFloat(canvas.style.width),clientY:24+parseFloat(canvas.style.height)/2});
+  assert.equal(zoomedRight.x,player.x+675);assert.equal(zoomedRight.y,player.y);
+  assert.equal(g.elements.get('combatZoomLabel').textContent,'80%');
 });
 
 test('rotation composites the high-resolution sprite with smooth sampling and a correct source crop',()=>{

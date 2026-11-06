@@ -13,6 +13,11 @@
 .inspector-detail { color: #f4c780; font-size: 10px; line-height: 1.45; letter-spacing: .04em; margin: 0 0 8px; }
 .flight-telemetry { margin: 0 0 14px; padding: 11px; background: #0a1c2c; border: 1px solid #416278; color: #9de1e4; font-size: 10px; line-height: 1.8; letter-spacing: .08em; }
 
+.combat-zoom-controls { display:flex; align-items:center; justify-content:space-between; gap:8px; margin:-7px 0 15px; }
+.combat-zoom-controls button { width:42px; height:32px; flex:none; background:#14283a; color:#a1e7e9; border:1px solid #36576c; font-size:20px; }
+.combat-zoom-controls span { color:#91aebd; font-size:9px; letter-spacing:.08em; text-align:center; }
+.combat-zoom-controls strong { color:#dbf0e9; }
+
 .map-screen { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sector-map-wrap { position: relative; flex: 1; min-height: 440px; border: 2px solid #4c7184; overflow: hidden; background: #081422; box-shadow: inset 7px 7px #050d18, inset -7px -7px #050d18; }
 .map-content { position: relative; width: 100%; height: 100%; min-height: inherit; }

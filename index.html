@@ -78,9 +78,10 @@
             <div class="instruction-card"><span>01</span><div><strong>SELECT SHIP</strong><small>Left click your ship</small></div></div>
             <div class="instruction-card"><span>02</span><div><strong>SET ROTATION</strong><small>Mouse wheel or Q / E</small></div></div>
             <div class="instruction-card"><span>03</span><div><strong>MOVE</strong><small>Right click the arena</small></div></div>
-            <p class="muted tiny">Crew: click a person or portrait, then right click a floor cell to move. Select My Ship returns to ship orders. On touch screens, tap your ship and then tap a destination.</p>
+            <p class="muted tiny">Crew: click a person or portrait, then right click a floor cell to move. Select My Ship returns to ship orders. Shift-scroll zooms the arena; ordinary scroll sets ship rotation. On touch screens, tap your ship and then tap a destination.</p>
             <div class="tool-note"><span class="note-icon">↻</span><div><strong>ARRIVAL ROTATION</strong><span id="combatRotationLabel">0°</span></div></div>
             <div class="rotation-controls"><button id="combatRotateLeft" type="button" aria-label="Rotate ship counterclockwise">↶</button><span>15° / STEP</span><button id="combatRotateRight" type="button" aria-label="Rotate ship clockwise">↷</button></div>
+            <div class="combat-zoom-controls"><button id="combatZoomOut" type="button" aria-label="Zoom battle out">−</button><span>BATTLE ZOOM <strong id="combatZoomLabel">100%</strong></span><button id="combatZoomIn" type="button" aria-label="Zoom battle in">+</button></div>
             <div id="flightTelemetry" class="flight-telemetry">HEADING 0°<br>SPEED 0 · THRUSTERS IDLE</div>
             <button id="selectShipButton" class="outline-button full-width" type="button">SELECT MY SHIP</button>
           </div>

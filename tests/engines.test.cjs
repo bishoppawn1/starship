@@ -75,9 +75,9 @@ test('compact and heavy drives support crew operation, piloting evasion and sect
   }
 });
 
-test('every market carries all engine sizes without restocking sold engines on return',()=>{
+test('markets preserve offered engine sizes without restocking on return',()=>{
   const g=game(),save=g.newSave();save.metal=1000;g.setSave(save);
-  const node={type:'trader',stockVersion:4,stock:[{type:'engine',qty:0,price:31}]};g.openTrader(node);
+  const node={type:'trader',stockVersion:4,stock:[{type:'engine',qty:0,price:31},{type:'smallEngine',qty:1,price:22},{type:'heavyEngine',qty:1,price:70}]};g.openTrader(node);
   for(const type of g.ENGINE_TYPES)assert.ok(node.stock.some((offer)=>offer.type===type));
   assert.equal(node.stock[0].qty,0);assert.equal(node.stock[0].price,31);
   for(const type of ['smallEngine','heavyEngine']){
@@ -90,7 +90,7 @@ test('every market carries all engine sizes without restocking sold engines on r
 });
 
 test('engine cards and inspector show footprints, base thrust and actual force',()=>{
-  const g=game(),save=g.newSave();g.setSave(save);g.openTrader({type:'trader',stock:g.traderStock()});g.setFilter('systems');g.renderCatalog();
+  const g=game(),save=g.newSave();g.setSave(save);g.openTrader({type:'trader',stock:g.ENGINE_TYPES.map(type=>({type,qty:1,price:g.MODULES[type].cost}))});g.setFilter('systems');g.renderCatalog();
   const cards=g.elements.get('catalog').innerHTML;
   for(const type of g.ENGINE_TYPES){assert.ok(cards.includes(g.MODULES[type].name.toUpperCase()));assert.ok(cards.includes(`${g.MODULES[type].thrust} BASE THRUST`));}
   const drive=engine(g,'heavyEngine');save.modules=[core(),drive];save.crew=[];g.select(drive.id);g.renderInspector();
