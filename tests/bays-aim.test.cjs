@@ -29,7 +29,7 @@ function setup(g,type='combat'){
   const save=g.newSave();save.crew=[];save.modules=[room(1,'core',0,0),room(2,'droneControl',2,0),{...room(3,'droneAssembly',0,2),droneType:type}];g.setSave(save);g.setMode('hangar');return save;
 }
 function battle(g){
-  const modules=g.enemyLayout(true).modules,enemy={x:800,y:500,angle:Math.PI,r:90,modules,hp:415,maxHp:415,crew:[],speed:0,path:[],pathTimer:100,cooldown:100,phase:0,name:'TEST'};
+  const modules=g.enemyLayout(true).modules,enemy={x:800,y:500,angle:Math.PI,r:90,modules,hp:modules.reduce((sum,m)=>sum+m.hp,0),maxHp:modules.reduce((sum,m)=>sum+m.hp,0),crew:[],speed:0,path:[],pathTimer:100,cooldown:100,phase:0,name:'TEST'};
   const b={kind:'pirate',world:{w:3000,h:2200},player:{x:500,y:500,angle:0,r:80,thrusters:{},vx:0,vy:0,omega:0},enemies:[enemy],drones:g.getSave().drones,asteroids:[],projectiles:[],effects:[],ammo:100,maxAmmo:100,shake:0,teleportCooldown:0};g.setBattle(b);g.setMode('combat');g.stubFlight();return b;
 }
 function launch(g){for(let i=0;i<120;i++)g.updateDrones(.05);return g.getSave().drones[0];}
@@ -94,7 +94,7 @@ test('preflight drone design changes rebuild the assembly and combat locks the d
 test('automatically launched combat and defense drones keep their real combat effects',()=>{
   const g=game(),save=setup(g);save.modules.push({...room(4,'droneAssembly',2,2),droneType:'defense'});g.updateDrones(15);const b=battle(g);launch(g);
   const combat=save.drones.find((drone)=>drone.type==='combat');combat.angle=-.011;combat.cooldown=0;g.updateDrones(.01);assert.ok(b.projectiles.some((shot)=>shot.drone));
-  const before=b.enemies[0].hp;for(let i=0;i<30;i++)g.updateBattle(.05,0);assert.ok(b.enemies[0].hp<before);
+  const before=b.enemies[0].hp;for(let i=0;i<30;i++)g.updateBattle(.05,0);assert.equal(b.enemies[0].hp,before);assert.ok(b.enemies[0].modules.find((room)=>room.type==='shield').charge<100);
   save.drones.find((drone)=>drone.type==='defense').cooldown=0;g.fireProjectile('enemy',650,500,b.player,20,100,400);const incoming=b.projectiles.at(-1);g.updateDrones(.01);assert.ok(!b.projectiles.includes(incoming));
 });
 
