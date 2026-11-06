@@ -89,9 +89,9 @@ test('mirrored weapon sprites and hull-clipped overlays agree with real shot dir
 
 test('missile launchers auto-fire across the arena and hit beyond all legacy range limits',()=>{
   const g=game();for(const type of ['missile','swarm']){
-    const {weapon,b}=setup(g,type,{range:30}),mount=g.weaponWorld(weapon,b.player),target=enemy(mount.x+2400,mount.y);b.enemies=[target];
+    const {weapon,b}=setup(g,type,{range:30}),mount=g.weaponWorld(weapon,b.player),target=enemy(mount.x+2400,mount.y);b.enemies=[target];weapon.magazine=g.MODULES[type].magazine;
     assert.equal(g.weaponRange(weapon),Infinity);assert.equal(g.weaponCanTarget(weapon,b.player,target),true);
-    g.updateBattle(.01,0);assert.equal(b.ammo,100-g.MODULES[type].ammo);const lead=b.projectiles[0];assert.equal(lead.remaining,Infinity);
+    g.updateBattle(.01,0);assert.equal(weapon.magazine,g.MODULES[type].magazine-g.MODULES[type].ammo);assert.equal(b.ammo,100);const lead=b.projectiles[0];assert.equal(lead.remaining,Infinity);
     weapon.cooldown=1000;for(let step=0;step<1300&&target.hp===10000;step++)g.updateBattle(.01,0);
     assert.ok(target.hp<10000,`${type} did not hit a distant enemy`);assert.ok(lead.x-mount.x>2300);
     g.select(weapon.id);g.renderInspector();const html=g.elements.get('moduleInspector').innerHTML;

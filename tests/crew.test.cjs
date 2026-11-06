@@ -70,19 +70,21 @@ test('repair crews keep their own work until complete and choose another unclaim
   save.modules[1].hp=g.MODULES.weapon.hp;g.updateCrew(0);assert.equal(save.crew[0].workModuleId,1);assert.equal(save.crew[1].workModuleId,3);
 });
 
-test('loaders keep separate weapon reservations during shared pickup and delivery',()=>{
-  const g=game(),save=setup(g,'load'),battle={ammo:0,maxAmmo:100};g.setBattle(battle);g.updateCrew(0);
+test('loaders keep separate heavy-weapon reservations during shared pickup and delivery',()=>{
+  const g=game(),save=setup(g,'load',['railgun','railgun']);save.ammunition.heavy=16;g.updateCrew(0);
   assert.notEqual(save.crew[0].workModuleId,save.crew[1].workModuleId);
   const destinations=save.crew.map((person)=>person.workModuleId);
-  for(const person of save.crew){const route=g.crewRoutes[person.id];assert.equal(g.crewGoal(person,route).module.type,'cargo');route.phase='drop';assert.equal(g.crewGoal(person,route).module.id,person.workModuleId);}
-  settle(g);assert.ok(battle.ammo>0);assert.deepEqual(save.crew.map((person)=>person.workModuleId),destinations);
+  for(let i=0;i<12;i++)g.updateCrew(.05);
+  for(const person of save.crew){assert.equal(person.carrying.type,'heavy');assert.equal(g.crewGoal(person,g.crewRoutes[person.id]).module.id,person.workModuleId);}
+  settle(g);assert.ok(save.modules.filter((module)=>module.type==='railgun').every((module)=>module.magazine>0));
+  assert.equal(save.ammunition.heavy+save.modules.filter((module)=>module.type==='railgun').reduce((n,m)=>n+(m.magazine||0),0)+save.crew.reduce((n,p)=>n+(p.carrying?.amount||0),0),16);
 });
 
-test('loaders without an unclaimed ammo weapon wait instead of creating ammo',()=>{
-  const g=game(),save=setup(g,'load',['ion','laser']),battle={ammo:0,maxAmmo:100};g.setBattle(battle);settle(g);
-  assert.equal(battle.ammo,0);assert.ok(save.crew.every((person)=>person.workModuleId===null&&g.crewStatus(person)==='WAITING'));
-  save.modules[1].type='weapon';g.updateCrew(0);assert.equal(save.crew.filter((person)=>person.workModuleId!==null).length,1);
-  settle(g);assert.ok(battle.ammo>0);
+test('loaders without a matching ammo weapon wait instead of creating ammo',()=>{
+  const g=game(),save=setup(g,'load',['ion','laser']);const before=JSON.stringify(save.ammunition);settle(g);
+  assert.equal(JSON.stringify(save.ammunition),before);assert.ok(save.crew.every((person)=>person.workModuleId===null&&g.crewStatus(person)==='WAITING'));
+  save.modules[1].type='railgun';g.updateCrew(0);assert.equal(save.crew.filter((person)=>person.workModuleId!==null).length,1);
+  settle(g);assert.ok(save.modules[1].magazine>0);
 });
 
 test('a single pilot console has one operator and persistent reservations survive save and reload',()=>{

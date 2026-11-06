@@ -145,7 +145,7 @@ test('shots can hit before the range boundary but never damage targets beyond it
   }
 });
 
-test('automatic fire spends ammunition only on targets within a clear arc and configured range',()=>{
+test('ammo-free light shots still require targets within a clear arc and configured range',()=>{
   for(const [blocked,range,expected] of [[true,420,100],[false,60,100],[false,420,99]]){
     const g=game(),weapon=gun(),modules=[weapon,room(1,3)];
     if(blocked)modules.push(room(6,3));
@@ -153,6 +153,6 @@ test('automatic fire spends ammunition only on targets within a clear arc and co
     const b=combat(g,modules),mount=g.weaponWorld(weapon,b.player);
     b.enemies[0].x=mount.x+100;b.enemies[0].y=mount.y;
     g.updateBattle(.01,0);
-    assert.equal(b.ammo,expected);assert.equal(b.projectiles.length,expected===99?1:0);
+    assert.equal(b.ammo,100);assert.equal(b.projectiles.length,expected===99?1:0);
   }
 });

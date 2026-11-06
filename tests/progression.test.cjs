@@ -22,7 +22,7 @@ function game() {
 
 test('engine exhaust keeps exterior cells clear of later construction', () => {
   const g = game(), save = g.newSave();
-  g.setSave(save);
+  save.modules=save.modules.slice(0,5);g.setSave(save);
   assert.equal(g.canPlace('armor', 2, 3, 0), false);
   assert.equal(g.canPlace('engine', 6, 0, 0), true);
   save.modules.push({id: 5, type: 'engine', x: 6, y: 0, rotation: 0, hp: 80, level: 1});

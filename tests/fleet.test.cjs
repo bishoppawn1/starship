@@ -50,9 +50,9 @@ test('starter hull, cannon facings, and engine forces are mirrored around the ce
 });
 
 test('starter migration repairs only the untouched legacy design and never duplicates a cannon',()=>{
-  const g=game(),old=g.newSave();old.modules.pop();delete old.starterLayoutVersion;
+  const g=game(),old=g.newSave();old.modules=old.modules.slice(0,4);delete old.starterLayoutVersion;
   g.migrateStarter(old);assert.equal(old.modules.length,5);g.migrateStarter(old);assert.equal(old.modules.length,5);
-  const custom=g.newSave();custom.modules.pop();delete custom.starterLayoutVersion;custom.modules[0].level=2;
+  const custom=g.newSave();custom.modules=custom.modules.slice(0,4);delete custom.starterLayoutVersion;custom.modules[0].level=2;
   g.migrateStarter(custom);assert.equal(custom.modules.length,4);
 });
 
@@ -128,7 +128,7 @@ test('salvos stay inside the mounted firing arc even when the target is near an 
 
 test('older traders retain weapon selection and sold items while gaining shields and recruits',()=>{
   const g=game(),node={stock:[{type:'weapon',qty:0,price:45},{type:'engine',qty:0,price:35}]};
-  g.upgradeTraderStock(node);assert.equal(node.stock.length,2+g.SHIELD_TYPES.length+Object.values(g.MODULES).filter((def)=>def.thrust).length-1+Number(!!g.MODULES.generator)+Number(!!g.MODULES.teleporter)+Number(!!g.MODULES.droneControl)+Number(!!g.MODULES.droneAssembly));assert.ok(node.recruits.length>=1);assert.equal(node.stock[0].qty,0);assert.equal(node.stock[1].qty,0);
+  g.upgradeTraderStock(node);assert.equal(node.stock.length,2+g.SHIELD_TYPES.length+Object.values(g.MODULES).filter((def)=>def.thrust).length-1+Number(!!g.MODULES.generator)+Number(!!g.MODULES.teleporter)+Number(!!g.MODULES.droneControl)+Number(!!g.MODULES.droneAssembly)+Number(!!g.MODULES.ammoAssembly));assert.ok(node.recruits.length>=1);assert.equal(node.stock[0].qty,0);assert.equal(node.stock[1].qty,0);
   const before=JSON.stringify(node.stock);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node.stock),before);
   assert.equal(node.stock.filter((item)=>g.MODULES[item.type].range).length,1);
 });
@@ -136,9 +136,9 @@ test('older traders retain weapon selection and sold items while gaining shields
 test('every weapon is included in automatic combat fire and spends its own trigger ammo cost',()=>{
   const g=game();
   for(const type of g.WEAPON_TYPES){
-    const {b,gun}=combat(g,type);g.getSave().modules.push(gun);const def=g.MODULES[type],mount=g.weaponWorld(gun,b.player);
+    const {b,gun}=combat(g,type);g.getSave().modules.push(gun);const def=g.MODULES[type];gun.magazine=def.magazine;const mount=g.weaponWorld(gun,b.player);
     b.enemies=[enemy(mount.x+100,mount.y)];g.updateBattle(.001,0);
-    assert.equal(b.ammo,100-def.ammo,type);assert.equal(b.projectiles.length,def.salvo||1,type);
+    assert.equal(gun.magazine,def.magazine-def.ammo,type);assert.equal(b.ammo,100);assert.equal(b.projectiles.length,def.salvo||1,type);
   }
 });
 
@@ -251,10 +251,10 @@ test('placement previews carry the chosen weapon mount and rotation before insta
   const first=g.placementPreview();assert.equal(first.module.type,'missile');assert.equal(first.module.rotation,0);
   const points=[];g.elements.get('hangarArt').getContext().lineTo=(x,y)=>points.push([x,y]);g.drawHangar();
   assert.ok(points.length>10,'the uninstalled weapon renders its firing arc');
-  g.rotateBuild(1);assert.equal(g.placementPreview().module.rotation,1);assert.equal(save.modules.length,5);
+  g.rotateBuild(1);assert.equal(g.placementPreview().module.rotation,1);assert.equal(save.modules.length,7);
 });
 
-test('energy weapons fire with an empty ammo pool while cannons and launchers wait for ammo',()=>{
+test('energy and light weapons fire with empty magazines while heavy guns and launchers wait for loaders',()=>{
   const g=game();
   for(const type of ['ion','laser','heavyLaser','proton','weapon','siege','missile','swarm','torpedo']){
     const {b,gun}=combat(g,type);g.getSave().modules.push(gun);b.ammo=0;

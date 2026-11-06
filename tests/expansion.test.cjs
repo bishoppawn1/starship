@@ -95,7 +95,7 @@ test('recruited crew have unique persistent identities, can take jobs, and remai
 });
 
 test('the command core shares power evenly and upgrades improve every underpowered system',()=>{
-  const g=game(),save=g.newSave();save.metal=500;g.setSave(save);g.setMode('trade');assert.equal(g.coreOutput(),8);assert.equal(g.powerUsed(),8);
+  const g=game(),save=g.newSave();save.modules=save.modules.slice(0,5);save.nextId=6;save.metal=500;g.setSave(save);g.setMode('trade');assert.equal(g.coreOutput(),8);assert.equal(g.powerUsed(),8);
   const shield={id:10,type:'shield',x:7,y:7,rotation:0,level:1,hp:85};save.modules.push(shield);
   for(const module of save.modules.filter((m)=>g.systemDemand(m))){near(g.systemSupply(module),1.6);near(g.systemPower(module),.8);}
   const engine=save.modules.find((m)=>m.type==='engine'),extra={...engine,id:11};save.modules.push(extra);
@@ -121,7 +121,7 @@ test('crew engine bonuses apply at the console and powered engines require a pil
   Object.assign(save.crew[0],{task:'pilot',...g.moduleStation(command)});assert.ok(g.evasionChance()>0);
   Object.assign(save.crew[1],{task:'engine',...g.moduleStation(engine)});near(g.engineThrusters().find((entry)=>entry.module===engine).force,base*1.25);
   save.crew[1].x+=5;near(g.engineThrusters().find((entry)=>entry.module===engine).force,base);
-  for(const part of save.modules.filter((m)=>m.type==='engine'))part.hp=0;assert.equal(g.evasionChance(),0);assert.equal(g.engineThrusters().length,0);
+  for(const part of save.modules.filter((m)=>g.MODULES[m.type].thrust))part.hp=0;assert.equal(g.evasionChance(),0);assert.equal(g.engineThrusters().length,0);
 });
 
 test('shields absorb exact damage from a strength pool and pass excess damage through',()=>{
@@ -167,7 +167,7 @@ test('combat sends only damage beyond the remaining shield strength to the hull'
 
 
 test('purchased generators contribute only after installation and survive save/load without restocking',()=>{
-  const g=game(),save=g.newSave();save.metal=500;g.setSave(save);
+  const g=game(),save=g.newSave();save.modules=save.modules.slice(0,5);save.nextId=6;save.metal=500;g.setSave(save);
   const node=save.map.nodes.find((n)=>n.type==='trader');g.openTrader(node);
   const offer=node.stock.find((item)=>item.type==='generator'),qty=offer.qty,metal=save.metal;
   assert.ok(offer);assert.equal(g.buyTraderItem('generator'),true);
@@ -186,7 +186,7 @@ test('purchased generators contribute only after installation and survive save/l
 });
 
 test('stacked generators raise equal system performance and lose output only when disabled',()=>{
-  const g=game(),save=g.newSave();g.setSave(save);
+  const g=game(),save=g.newSave();save.modules=save.modules.slice(0,5);save.nextId=6;g.setSave(save);
   save.modules.push({id:10,type:'shield',x:7,y:7,rotation:0,level:1,hp:85},{id:11,type:'engine',x:7,y:10,rotation:0,level:1,hp:80});
   const consumers=save.modules.filter((module)=>g.systemDemand(module));for(const module of consumers)near(g.systemPower(module),8/12);
   const generator={id:12,type:'generator',x:9,y:7,rotation:0,level:1,hp:65};save.modules.push(generator);

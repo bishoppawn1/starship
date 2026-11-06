@@ -51,7 +51,7 @@ test('old installed weapons retain occupied cells, muzzle positions, and their s
 
 test('a free footprint refit preserves the old room until a valid confirmation, then adopts the compact shape',()=>{
   const g=game(),save=g.newSave(),module={...gun('autocannon'),x:6,y:1,hp:41,level:2,range:150,footprint:g.copyFootprint(g.legacyWeaponLayouts.autocannon)};
-  save.modules.push(module);g.setSave(save);g.openTrader({type:'trader',stock:[]});g.select(6);assert.equal(g.beginModuleMove(true),true);
+  save.modules=save.modules.slice(0,5);save.modules.push(module);g.setSave(save);g.openTrader({type:'trader',stock:[]});g.select(6);assert.equal(g.beginModuleMove(true),true);
   const before=JSON.stringify(module),metal=save.metal;g.onGridClick(0,0);assert.equal(JSON.stringify(module),before);
   assert.equal(g.canPlace('autocannon',6,2,0),true);g.onGridClick(6,2);
   assert.equal(g.moduleCells(module).length,2);assert.equal(module.footprint,undefined);assert.equal(module.id,6);assert.equal(module.hp,41);assert.equal(module.level,2);assert.equal(module.range,150);assert.equal(save.metal,metal);

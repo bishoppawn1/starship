@@ -28,8 +28,9 @@
     teleporter: { name: 'Crew Teleporter', short: 'T', color: '#a5e2d7', shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 80, cost: 75, description: 'Send selected crew from this pad to an enemy within 600 units. Recall them after a 12-second recharge. Requires shared power.' },
     droneControl: { name: 'Drone Bay', short: 'D', color: '#b9cde4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 65, door:[2,.5], description: 'Launches assembled drones automatically through a clear exterior door. Two drone slots, plus one per upgrade. Build a Drone Assembly and leave the launch lane open.' },
     droneAssembly: { name: 'Drone Assembly', short: 'A', color: '#d3be8e', shape: [[0,0],[1,0],[0,1],[1,1]], station:[0,0], hp:80, cost:50, description:'Builds and replaces one configured drone automatically, without parts or launch costs. Requires power and a Drone Bay to operate the drone.' },
+    ammoAssembly: { name: 'Ammo Assembly', short: 'A', color: '#d8b579', shape: [[0,0],[0,1]], station: [0,0], hp: 75, cost: 45, description: 'Powered ammunition factory. Choose heavy rounds (2 supplies → 4) or missiles (3 supplies → 2). Crew collect finished rounds here and carry them to matching magazines.' },
     armor: { name: 'Armor Plating', short: 'A', color: C.armor, shape: [[0,0],[1,0],[0,1]], station: null, hp: 115, cost: 20, description: 'Open, durable floor that can absorb damage.' },
-    cargo: { name: 'Ammo Hold', short: 'M', color: C.cargo, shape: [[0,0],[1,0],[2,0]], station: [1,0], hp: 65, cost: 25, description: 'Adds ammo capacity and a loading point for crew.' }
+    cargo: { name: 'Ammo Hold', short: 'M', color: C.cargo, shape: [[0,0],[1,0],[2,0]], station: [1,0], hp: 65, cost: 25, description: 'A crew pickup point for recovered heavy rounds and missiles. Supplies and finished ammunition persist between battles; magazines must be loaded by crew.' }
   };
   // Every weapon participates in construction, crew operation, and combat through
   // the same definition. Corner mounts can turn; long barrels remain fixed.
@@ -61,6 +62,12 @@
     if(fixed){MODULES[id].shape=Array.from({length},(_,x)=>[x,0]);MODULES[id].mount=[length-1,0];MODULES[id].muzzle=[length,.5];MODULES[id].station=[0,0];}
   }
   const WEAPON_TYPES=Object.keys(MODULES).filter((type)=>MODULES[type].range);
+  const AMMO = {heavy:{name:'Heavy ammo',color:'#e6b875',cost:2,batch:4},missile:{name:'Missile ammo',color:'#b9d782',cost:3,batch:2}};
+  for(const type of WEAPON_TYPES){
+    const def=MODULES[type];def.ammoType=['missile','swarm','torpedo'].includes(type)?'missile':['railgun','flak','siege','gauss'].includes(type)?'heavy':null;
+    def.ammo=def.ammoType?(def.salvo||1):0;
+    def.magazine=def.ammo*4;
+  }
   const legacyWeaponLayouts=Object.fromEntries(WEAPON_TYPES.map((type)=>[type,copyFootprint(MODULES[type])]));
   // Footprints follow the machinery: compact emitters, ammunition magazines,
   // paired launch pods, and long fixed accelerators are different rooms.
@@ -101,7 +108,7 @@
   }
   const SHIELD_TYPES=Object.keys(MODULES).filter((type)=>type==='shield'||MODULES[type].shield);
   const ENGINE_TYPES=Object.keys(MODULES).filter((type)=>MODULES[type].thrust).sort((a,b)=>MODULES[a].thrust-MODULES[b].thrust);
-  const BUYABLE = [...ENGINE_TYPES,...WEAPON_TYPES,'shield','focusShield','generator','teleporter','droneControl','droneAssembly','armor','cargo'];
+  const BUYABLE = [...ENGINE_TYPES,...WEAPON_TYPES,'ammoAssembly','shield','focusShield','generator','teleporter','droneControl','droneAssembly','armor','cargo'];
   const CREW = [
     { id: 'vega', name: 'VEGA', initial: 'V', color: '#f4bd77', task: 'gun', x: 5.5, y: 4.5 },
     { id: 'moss', name: 'MOSS', initial: 'M', color: '#8fddb5', task: 'repair', x: 6.5, y: 4.5 },
@@ -123,7 +130,7 @@
       const type=WEAPON_TYPES[Math.floor(Math.random()*WEAPON_TYPES.length)],existing=stock.find((offer)=>offer.type===type);
       if(existing)existing.qty++;else stock.push({type,qty:1,price:Math.max(1,MODULES[type].cost+Math.floor(rand(-5,11)))});
     }
-    const supports=[...SHIELD_TYPES,...ENGINE_TYPES,'generator','teleporter','droneControl','droneAssembly',['armor','cargo'][Math.floor(Math.random()*2)]];
+    const supports=['ammoAssembly',...SHIELD_TYPES,...ENGINE_TYPES,'generator','teleporter','droneControl','droneAssembly',['armor','cargo'][Math.floor(Math.random()*2)]];
     for(const type of supports)stock.push({type,qty:1+Number(Math.random()<.25),price:Math.max(1,MODULES[type].cost+Math.floor(rand(-5,11)))});
     return stock;
   }
@@ -180,7 +187,7 @@
     return {version:2,base,nodes,current:'0-1',visited:['0-1'],resolved:['0-1']};
   }
   function commandCore(data=save){return data.modules.find((module)=>module.type==='core');}
-  function systemDemand(module){const def=MODULES[module.type];return ENGINE_TYPES.includes(module.type)||def.range||SHIELD_TYPES.includes(module.type)||['teleporter','droneControl','droneAssembly'].includes(module.type)?2:0;}
+  function systemDemand(module){const def=MODULES[module.type];return module.type==='ammoAssembly'||ENGINE_TYPES.includes(module.type)||def.range||SHIELD_TYPES.includes(module.type)||['teleporter','droneControl','droneAssembly'].includes(module.type)?2:0;}
   function coreOutput(data=save){const core=commandCore(data);return core?.hp>0?8+2*((core.powerLevel||1)-1):0;}
   function generatorOutput(module){const base=MODULES[module.type].generation;return module.hp>0&&base?base+module.level-1:0;}
   function auxiliaryOutput(data=save){return data.modules.reduce((sum,module)=>sum+generatorOutput(module),0);}
@@ -220,20 +227,84 @@
     $('upgradeCorePower').addEventListener('click',upgradeCorePower);
   }
 
-  function newSave() {
-    const data={
-      metal: 90, sector: 1, wins: 0, nextId: 6, starterLayoutVersion:2, weaponFootprintsVersion:2, inventory:{ion:1}, passengers:0, ammoCrates:0,
-      modules: [
-        { id: 1, type: 'core', x: 5, y: 4, rotation: 0, hp: 170, level: 1 },
-        { id: 2, type: 'engine', x: 4, y: 2, rotation: 0, hp: 80, level: 1 },
-        { id: 3, type: 'engine', x: 4, y: 5, rotation: 0, hp: 80, level: 1 },
-        { id: 4, type: 'weapon', x: 6, y: 3, rotation: 0, hp: 75, level: 1 },
-        { id: 5, type: 'weapon', x: 6, y: 5, rotation: 1, weaponFacing:1, hp: 75, level: 1 }
-      ],
-      crew: CREW.map(({id,name,initial,color,task,x,y}) => ({id,name,initial,color,task,x,y,hp:100,hurtTime:0})),
-      map: makeMap(1)
-    };
-    data.drones=[];normalizeSystems(data);return data;
+  function normalizeAmmo(data){
+    const count=(n)=>Number.isFinite(n)?Math.max(0,Math.floor(n)):0;
+    if(data.ammoVersion!==1){
+      data.ammunition={supplies:24,heavy:8,missile:4};
+      const crates=count(data.ammoCrates);data.ammunition.supplies+=crates*12;data.ammunition.heavy+=crates*8;data.ammunition.missile+=crates*4;
+      data.ammoVersion=1;
+    }
+    data.ammunition??={};
+    for(const key of ['supplies','heavy','missile'])data.ammunition[key]=count(data.ammunition[key]);
+    delete data.ammoCrates;
+    for(const module of data.modules){
+      const def=MODULES[module.type];
+      if(def.ammoType)module.magazine=Math.min(def.magazine,count(module.magazine));
+      if(module.type==='ammoAssembly'){
+        if(!AMMO[module.ammoRecipe])module.ammoRecipe='heavy';
+        module.ammoStock??={};for(const type of Object.keys(AMMO))module.ammoStock[type]=count(module.ammoStock[type]);
+        module.ammoProgress=Number.isFinite(module.ammoProgress)?clamp(module.ammoProgress,0,4):0;
+      }
+    }
+    for(const person of data.crew)if(person.carrying){
+      if(!AMMO[person.carrying.type]||!count(person.carrying.amount))delete person.carrying;
+      else person.carrying.amount=Math.min(4,count(person.carrying.amount));
+    }
+  }
+  function magazineCount(module){return Math.max(0,Math.min(MODULES[module.type].magazine||0,Math.floor(module.magazine||0)));}
+  function ammoLabel(def){return def.ammoType?`${def.ammo} ${def.ammoType.toUpperCase()} / TRIGGER`:'NO AMMO';}
+  function recoverAmmoCrate(){
+    const stock=save.ammunition;stock.supplies+=12;stock.heavy+=8;stock.missile+=4;
+    persist();return '12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.';
+  }
+  function buyAmmoSupplies(){
+    if(mode!=='trade'||!tradeNode||save.metal<8||tradeNode.supplyPacks<1)return false;
+    tradeNode.supplyPacks--;save.metal-=8;save.ammunition.supplies+=12;persist();renderHud();return true;
+  }
+  function updateAmmoProduction(dt){
+    for(const assembly of activeModules('ammoAssembly')){
+      const type=assembly.ammoRecipe||'heavy',recipe=AMMO[type];assembly.ammoStock??={heavy:0,missile:0};
+      if(save.ammunition.supplies<recipe.cost||(assembly.ammoStock[type]||0)+recipe.batch>24)continue;
+      assembly.ammoProgress=(assembly.ammoProgress||0)+dt*systemPower(assembly)*(1+(assembly.level-1)*.25);
+      if(assembly.ammoProgress>=4){
+        assembly.ammoProgress-=4;save.ammunition.supplies-=recipe.cost;assembly.ammoStock[type]=(assembly.ammoStock[type]||0)+recipe.batch;persist();
+      }
+    }
+  }
+  function ammoSources(type){
+    const stores=save.ammunition;
+    return [...activeModules('ammoAssembly').filter((module)=>(module.ammoStock?.[type]||0)>0).map((module)=>({module,stock:module.ammoStock})),
+      ...activeModules('cargo','core').filter(()=>stores[type]>0).map((module)=>({module,stock:stores}))];
+  }
+  function reachableAmmoSources(person,type){
+    return ammoSources(type).filter(({module})=>{const point=moduleStation(module);return distance(person,point)<.12||walkPath(person,point).length>0;})
+      .sort((a,b)=>distance(person,moduleStation(a.module))-distance(person,moduleStation(b.module)));
+  }
+  function renderAmmo(){
+    const panel=$('ammoPanel');if(!panel)return;
+    const supplies=$('ammoSupplies');if(supplies)supplies.textContent=save.ammunition.supplies;
+    const stock=save.ammunition,assemblies=save.modules.filter((room)=>room.type==='ammoAssembly'),weapons=save.modules.filter((room)=>MODULES[room.type].ammoType);
+    panel.innerHTML=`<strong>SUPPLIES ${stock.supplies}</strong><p class="muted small">Supplies → assembly → crew → magazine. Assign Deliver ammo; empty magazines stop firing.</p><div class="ammo-stores">HEAVY ${stock.heavy} · MISSILE ${stock.missile}<small>Recovered stock · pickup at core / ammo hold</small></div>${mode==='trade'?`<button id="buyAmmoSupplies" ${save.metal<8||!tradeNode?.supplyPacks?'disabled':''}>BUY 12 SUPPLIES · ◆ 8 · ${tradeNode?.supplyPacks||0} PACKS</button>`:''}${assemblies.map((room)=>`<div class="ammo-row"><strong>ASSEMBLY ${room.id} · ${(room.ammoRecipe||'heavy').toUpperCase()}</strong><small>${room.hp<=0?'OFFLINE':save.ammunition.supplies<AMMO[room.ammoRecipe||'heavy'].cost?'NEEDS SUPPLIES':(room.ammoStock?.[room.ammoRecipe||'heavy']||0)+AMMO[room.ammoRecipe||'heavy'].batch>24?'OUTPUT FULL':`${Math.floor((room.ammoProgress||0)/4*100)}% · ${Math.round(systemPower(room)*100)}% POWER`} · STOCK H ${room.ammoStock?.heavy||0} / M ${room.ammoStock?.missile||0}</small></div>`).join('')}${assemblies.length?'':'<p class="muted small">Buy an Ammo Assembly at a trader to make rounds.</p>'}${weapons.map((room)=>`<div class="ammo-row"><strong>${MODULES[room.type].name}</strong><small>${MODULES[room.type].ammoType.toUpperCase()} MAG ${magazineCount(room)} / ${MODULES[room.type].magazine}${room.hp<=0?' · OFFLINE':magazineCount(room)<MODULES[room.type].ammo?' · EMPTY · NEEDS LOADER':''}</small></div>`).join('')}${weapons.length?'':'<p class="muted small">Current weapons are ammo-free.</p>'}`;
+    panel.querySelector?.('#buyAmmoSupplies')?.addEventListener('click',buyAmmoSupplies);
+  }
+  const STARTER_SHIPS = [
+    {id:'wayfarer',name:'Wayfarer',role:'LIGHT PATROL',description:'Twin pulse cannons. Ammo-free weapons and agile handling.'},
+    {id:'arsenal',name:'Arsenal',role:'MISSILE FRIGATE',description:'Twin missile racks, a missile assembly and a dedicated loader.'},
+    {id:'bulwark',name:'Bulwark',role:'HEAVY GUNSHIP',description:'Twin railguns, a heavy-ammo assembly and ammunition holds.'}
+  ];
+  function starterModules(starterId){
+    const rooms=[['core',5,4,0],['engine',4,2,0],['engine',4,5,0]];
+    if(starterId==='arsenal')rooms.push(['missile',6,2,0],['missile',6,6,0],['armor',7,4,0],['smallEngine',7,1,2],['smallEngine',7,8,2],['ammoAssembly',5,6,0],['generator',5,2,1]);
+    else if(starterId==='bulwark')rooms.push(['railgun',5,2,0],['railgun',5,7,0],['cargo',5,3,0],['cargo',5,6,0],['smallEngine',8,1,2],['smallEngine',8,8,2],['ammoAssembly',7,4,0]);
+    else rooms.push(['weapon',6,3,0],['weapon',6,5,1],['smallEngine',5,2,2],['smallEngine',5,7,2]);
+    return rooms.map(([type,x,y,rotation],i)=>({id:i+1,type,x,y,rotation,hp:MODULES[type].hp,level:1,...(i===4&&starterId==='wayfarer'?{weaponFacing:1}:{}),...(type==='ammoAssembly'?{ammoRecipe:starterId==='arsenal'?'missile':'heavy'}:{})}));
+  }
+  function newSave(starterId='wayfarer') {
+    if(!STARTER_SHIPS.some((ship)=>ship.id===starterId))starterId='wayfarer';
+    const modules=starterModules(starterId);
+    const data={metal:90,sector:1,wins:0,nextId:modules.length+1,starterId,starterLayoutVersion:2,weaponFootprintsVersion:2,inventory:{ion:1},passengers:0,
+      modules,crew:CREW.map(({id,name,initial,color,task,x,y})=>({id,name,initial,color,task,x,y,hp:100,hurtTime:0})),map:makeMap(1)};
+    data.drones=[];normalizeSystems(data);normalizeAmmo(data);return data;
   }
   function migrateStarter(data) {
     if(data.starterLayoutVersion===2)return;
@@ -263,7 +334,7 @@
       data.nextId = Math.max(data.nextId || 1, ...data.modules.map((module) => module.id + 1));
       data.nextCrewId=Number.isInteger(data.nextCrewId)?data.nextCrewId:1;
       for(const person of data.crew){Object.assign(person,crewAppearance(person));if(!TASKS[person.task])person.task='idle';if(!Number.isFinite(person.x)||!Number.isFinite(person.y))Object.assign(person,moduleStation(data.modules.find((module)=>module.type==='core')));}
-      normalizeSystems(data);normalizeCrew(data);
+      normalizeSystems(data);normalizeCrew(data);normalizeAmmo(data);
       return data;
     } catch (_) { return null; }
   }
@@ -612,7 +683,7 @@
     $('marketSummary').textContent=`${stock.filter((item)=>item.qty>0).length} PART OFFERS · ${(tradeNode.recruits||[]).filter((person)=>!person.hired).length} CREW FOR HIRE`;
     const partCards=visible.map((type)=>{
       const def=MODULES[type],held=save.inventory[type]||0,item=stock.find((entry)=>entry.type===type);
-      return `<div class="catalog-item ${selectedCatalog===type?'active':''}">${miniShape(type)}<div class="market-description"><strong>${def.name.toUpperCase()}</strong><small>${def.description}</small>${def.thrust?`<small class="weapon-fit">${footprintBadge(type)}</small><small class="weapon-spec">${def.thrust} BASE THRUST · 2 POWER AT FULL OUTPUT</small>`:''}${def.range?`<small class="weapon-fit">${footprintBadge(type)}</small><small class="weapon-spec">${def.damage} DMG × ${def.salvo||1} · ${def.reload}s · ${def.guidance?'UNLIMITED RANGE':`${def.range} RANGE`} · ${def.arc}°${def.guidance?' LAUNCH · AUTO TRACK':''} · ${def.ammo?`${def.ammo} AMMO / TRIGGER`:'NO AMMO'}</small>`:''}<small class="weapon-rules">${def.range?weaponBehavior(type):''}</small><small>${held} IN HOLD${item?` · ${item.qty} IN STOCK`:''}</small><div class="market-actions">${item?`<button type="button" data-buy="${type}" ${item.qty<1||save.metal<item.price?'disabled':''}>${item.qty?`BUY ◆ ${item.price}`:'SOLD OUT'}</button>`:''}${held?`<button type="button" data-install="${type}" aria-pressed="${selectedCatalog===type}">${selectedCatalog===type?'CANCEL':'INSTALL HELD'}</button>`:''}</div></div></div>`;
+      return `<div class="catalog-item ${selectedCatalog===type?'active':''}">${miniShape(type)}<div class="market-description"><strong>${def.name.toUpperCase()}</strong><small>${def.description}</small>${def.thrust?`<small class="weapon-fit">${footprintBadge(type)}</small><small class="weapon-spec">${def.thrust} BASE THRUST · 2 POWER AT FULL OUTPUT</small>`:''}${def.range?`<small class="weapon-fit">${footprintBadge(type)}</small><small class="weapon-spec">${def.damage} DMG × ${def.salvo||1} · ${def.reload}s · ${def.guidance?'UNLIMITED RANGE':`${def.range} RANGE`} · ${def.arc}°${def.guidance?' LAUNCH · AUTO TRACK':''} · ${ammoLabel(def)}</small>`:''}<small class="weapon-rules">${def.range?weaponBehavior(type):''}</small><small>${held} IN HOLD${item?` · ${item.qty} IN STOCK`:''}</small><div class="market-actions">${item?`<button type="button" data-buy="${type}" ${item.qty<1||save.metal<item.price?'disabled':''}>${item.qty?`BUY ◆ ${item.price}`:'SOLD OUT'}</button>`:''}${held?`<button type="button" data-install="${type}" aria-pressed="${selectedCatalog===type}">${selectedCatalog===type?'CANCEL':'INSTALL HELD'}</button>`:''}</div></div></div>`;
     }).join('');
     $('catalog').innerHTML=(partCards+recruitCards())||'<p class="muted small">No offers in this category at this trader.</p>';
     $('catalog').querySelectorAll('[data-recruit]').forEach((button)=>button.addEventListener('click',()=>buyRecruit(button.dataset.recruit)));
@@ -679,12 +750,14 @@
     const def=MODULES[module.type],maximum=maxHp(module),ratio=module.hp/maximum,upgradeCost=25*module.level+(module.type==='core'?10:0),repairCost=Math.ceil((maximum-module.hp)/10)*3;
     const direction=['RIGHT','DOWN','LEFT','UP'][def.range?weaponFacingQuarter(module):module.rotation];
     const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° FOCUSED ARC · ${direction}`} · ${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
-    const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · ${def.guidance?'UNLIMITED RANGE':`RANGE ${weaponRange(module)}`} · ${direction}${module.flipped?' · MIRRORED':''} · ${def.ammo?`${def.ammo} AMMO / TRIGGER`:'NO AMMO'}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE · ${def.thrust} BASE</div><div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
+    const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · ${def.guidance?'UNLIMITED RANGE':`RANGE ${weaponRange(module)}`} · ${direction}${module.flipped?' · MIRRORED':''} · ${ammoLabel(def)}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE · ${def.thrust} BASE</div><div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
+    const ammoDetail=def.ammoType?`<div id="magazineDetail" class="inspector-detail">${def.ammoType.toUpperCase()} MAGAZINE ${magazineCount(module)} / ${def.magazine}${magazineCount(module)<def.ammo?' · EMPTY · NEEDS LOADER':''}</div>`:module.type==='ammoAssembly'?`<label class="weapon-range">PRODUCE <select id="ammoRecipe"><option value="heavy" ${module.ammoRecipe!=='missile'?'selected':''}>Heavy · 2 supplies → 4 rounds</option><option value="missile" ${module.ammoRecipe==='missile'?'selected':''}>Missile · 3 supplies → 2 rounds</option></select></label><p class="muted small">One batch every 4 seconds at full power. Finished rounds stay here until a loader collects them.</p>`:'';
     const rangeControl=def.range?`<div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div><div class="weapon-rules">${weaponBehavior(module.type)}</div>${!def.guidance?`<label class="weapon-range" for="weaponRange">RANGE LIMIT <input id="weaponRange" type="number" min="30" max="${def.range}" step="1" value="${weaponRange(module)}" ${!['hangar','trade'].includes(mode)?'disabled':''}><span>MAX ${def.range}</span></label>`:''}${mode==='trade'?'<button id="flipWeapon" class="outline-button full-width" type="button">FLIP WEAPON ↔ · FREE</button>':''}${def.mountFacings===2?`<button id="rotateWeapon" class="outline-button full-width" type="button" ${!['hangar','trade'].includes(mode)?'disabled':''}>TURN MOUNT 90° ↻</button>`:''}`:'';
     const droneInfo=module.type==='droneControl'?`<div class="inspector-detail">LAUNCH → ${direction} · ${droneBayClear(module)?'CLEAR TO SPACE':'BLOCKED · MOVE BAY TO EXTERIOR'} · ${droneBayCapacity(module)} SLOTS</div>`:module.type==='droneAssembly'?`<label class="drone-assembly">DRONE DESIGN<select id="inspectorDroneDesign" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===(module.droneType||'combat')?'selected':''}>${def.name}</option>`).join('')}</select></label><div class="inspector-detail">ONE DRONE · ${assemblyTime(module).toFixed(1)}s BUILD TIME · AUTOMATIC REPLACEMENT</div>`:'';
-    $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}<div class="inspector-detail">${systemDemand(module)?`AUTO POWER ${systemSupply(module).toFixed(2)} · ${Math.round(systemPower(module)*100)}% PERFORMANCE`:module.type==='core'?`COMMAND POWER ${coreOutput()} · SHARED EQUALLY`:def.generation?`GENERATOR OUTPUT ${generatorOutput(module)} · SHARED EQUALLY · +1 PER UPGRADE`:'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${droneInfo}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>UPGRADE<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
+    $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}${ammoDetail}<div class="inspector-detail">${systemDemand(module)?`AUTO POWER ${systemSupply(module).toFixed(2)} · ${Math.round(systemPower(module)*100)}% PERFORMANCE`:module.type==='core'?`COMMAND POWER ${coreOutput()} · SHARED EQUALLY`:def.generation?`GENERATOR OUTPUT ${generatorOutput(module)} · SHARED EQUALLY · +1 PER UPGRADE`:'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${droneInfo}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>UPGRADE<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
     if(module.type==='droneAssembly')$('inspectorDroneDesign').addEventListener('change',(event)=>setDroneDesign(module.id,event.target.value));
     paintWeaponThumbnails($('moduleInspector'));
+    if(module.type==='ammoAssembly')$('ammoRecipe').addEventListener('change',(event)=>{if(!AMMO[event.target.value])return;module.ammoRecipe=event.target.value;module.ammoProgress=0;persist();renderAmmo();});
     if(module.footprint&&mode==='trade')$('refitFootprint').addEventListener('click',()=>beginModuleMove(true));
     if(mode==='trade')$('moveModule').addEventListener('click',()=>{
       if(movingModuleId===module.id){movingModuleId=null;selectedCatalog=null;renderAll();}else beginModuleMove();
@@ -719,13 +792,13 @@
   }
 
   function renderHud(){
-    renderSystems();renderOperations();
+    renderSystems();renderOperations();renderAmmo();
     $('sectorDisplay').textContent=String(save.sector).padStart(2,'0');$('metalDisplay').textContent=save.metal;$('hullDisplay').textContent=`${Math.round(hullRatio()*100)}%`;
     $('jumpButton').disabled=mode==='combat'||eventOpen;
     $('jumpButton').textContent=mode==='combat'?'IN COMBAT':mode==='map'?'RETURN TO SHIP':'OPEN SECTOR MAP ↗';
     $('revisitTrader').hidden=mode!=='hangar'||currentMapNode()?.type!=='trader';
     const cells=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),weapons=activeModules(...WEAPON_TYPES).length;
-    $('shipStats').innerHTML=`<div class="stat-card"><span>HULL INTEGRITY</span><strong class="${hullRatio()<.35?'bad':'good'}">${Math.round(hullRatio()*100)}%</strong></div><div class="stat-card"><span>MODULES</span><strong>${save.modules.length} <small style="font-size:9px;color:var(--muted)">/ ${cells} CELLS</small></strong></div><div class="stat-card"><span>WEAPONS</span><strong class="${weapons?'good':'bad'}">${weapons} ACTIVE</strong></div><div class="stat-card"><span>AMMUNITION</span><strong class="${mode==='combat'&&battle&&battle.ammo<=2?'warn':''}">${battle?Math.floor(battle.ammo)+' / '+battle.maxAmmo:save.ammoCrates?`READY +${save.ammoCrates*6}`:'READY'}</strong></div>`;
+    $('shipStats').innerHTML=`<div class="stat-card"><span>HULL INTEGRITY</span><strong class="${hullRatio()<.35?'bad':'good'}">${Math.round(hullRatio()*100)}%</strong></div><div class="stat-card"><span>MODULES</span><strong>${save.modules.length} <small style="font-size:9px;color:var(--muted)">/ ${cells} CELLS</small></strong></div><div class="stat-card"><span>WEAPONS</span><strong class="${weapons?'good':'bad'}">${weapons} ACTIVE</strong></div><div class="stat-card"><span>AMMO SUPPLIES</span><strong id="ammoSupplies">${save.ammunition.supplies}</strong></div>`;
     const shields=save.modules.filter((module)=>SHIELD_TYPES.includes(module.type));
     if(shields.length){const maximum=shields.reduce((sum,module)=>sum+shieldStats(module).capacity,0),strength=shields.reduce((sum,module)=>sum+(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0),0);$('shipStats').innerHTML+=`<div class="stat-card"><span>SHIELD STRENGTH</span><strong>${Math.round(strength)} / ${maximum}</strong></div>`;}
     $('leftStatus').textContent=mode==='combat'?`ENGAGED // ${battle?.enemies.filter(enemyAlive).length||0} HOSTILES`:mode==='map'?`CHARTED // SECTOR ${String(save.sector).padStart(2,'0')}`:activeModules(...ENGINE_TYPES).length?'DOCKED // SYSTEMS READY':'DOCKED // ENGINE OFFLINE';
@@ -768,6 +841,7 @@
     g.fillStyle='#fff1c6';g.fillRect(x+4,y,1,2);
     if(selectedCrewId===person.id){g.strokeStyle='#f7e7a6';g.lineWidth=1;g.strokeRect(x-7,y-9,14,18);}
     if((person.hp??100)<100){g.fillStyle='#291b28';g.fillRect(x-6,y-11,12,2);g.fillStyle='#8ce0b1';g.fillRect(x-6,y-11,12*person.hp/100,2);}
+    if(person.carrying){g.fillStyle='#17232e';g.fillRect(x+3,y-2,7,7);g.fillStyle=AMMO[person.carrying.type].color;g.fillRect(x+4,y-1,5,5);g.fillStyle='#fff0c9';g.fillRect(x+6,y-1,1,5);}
   }
   function drawStation(g,module,throttle=0){
     const def=MODULES[module.type],geom=moduleGeometry(module),station=geom.station;
@@ -804,6 +878,7 @@
       }
       if(['teleporter','droneControl','droneAssembly'].includes(module.type)){g.fillStyle=module.type==='teleporter'?'#62c8ba':'#94adce';g.fillRect(px+7,py+7,10,10);g.fillStyle='#152b3a';g.fillRect(px+9,py+9,6,6);g.fillStyle='#f0e8ab';g.fillRect(px+11,py+10,2,4);}
       if(module.type==='droneAssembly'){g.fillStyle='#aa9268';g.fillRect(px+3,py+5,3,14);g.fillRect(px+4,py+3,15,3);g.fillStyle='#e3d4a7';g.fillRect(px+16,py+4,3,8);g.fillStyle='#526c7b';g.fillRect(px+9,py+10,6,5);g.fillStyle='#90d6cb';g.fillRect(px+11,py+11,2,2);}
+      if(module.type==='ammoAssembly'){g.fillStyle='#49525a';g.fillRect(px+5,py+5,14,14);g.fillStyle='#b49768';g.fillRect(px+6,py+6,12,4);g.fillStyle=AMMO[module.ammoRecipe||'heavy'].color;g.fillRect(px+8,py+12,3,5);g.fillRect(px+13,py+12,3,5);}
       if(module.type==='cargo'){
         g.fillStyle='#865e42';g.fillRect(px+7,py+7,10,10);
         g.fillStyle='#e9ca83';g.fillRect(px+8,py+8,8,2);g.fillRect(px+11,py+8,2,8);
@@ -1300,6 +1375,7 @@
       return cells;
     }
     const reachable=(person,module)=>{const point=moduleStation(module);return component(person).has(`${Math.floor(point.x)},${Math.floor(point.y)}`);};
+    const canLoad=(person,module)=>person.task!=='load'||(person.carrying?person.carrying.type===MODULES[module.type].ammoType:ammoSources(MODULES[module.type].ammoType).some((source)=>reachable(person,source.module)));
     for(const task of ['pilot','engine','gun','shield','repair','load']){
       const modules=save.modules.filter((module)=>{
         if(module.hp<=0)return false;
@@ -1308,23 +1384,23 @@
         if(task==='gun')return WEAPON_TYPES.includes(module.type);
         if(task==='shield')return SHIELD_TYPES.includes(module.type);
         if(task==='repair')return module.hp<maxHp(module);
-        return !!battle&&WEAPON_TYPES.includes(module.type)&&MODULES[module.type].ammo>0;
+        return !!MODULES[module.type].ammoType&&magazineCount(module)<MODULES[module.type].magazine;
       });
       const crew=people.filter((person)=>person.task===task),free=new Set(modules),waiting=new Set(crew);
       function reserve(person,module){assignments.set(person,module);free.delete(module);waiting.delete(person);}
       // Keep operators at work, then honor reservations made before arrival.
       for(const person of crew){
-        const module=modules.find((module)=>free.has(module)&&distance(person,moduleStation(module))<.16&&
+        const module=modules.find((module)=>free.has(module)&&canLoad(person,module)&&distance(person,moduleStation(module))<.16&&
           ((person.workTask===task&&person.workModuleId===module.id)||(person.workTask===undefined&&!['repair','load'].includes(task))));
         if(module)reserve(person,module);
       }
       for(const person of waiting){
         const module=modules.find((module)=>module.id===person.workModuleId);
-        if(person.workTask===task&&free.has(module)&&reachable(person,module))reserve(person,module);
+        if(person.workTask===task&&free.has(module)&&reachable(person,module)&&canLoad(person,module))reserve(person,module);
       }
       for(const person of waiting){
-        const options=[...free].filter((module)=>reachable(person,module));
-        options.sort((a,b)=>(task==='repair'?a.hp/maxHp(a)-b.hp/maxHp(b):0)||distance(person,moduleStation(a))-distance(person,moduleStation(b)));
+        const options=[...free].filter((module)=>reachable(person,module)&&canLoad(person,module));
+        options.sort((a,b)=>(task==='repair'?a.hp/maxHp(a)-b.hp/maxHp(b):task==='load'?magazineCount(a)/MODULES[a.type].magazine-magazineCount(b)/MODULES[b.type].magazine:0)||distance(person,moduleStation(a))-distance(person,moduleStation(b)));
         if(options.length)reserve(person,options[0]);
       }
       for(const person of crew){person.workTask=task;person.workModuleId=assignments.get(person)?.id??null;}
@@ -1336,10 +1412,7 @@
     const core=save.modules.find((module)=>module.type==='core'),work=plan.get(person);
     if(person.manualGoal||person.boardOrder){const point=person.manualGoal||moduleStation(save.modules.find((module)=>module.id===person.boardOrder.pad)||core);return {module:occupancy().get(`${Math.floor(point.x)},${Math.floor(point.y)}`)||core,point,working:false};}
     let module=work||core;
-    if(person.task==='load'&&work&&route.phase!=='drop'){
-      const sources=activeModules('cargo');
-      module=sources.reduce((best,candidate)=>!best||distance(person,moduleStation(candidate))<distance(person,moduleStation(best))?candidate:best,null)||core;
-    }
+    if(person.task==='load'&&work&&!person.carrying)module=reachableAmmoSources(person,MODULES[work.type].ammoType)[0]?.module||core;
     return {module,point:moduleStation(module),working:!!work};
   }
   function crewStatus(person){
@@ -1348,6 +1421,7 @@
     if(person.boardOrder)return 'TO TELEPORTER';
     if(person.manualGoal)return 'MANUAL';
     const route=crewRoutes[person.id];
+    if(person.carrying)return `CARRYING ${person.carrying.amount} ${person.carrying.type.toUpperCase()}`;
     if(route?.path?.length&&distance(person,route.path[0])>.08)return 'WALKING';
     if(person.task==='idle')return 'STAND BY';
     return route?.working===false?'WAITING':'AT STATION';
@@ -1361,6 +1435,7 @@
       person.hp=Math.min(100,(person.hp??100)+healingTime*3);
       let route=crewRoutes[person.id];
       if(!route){route={path:[],target:'',phase:'pickup'};crewRoutes[person.id]=route;}
+      if(person.task==='load')route.phase=person.carrying?'drop':'pickup';
       const goal=crewGoal(person,route,plan),target=`${person.task}:${goal.module.id}:${route.phase}:${person.manualGoal?`${goal.point.x},${goal.point.y}`:person.boardOrder?'board':''}`;
       route.working=goal.working;
       if(route.target!==target){route.path=walkPath(person,goal.point);route.target=target;}
@@ -1371,10 +1446,25 @@
         else {person.x+=(next.x-person.x)/d*travel;person.y+=(next.y-person.y)/d*travel;travel=0;}
       }
       if(person.boardOrder&&!route.path.length&&distance(person,goal.point)<.12)tryBoardCrew(person);
-      if(person.task==='load'&&goal.working&&battle&&!route.path.length&&distance(person,goal.point)<.12){
-        if(route.phase==='drop'){battle.ammo=Math.min(battle.maxAmmo,battle.ammo+2);route.phase='pickup';}
-        else route.phase='drop';
-        route.target='';
+      if(person.task==='load'&&!person.manualGoal&&!person.boardOrder&&!route.path.length&&distance(person,goal.point)<.12){
+        const weapon=plan.get(person);
+        if(person.carrying){
+          const carried=person.carrying;
+          if(weapon&&goal.module===weapon&&MODULES[weapon.type].ammoType===carried.type){
+            const amount=Math.min(carried.amount,MODULES[weapon.type].magazine-magazineCount(weapon));
+            weapon.magazine=magazineCount(weapon)+amount;carried.amount-=amount;
+          }else if(!weapon&&goal.module.type==='core'){
+            save.ammunition[carried.type]+=carried.amount;carried.amount=0;
+          }
+          if(!carried.amount)delete person.carrying;
+          route.target='';persist();
+        }else if(weapon){
+          const type=MODULES[weapon.type].ammoType,source=ammoSources(type).find(({module})=>module===goal.module);
+          if(source){
+            const amount=Math.min(4,source.stock[type],MODULES[weapon.type].magazine-magazineCount(weapon));
+            if(amount>0){source.stock[type]-=amount;person.carrying={type,amount};route.target='';persist();}
+          }
+        }
       }
     }
   }
@@ -1436,11 +1526,7 @@
   }
   function hideEvent(){eventOpen=false;$('eventOverlay').hidden=true;renderHud();}
   function concludeEvent(title,body,icon='✦'){
-    advanceRoute();persist();renderAll();
-    showEvent({type:'TRANSMISSION COMPLETE',icon,title,body,choices:[
-      {label:'VIEW SECTOR MAP →',action:()=>{hideEvent();openMap();}},
-      {label:'RETURN TO SHIPYARD',action:()=>{hideEvent();openHangar();}}
-    ]});
+    advanceRoute();hideEvent();openMap();log(`${title}: ${body}`);persist();renderAll();toast(`${icon} ${title}`);
   }
   function damageRandomModule(amount){
     const live=save.modules.filter((module)=>module.hp>0),target=live[Math.floor(Math.random()*live.length)];
@@ -1462,8 +1548,9 @@
     return MODULES[type].name;
   }
   function upgradeTraderStock(node){
+    node.supplyPacks??=4;
     node.stock??=traderStock();delete node.dronePacks;
-    for(const type of [...SHIELD_TYPES,...ENGINE_TYPES,'generator','teleporter','droneControl','droneAssembly'])if(!node.stock.some((item)=>item.type===type))node.stock.push({type,qty:1,price:MODULES[type].cost});
+    for(const type of ['ammoAssembly',...SHIELD_TYPES,...ENGINE_TYPES,'generator','teleporter','droneControl','droneAssembly'])if(!node.stock.some((item)=>item.type===type))node.stock.push({type,qty:1,price:MODULES[type].cost});
     if(!Array.isArray(node.recruits))node.recruits=traderRecruits();
     node.stockVersion=8;
   }
@@ -1475,10 +1562,10 @@
     const choices=[];
     if(save.passengers>0)choices.push({label:`DELIVER ${save.passengers} SURVIVOR${save.passengers===1?'':'S'} · +${save.passengers*20} METAL`,action:()=>{
       const count=save.passengers,reward=count*20;save.passengers=0;save.metal+=reward;
-      log(`${count} survivors brought safely to the outpost; ${reward} metal paid for the rescue.`);persist();renderAll();openOutpost(node);
+      concludeEvent('SURVIVORS DELIVERED',`${count} survivors brought safely to the outpost; ${reward} metal paid for the rescue.`,'⌂');
     }});
     choices.push({label:'DOCK FOR REPAIRS · ◆ 12',disabled:save.metal<12||hullRatio()>=.999,action:()=>{
-      save.metal-=12;repairAll(40);log('Outpost crew patched damaged rooms.');persist();renderAll();openOutpost(node);
+      save.metal-=12;repairAll(40);concludeEvent('HULL PATCHED','Outpost crew repaired damaged rooms for 12 metal.','⌂');
     }});
     choices.push({label:'LEAVE OUTPOST →',action:()=>{hideEvent();openMap();}});
     showEvent({type:'CIVILIAN SIGNAL // OUTPOST',icon:'⌂',title:'FRINGE OUTPOST',
@@ -1532,7 +1619,7 @@
       ]);
       if(variant===2)eventScene(node,'CONVOY REARGUARD','A small ore convoy needs time to reach a jump beacon. Pirate skiffs are gaining on its last ship.',[
         {label:'HOLD OFF THE SKIFFS →',action:()=>startBattle('rescue')},
-        {label:'COVER WITH AMMO DECOYS · −8 METAL',disabled:save.metal<8,action:()=>{save.metal-=8;save.ammoCrates++;log('Convoy escaped and left a munitions crate.');concludeEvent('CONVOY CLEAR','Your decoys cost 8 metal. The grateful crew leaves a sealed ammo crate for your next battle.','◇');}},
+        {label:'COVER WITH AMMO DECOYS · −8 METAL',disabled:save.metal<8,action:()=>{save.metal-=8;recoverAmmoCrate();log('Convoy escaped and left a munitions crate.');concludeEvent('CONVOY CLEAR','Your decoys cost 8 metal. The grateful crew leaves 12 supplies, 8 heavy rounds and 4 missile rounds.','◇');}},
         {label:'STAY OUT OF THE FIGHT',action:()=>concludeEvent('CONVOY SIGNAL LOST','The convoy disappears from your scope.','◇')}
       ]);
       return;
@@ -1543,7 +1630,7 @@
         {label:'CUT OPEN THE INNER RACK · +30 METAL',action:()=>{save.metal+=30;const target=damageRandomModule(12);log('Inner rack yielded 30 metal but struck a room.');concludeEvent('RACK OPENED',`You gain 30 metal; tumbling cargo damages your ${MODULES[target.type].name.toLowerCase()} by 12.`,'✧');}}
       ]);
       if(variant===1)eventScene(node,'SEALED MUNITIONS POD','A military supply pod still has an intact ammunition seal. Its metal casing can also be recycled.',[
-        {label:'KEEP THE AMMUNITION · +1 CRATE',action:()=>{save.ammoCrates++;log('One ammo crate stored for the next battle.');concludeEvent('AMMO STORED','The pod adds six rounds to your next battle supply.','✧');}},
+        {label:'KEEP THE AMMUNITION · +1 CRATE',action:()=>{recoverAmmoCrate();log('One ammo crate unpacked into persistent ammunition stores.');concludeEvent('AMMO STORED','12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.','✧');}},
         {label:'RECYCLE THE CASING · +12 METAL',action:()=>{save.metal+=12;log('12 metal recycled from the pod.');concludeEvent('CASING RECYCLED','The crew strips the empty shell for usable alloy.','✧');}}
       ]);
       if(variant===2)eventScene(node,'REPAIR DRONE HULK','A damaged maintenance drone floats among cargo debris. Its repair arm still responds to commands.',[
@@ -1577,7 +1664,7 @@
         {label:'RESCUE THE MEDIC · +CREW',action:()=>{const recruit=awardCrew('MIRA','#bca8f1');concludeEvent('MEDIC RESCUED',`${recruit} joins your crew. Assign a repair job or another role in the crew panel.`,'▣');}}
       ]);
       if(variant===2)eventScene(node,'SILENT GUNSHIP','The derelict gunship has intact ammunition lockers and a working laser repeater in its exterior mount.',[
-        {label:'TAKE AMMUNITION · +1 CRATE',action:()=>{save.ammoCrates++;log('One ammo crate taken from a gunship.');concludeEvent('AMMUNITION RECOVERED','The sealed rounds add six shots to your next battle.','▣');}},
+        {label:'TAKE AMMUNITION · +1 CRATE',action:()=>{recoverAmmoCrate();log('One ammo crate taken from a gunship.');concludeEvent('AMMUNITION RECOVERED','12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.','▣');}},
         {label:'RECOVER LASER REPEATER · +WEAPON',action:()=>{awardWeapon('laser');concludeEvent('LASER REPEATER RECOVERED','The working weapon is secured in your hold. Visit a trader to install it on your ship.','▣');}}
       ]);
       return;
@@ -1588,7 +1675,7 @@
         {label:'RECYCLE THE ANTENNA · +14 METAL',action:()=>{save.metal+=14;log('14 metal recovered from a relay.');concludeEvent('ANTENNA RECYCLED','The relay goes dark as its copper is stowed aboard.','⌁');}}
       ]);
       if(variant===1)eventScene(node,'OLD NAVIGATION BUOY','A retired patrol buoy has sealed emergency ammunition and a recyclable steel chassis.',[
-        {label:'TAKE EMERGENCY AMMO · +1 CRATE',action:()=>{save.ammoCrates++;log('Patrol buoy supplied an ammo crate.');concludeEvent('AMMO RECOVERED','The sealed rounds add six shots to your next battle.','⌁');}},
+        {label:'TAKE EMERGENCY AMMO · +1 CRATE',action:()=>{recoverAmmoCrate();log('Patrol buoy supplied an ammo crate.');concludeEvent('AMMO RECOVERED','12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.','⌁');}},
         {label:'RECYCLE THE CHASSIS · +11 METAL',action:()=>{save.metal+=11;log('11 metal recovered from a patrol buoy.');concludeEvent('CHASSIS RECYCLED','The buoy is broken down into useful steel.','⌁');}}
       ]);
       if(variant===2)eventScene(node,'ABANDONED JUMP MARKER','A jump marker is out of alignment. Replacement couplers would reopen a distant two-way lane.',[
@@ -1607,7 +1694,7 @@
         {label:'LEAVE THE CONTAINER',action:()=>concludeEvent('TRAP BYPASSED','You pass the mine perimeter without touching the cargo.','◌')}
       ]);
       if(variant===2)eventScene(node,'DEACTIVATED TORPEDO NET','A line of failed torpedoes hangs in the current. Their propellant is gone, but the warheads can supply your guns.',[
-        {label:'RECOVER WARHEADS · +1 AMMO CRATE',action:()=>{save.ammoCrates++;log('Torpedo net yielded one ammo crate.');concludeEvent('WARHEADS SECURED','The inert warheads add six rounds to your next battle.','◌');}},
+        {label:'RECOVER WARHEADS · +1 AMMO CRATE',action:()=>{recoverAmmoCrate();log('Torpedo net yielded one ammo crate.');concludeEvent('WARHEADS SECURED','12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.','◌');}},
         {label:'RECYCLE CASINGS · +13 METAL',action:()=>{save.metal+=13;log('13 metal recycled from torpedo casings.');concludeEvent('CASINGS RECYCLED','The crew strips the empty housings for alloy.','◌');}}
       ]);
       return;
@@ -1633,14 +1720,28 @@
   }
   function showMainMenu(){
     screen='menu';$('appShell').hidden=true;$('quitScreen').hidden=true;$('mainMenu').hidden=false;
-    $('menuConfirm').hidden=true;renderMainMenu();
+    $('menuConfirm').hidden=true;$('starterPicker').hidden=true;renderMainMenu();
   }
   function showGame(){
     screen='playing';$('mainMenu').hidden=true;$('quitScreen').hidden=true;$('appShell').hidden=false;
     centerBuildView(false);setMode('hangar');renderAll();
   }
-  function startNewGame(){
-    save=newSave();battle=null;pendingNodeId=null;eventOpen=false;$('eventOverlay').hidden=true;
+  function showStarterPicker(){
+    $('menuConfirm').hidden=true;$('starterPicker').hidden=false;
+    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>2 reverse thrusters · 3 crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
+    const original=save;
+    try{
+      for(const preview of $('starterLineup').querySelectorAll('canvas[data-starter-preview]')){
+        save={...original,modules:starterModules(preview.dataset.starterPreview),crew:[],drones:[]};
+        sizeArtCanvas(preview,shipArtFrame());drawInterior(preview.getContext('2d'));
+      }
+    }finally{save=original;}
+    $('starterLineup').querySelectorAll('[data-starter]').forEach((button)=>button.addEventListener('click',()=>startNewGame(button.dataset.starter)));
+    $('starterPicker').scrollIntoView?.({block:'nearest',behavior:'smooth'});
+    $('starterLineup').querySelector?.('button')?.focus();
+  }
+  function startNewGame(starterId='wayfarer'){
+    save=newSave(starterId);battle=null;pendingNodeId=null;eventOpen=false;$('eventOverlay').hidden=true;
     selectedCrewId=null;selectedModuleId=1;selectedCatalog=null;buildRotation=0;buildWeaponFacing=0;buildFlipped=false;hoverCell=null;
     for(const id of Object.keys(crewRoutes))delete crewRoutes[id];
     logEntries.length=0;persist();log('New journey initiated.');showGame();
@@ -1764,8 +1865,8 @@
       enemies.push({x:world.w*.5+220+i*70,y:world.h*.5+(count===1?0:i===0?-135:135),angle:Math.PI,hp,maxHp:hp,r:layout.r,modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),name:kind==='rescue'?'PIRATE SKIFF':'RAIDER'});
     }
     const player={x:world.w*.5-260,y:world.h*.5,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,path:[],selected:false,r:shipRadius(),thrusters:{}};
-    const ammo=12+activeModules('cargo').length*6+save.ammoCrates*6;save.ammoCrates=0;
-    battle={kind,world,player,enemies,asteroids:makeAsteroids(world,Math.min(14,8+Math.ceil(cellCount/12)+count),player,enemies),projectiles:[],stars:Array.from({length:Math.min(650,Math.round(world.w*world.h/9500))},()=>({x:rand(0,world.w),y:rand(0,world.h),s:Math.random()<.17?2:1})),ammo,maxAmmo:ammo,shake:0,shields:{}};
+    // Stocks and magazines persist: entering combat never creates ammunition.
+    battle={kind,world,player,enemies,asteroids:makeAsteroids(world,Math.min(14,8+Math.ceil(cellCount/12)+count),player,enemies),projectiles:[],stars:Array.from({length:Math.min(650,Math.round(world.w*world.h/9500))},()=>({x:rand(0,world.w),y:rand(0,world.h),s:Math.random()<.17?2:1})),shake:0,shields:{}};
     recoverDrones();battle.drones=save.drones;updateDroneAssembly(0);battle.teleportCooldown=0;
     enemies.forEach((enemy)=>{enemy.crew=enemy.modules.filter((room)=>room.type==='core'||room.type==='weapon').map((room,i)=>({id:`guard-${i}`,hp:70,room:enemy.modules.indexOf(room),x:room.cells[0][0],y:room.cells[0][1]}));});
     persist();
@@ -1785,7 +1886,7 @@
       concludeEvent(kind==='rescue'?'FREIGHTER SAVED':captured?'SHIP CAPTURED':'PIRATES DEFEATED',captured?`Your assault defeats the defending crew. Surviving boarders return home, and the intact ship yields ${reward} metal, including a 12-metal capture bonus.`:kind==='rescue'?`The freighter escapes and transfers ${reward} metal in thanks. Repair your ship before the next jump.`:`The raider breaks apart. Your crew recovers ${reward} metal from the wreck. Repair your ship before the next jump.`,kind==='rescue'?'◇':'✦');
     }else{
       pendingNodeId=null;log('Command core destroyed.');
-      showEvent({type:'MISSION LOST // CORE FAILURE',icon:'✕',title:'SHIP LOST',body:'Your command core was destroyed. Start a new run to build another ship and try again.',choices:[{label:'START A NEW RUN →',action:()=>{save=newSave();selectedModuleId=1;selectedCatalog=null;for(const id of Object.keys(crewRoutes))delete crewRoutes[id];persist();hideEvent();logEntries.length=0;log('New journey initiated.');openHangar();}}]});
+      showEvent({type:'MISSION LOST // CORE FAILURE',icon:'✕',title:'SHIP LOST',body:'Your command core was destroyed. Start a new run to build another ship and try again.',choices:[{label:'START A NEW RUN →',action:()=>{hideEvent();showMainMenu();showStarterPicker();}}]});
     }
     persist();renderAll();
   }
@@ -2188,8 +2289,8 @@
       const burst=b.projectiles.find((shot)=>shot.emitter===weapon&&shot.delay>0&&shot.burstTarget&&enemyAlive(shot.burstTarget)&&weaponCanTarget(weapon,p,shot.burstTarget));
       const target=burst?.burstTarget||living.filter((enemy)=>weaponCanTarget(weapon,p,enemy)).sort((a,c)=>distance(a,mount)-distance(c,mount))[0];
       const aligned=turnWeapon(weapon,p,target,dt);
-      if(!target||!aligned||weapon.cooldown>0||b.ammo<def.ammo)continue;
-      b.ammo-=def.ammo;weapon.cooldown=def.reload/systemPower(weapon)/(1+crewAtStation('gun',weapon)*.4)/(1+(weapon.level-1)*.22);
+      if(!target||!aligned||weapon.cooldown>0||magazineCount(weapon)<def.ammo)continue;
+      if(def.ammo)weapon.magazine=magazineCount(weapon)-def.ammo;weapon.cooldown=def.reload/systemPower(weapon)/(1+crewAtStation('gun',weapon)*.4)/(1+(weapon.level-1)*.22);
       fireWeapon(weapon,p,target);
     }
     for(const enemy of living){
@@ -2475,10 +2576,10 @@
   function frame(time){
     const dt=clamp((time-lastFrame)/1000||0,0,.05);lastFrame=time;
     if(screen==='playing'){
-      if(!eventOpen){updateCrew(dt);if(mode!=='combat')updateDrones(dt);}
+      if(!eventOpen){updateAmmoProduction(dt);updateCrew(dt);if(mode!=='combat')updateDrones(dt);}
       if(mode==='combat'&&battle){updateBattle(dt,time);drawArena(time);}
       if(mode==='hangar'||mode==='trade')drawHangar();
-      if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();if(mode!=='combat'){renderSystems();renderOperations();}}
+      if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();renderAmmo();const selected=selectedModule();if(selected&&MODULES[selected.type].ammoType){const detail=$('magazineDetail');if(detail)detail.textContent=`${MODULES[selected.type].ammoType.toUpperCase()} MAGAZINE ${magazineCount(selected)} / ${MODULES[selected.type].magazine}${magazineCount(selected)<MODULES[selected.type].ammo?' · EMPTY · NEEDS LOADER':''}`;}if(mode!=='combat'){renderSystems();renderOperations();}}
     }
     requestAnimationFrame(frame);
   }
@@ -2487,8 +2588,9 @@
     window.addEventListener('resize',()=>{if(screen==='playing'&&mode==='combat')fitArenaCanvas();});
     if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>{if(mode==='combat')fitArenaCanvas();}).observe(canvas.parentElement);
     $('menuContinue').addEventListener('click',()=>{if(canContinue())showGame();});
-    $('menuNew').addEventListener('click',()=>{if(canContinue())$('menuConfirm').hidden=false;else startNewGame();});
-    $('confirmNew').addEventListener('click',startNewGame);
+    $('menuNew').addEventListener('click',()=>{if(canContinue())$('menuConfirm').hidden=false;else showStarterPicker();});
+    $('confirmNew').addEventListener('click',showStarterPicker);
+    $('cancelStarter').addEventListener('click',()=>{$('starterPicker').hidden=true;$('menuNew').focus();});
     $('cancelNew').addEventListener('click',()=>{$('menuConfirm').hidden=true;$('menuNew').focus();});
     $('menuQuit').addEventListener('click',quitGame);
     $('quitReturn').addEventListener('click',showMainMenu);
@@ -2515,7 +2617,7 @@
     });
     document.addEventListener('keydown',(event)=>{
       if(event.target instanceof HTMLSelectElement||event.target instanceof HTMLInputElement)return;
-      if(screen==='menu'){if(event.key==='Escape')$('menuConfirm').hidden=true;return;}
+      if(screen==='menu'){if(event.key==='Escape'){$('menuConfirm').hidden=true;$('starterPicker').hidden=true;}return;}
       if(screen!=='playing')return;
       if(event.key==='Escape'&&selectedCrewId){selectedCrewId=null;renderCrew();}
       if(['hangar','trade'].includes(mode)&&event.key.startsWith('Arrow')){const pan={ArrowLeft:[-3,0],ArrowRight:[3,0],ArrowUp:[0,-3],ArrowDown:[0,3]}[event.key];if(pan){event.preventDefault();panBuild(...pan);return;}}

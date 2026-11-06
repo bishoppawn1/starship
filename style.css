@@ -4,3 +4,23 @@
 .inspector-sub{display:flex;justify-content:space-between;align-items:start;gap:8px}
 .inspector-sub span{float:none!important;white-space:nowrap}
 @media(max-width:720px){.left-panel{order:1}.stage-panel{order:2}.right-panel{order:3}}
+
+/* Starting ship lineup and the visible ammunition supply chain. */
+.starter-picker{padding:24px 32px 32px;border-top:1px solid var(--line)}
+.starter-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.starter-heading h2{font-size:17px;margin:9px 0}
+.starter-lineup{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}
+.starter-card{display:flex;flex-direction:column;align-items:stretch;text-align:left;border:1px solid #456d7b;background:#101f2c;color:var(--text);padding:18px;gap:10px;line-height:1.6;min-width:0}
+.starter-card:hover{border-color:var(--gold);background:#1b2d35}
+.starter-card>strong{font-size:21px;color:var(--gold)}
+.starter-card canvas{width:100%;height:180px;object-fit:contain;background:#091723}
+.starter-card>span:not(.eyebrow),.starter-card>small{font-size:11px;color:#a9bdca}
+.starter-card>b{font-size:11px;color:var(--cyan);margin-top:auto}
+.ammo-panel{font-size:11px;line-height:1.6}
+.ammo-panel>strong{color:var(--gold)}
+.ammo-stores,.ammo-row{padding:8px 0;border-bottom:1px solid var(--line)}
+.ammo-panel small{display:block;color:var(--muted);font-size:10px}
+.ammo-panel button{margin-top:10px;background:#172d39;color:var(--cyan);border:1px solid #365d6c;padding:9px;white-space:normal}
+.weapon-range select{max-width:100%;background:#152533;color:var(--text);border:1px solid #436473;padding:7px;font-size:10px}
+.inspector-sub span:first-child{white-space:normal}
+@media(max-width:720px){.starter-lineup{grid-template-columns:1fr}.starter-picker{padding:20px}.starter-card canvas{height:160px}.starter-heading{align-items:start}.starter-heading h2{font-size:14px}}
