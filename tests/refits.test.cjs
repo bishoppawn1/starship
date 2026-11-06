@@ -111,11 +111,11 @@ test('beefier enemies scale every room by sector and still lose functions when r
   const g=game(),old={core:64,weapon:42,engine:40,armor:55};
   for(const heavy of [false,true]){
     const first=g.enemyLayout(heavy,1),fifth=g.enemyLayout(heavy,5);for(const part of first.modules){
-      assert.ok(part.hp>=old[part.type]*2);assert.equal(part.maxHp,part.hp);assert.equal(fifth.modules.find(m=>m.type===part.type).hp,Math.round(part.hp*1.48));
+      if(part.type in old)assert.ok(part.hp>=old[part.type]*2);else assert.equal(part.hp,85);assert.equal(part.maxHp,part.hp);assert.equal(fifth.modules.find(m=>m.type===part.type).hp,Math.round(part.hp*1.48));
     }
   }
   const save=g.newSave();save.sector=5;g.setSave(save);g.startBattle('pirate');const ship=g.getBattle().enemies[0];
   assert.equal(ship.hp,ship.modules.reduce((sum,part)=>sum+part.hp,0));assert.equal(ship.maxHp,ship.hp);
-  const weapon=ship.modules.find(m=>m.type==='weapon');g.hurtEnemy(ship,weapon.hp,weapon);assert.equal(g.enemySystemEfficiency(ship,'weapon'),0);assert.equal(g.enemyAlive(ship),true);
+  for(const weapon of ship.modules.filter(m=>m.type==='weapon'))g.hurtEnemy(ship,weapon.hp,weapon);assert.equal(g.enemySystemEfficiency(ship,'weapon'),0);assert.equal(g.enemyAlive(ship),true);
   const core=ship.modules.find(m=>m.type==='core');g.hurtEnemy(ship,core.hp,core);assert.equal(g.enemyAlive(ship),false);
 });

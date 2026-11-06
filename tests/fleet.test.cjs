@@ -158,6 +158,7 @@ test('a swept player projectile damages the first pirate room it crosses',()=>{
   const g=game(),{b}=combat(g),layout=g.enemyLayout(true);
   const ship={...enemy(700,500),r:layout.r,modules:layout.modules};
   ship.hp=ship.maxHp=layout.modules.reduce((sum,room)=>sum+room.hp,0);b.enemies=[ship];
+  Object.assign(ship.modules.find((room)=>room.type==='shield'),{charge:0,shieldDelay:100});
   const engine=ship.modules.find((room)=>room.type==='engine'),core=ship.modules.find((room)=>room.type==='core');
   g.fireProjectile('player',540,500,{x:850,y:500},14,400,400);
   g.updateBattle(.4,0);
@@ -292,10 +293,10 @@ test('missiles explode on asteroids, damage nearby ships, and remove destroyed r
 });
 
 test('ion hits weaken the struck weapon instead of slowing the whole ship, then expire',()=>{
-  const g=game(),{b}=combat(g),target=enemy(800,500);target.modules=g.enemyLayout(true).modules.map((module)=>({...module}));target.cooldown=10;b.enemies=[target];
+  const g=game(),{b}=combat(g),target=enemy(800,500);target.modules=g.enemyLayout(true).modules.map((module)=>({...module}));target.cooldown=10;b.enemies=[target];Object.assign(target.modules.find((room)=>room.type==='shield'),{charge:0,shieldDelay:100});
   g.weaponImpact({x:855,y:489,damage:7,ion:.5,ionDuration:3},target);
   assert.equal(g.enemySystemEfficiency(target,'weapon'),.5);assert.equal(g.enemySystemEfficiency(target,'engine'),1);assert.equal(target.slowTime,undefined);
-  g.updateBattle(1,0);near(target.cooldown,9.5);g.updateBattle(2.1,0);assert.equal(g.enemySystemEfficiency(target,'weapon'),1);
+  g.updateBattle(1,0);near(target.modules.find((room)=>room.type==='weapon').cooldown,9.5);g.updateBattle(2.1,0);assert.equal(g.enemySystemEfficiency(target,'weapon'),1);
 });
 
 test('proton lances pass through own hull without damage and stop at the first enemy',()=>{

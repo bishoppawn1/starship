@@ -1340,7 +1340,7 @@
   function renderCrewOrders(){
     const panel=$('crewOrders');if(!panel)return;const person=selectedCrew();
     if(!person){panel.innerHTML='<p class="muted small">Click a crew portrait or person. Right click a floor cell to send them there. Living crew heal 3 HP/s at home after 5 seconds without damage.</p>';return;}
-    panel.innerHTML=`<strong>${crewAppearance(person).name} · ${crewStatus(person)}</strong><p class="muted small">Right click a floor cell to move. Manual orders pause the assigned job.</p>${crewAlive(person)?person.aboard?`<button data-recall="${person.id}" ${!boardingReady(battle.enemies[person.aboard.enemy])?'disabled':''}>RECALL CREW</button>${battle.enemies[person.aboard.enemy].modules.map((room,i)=>`<button data-board-room="${i}" type="button">MOVE TO ${room.type.toUpperCase()}</button>`).join('')}`:`<button id="resumeCrewJob" type="button">RESUME ASSIGNED JOB</button>${battle?battle.enemies.map((enemy,i)=>enemyAlive(enemy)?`<button data-board-crew="${i}" ${!boardingPad()?'disabled':''}>BOARD TEAM (UP TO 2) · ${enemy.name} ${i+1}</button>`:'').join(''):''}`:'<p class="muted small">Crew lost. Recruit replacements at a trader.</p>'}`;
+    panel.innerHTML=`<strong>${crewAppearance(person).name} · ${crewStatus(person)}</strong><p class="muted small">Right click a floor cell to move. Manual orders pause the assigned job.</p>${crewAlive(person)?person.aboard?`<button data-recall="${person.id}" ${!boardingReady(battle.enemies[person.aboard.enemy])?'disabled':''}>RECALL CREW</button>${battle.enemies[person.aboard.enemy].modules.map((room,i)=>`<button data-board-room="${i}" type="button">MOVE TO ${room.type==='weapon'?MODULES[room.weaponType||'weapon'].name.toUpperCase():room.type.toUpperCase()}</button>`).join('')}`:`<button id="resumeCrewJob" type="button">RESUME ASSIGNED JOB</button>${battle?battle.enemies.map((enemy,i)=>enemyAlive(enemy)?`<button data-board-crew="${i}" ${!boardingPad()?'disabled':''}>BOARD TEAM (UP TO 2) · ${enemy.name} ${i+1}</button>`:'').join(''):''}`:'<p class="muted small">Crew lost. Recruit replacements at a trader.</p>'}`;
     panel.querySelector?.('#resumeCrewJob')?.addEventListener('click',resumeCrewJob);
     panel.querySelectorAll('[data-board-crew]').forEach((button)=>button.addEventListener('click',()=>boardCrew(person.id,+button.dataset.boardCrew,2)));
     panel.querySelectorAll('[data-recall]').forEach((button)=>button.addEventListener('click',()=>{recallCrew(person.id);renderCrew();}));
@@ -1803,14 +1803,84 @@
     core: [[-1,-1],[0,-1],[-1,0],[0,0]],
     weapon: [[1,-1],[2,-1],[3,-1],[2,0]],
     engine: [[-2,-1],[-2,0],[-2,1],[-2,2]],
-    armor: [[-1,1],[0,1],[-1,2],[0,2]]
+    armor: [[-1,1],[0,1],[-1,2],[0,2]],
+    shield: [[1,1],[2,1],[1,2],[2,2]]
   };
-  function enemyLayout(heavy,sector=1){
-    const types=heavy?['core','weapon','engine','armor']:['core','weapon','engine'];
-    const health={core:130,weapon:85,engine:80,armor:120},scale=1+.12*Math.max(0,sector-1);
+  const ENEMY_LOADOUTS = {
+    cannon: {name:'CANNON',weapons:['weapon']},
+    laser: {name:'LASER',weapons:['laser']},
+    missile: {name:'MISSILE',weapons:['missile']},
+    assault: {name:'ASSAULT',weapons:['laser','missile']}
+  };
+  function enemyWeaponMount(enemy,room){
+    const [x,y]=room.muzzle||[3.5,-1],cos=Math.cos(enemy.angle),sin=Math.sin(enemy.angle);
+    return {x:enemy.x+x*ENEMY_TILE*cos-y*ENEMY_TILE*sin,y:enemy.y+x*ENEMY_TILE*sin+y*ENEMY_TILE*cos,direction:enemy.angle};
+  }
+  function enemyWeaponStats(room,sector=save.sector){
+    const type=room.weaponType||'weapon',def=MODULES[type];
+    return {type,damage:Math.round(def.damage*.6+sector*.35),reload:def.reload*1.6,range:def.range,speed:def.speed,ammo:def.ammo,color:def.color,family:def.family,guidance:def.guidance||0,splash:def.splash||0,arc:def.arc};
+  }
+  function fireEnemyWeapons(enemy,dt){
+    if(!enemyAlive(enemy))return;enemy.ammo??=18+save.sector*4;
+    const rooms=enemy.modules?.length?enemy.modules.filter((room)=>room.type==='weapon'&&room.hp>0):[enemy];
+    for(const room of rooms){
+      const efficiency=systemEfficiency(room)*enemySystemEfficiency(enemy,'core'),stats=enemyWeaponStats(room),mount=enemyWeaponMount(enemy,room),player=battle.player;
+      room.cooldown=(room.cooldown??enemy.cooldown??.7)-dt*efficiency;room.flash=Math.max(0,(room.flash||0)-dt);
+      if(efficiency<=0||room.cooldown>0||distance(mount,player)>stats.range||(enemy.ammo??0)<stats.ammo)continue;
+      const aim=Math.atan2(player.y-mount.y,player.x-mount.x);
+      if(!stats.guidance&&Math.abs(angleDifference(mount.direction,aim))>stats.arc*Math.PI/360)continue;
+      const angle=stats.guidance?mount.direction:aim;
+      const clearance=stats.guidance?Math.max(4,...(enemy.modules||[]).flatMap((part)=>part.cells.map(([x])=>(x+.5-(room.muzzle?.[0]??3.5))*ENEMY_TILE+4))):0;
+      enemy.ammo-=stats.ammo;room.cooldown=stats.reload;room.flash=.1;
+      fireProjectile('enemy',mount.x+Math.cos(angle)*.01,mount.y+Math.sin(angle)*.01,player,stats.damage,stats.speed,stats.range,{angle,family:stats.family,color:stats.color,guidance:stats.guidance,target:stats.guidance?player:null,launchRemaining:clearance,splash:stats.splash,source:enemy,weaponType:stats.type});
+    }
+  }
+  function enemyShieldRooms(enemy){return (enemy.modules||[]).filter((room)=>room.type==='shield');}
+  function enemyShieldState(enemy,room){
+    const capacity=room.capacity??100;room.charge??=capacity;
+    room.charge=room.hp>0&&enemyAlive(enemy)?clamp(room.charge,0,capacity):0;
+    return {charge:room.charge,capacity};
+  }
+  function enemyShieldStrength(enemy){
+    return enemyShieldRooms(enemy).reduce((sum,room)=>sum+enemyShieldState(enemy,room).charge,0);
+  }
+  function updateEnemyShields(enemy,dt){
+    for(const room of enemyShieldRooms(enemy)){
+      const state=enemyShieldState(enemy,room),waiting=Math.min(room.shieldDelay||0,dt);
+      room.shieldDelay=Math.max(0,(room.shieldDelay||0)-dt);room.shieldFlash=Math.max(0,(room.shieldFlash||0)-dt);
+      if(room.hp>0&&enemyAlive(enemy))room.charge=Math.min(state.capacity,room.charge+(dt-waiting)*(room.recharge??6)*systemEfficiency(room)*enemySystemEfficiency(enemy,'core'));
+    }
+  }
+  function absorbEnemyShields(enemy,amount){
+    for(const room of enemyShieldRooms(enemy)){
+      const state=enemyShieldState(enemy,room);if(amount<=0||state.charge<=0)continue;
+      const absorbed=Math.min(amount,state.charge);room.charge-=absorbed;amount-=absorbed;room.shieldDelay=1.7;room.shieldFlash=.22;
+    }
+    return amount;
+  }
+  function enemyShieldInterception(enemy,shot,dx,dy,limit){
+    if(enemyShieldStrength(enemy)<=1e-7)return null;
+    const entry=rayCircle(shot,dx,dy,enemy,enemy.r+17);
+    return entry<=limit?{distance:entry,room:rayEnemyRoom(shot,dx,dy,enemy,Infinity).room}:null;
+  }
+  function enemyMissileImpact(shot,playerHit=false,hitRock=null){
+    (battle.effects??=[]).push({x:shot.x,y:shot.y,r:shot.splash,color:shot.color,time:.35,duration:.35});
+    for(const rock of [...battle.asteroids])if(rock!==hitRock&&distance(rock,shot)<=shot.splash+rock.r)damageAsteroid(rock,shot.damage*.55);
+    if(!playerHit&&!shot.evaded&&distance(battle.player,shot)<=shot.splash+battle.player.r){
+      const angle=Math.atan2(shot.y-battle.player.y,shot.x-battle.player.x),remaining=absorbShields(shot.damage*.55,angle);
+      if(remaining>0)damagePlayer(remaining,shot);
+    }
+  }
+  function enemyLayout(heavy,sector=1,loadout='cannon'){
+    const types=heavy?['core','weapon','engine','armor','shield']:['core','weapon','engine','shield'];
+    const health={core:130,weapon:85,engine:80,armor:120,shield:85},scale=1+.12*Math.max(0,sector-1);
     const modules=types.map((type)=>{const hp=Math.round(health[type]*scale);return {type,cells:ENEMY_TETROMINOES[type],hp,maxHp:hp};});
+    const weapons=ENEMY_LOADOUTS[loadout].weapons;
+    modules.find((room)=>room.type==='weapon').weaponType=weapons[0];modules.find((room)=>room.type==='weapon').muzzle=[3.5,-1];
+    if(weapons[1])modules.push({type:'weapon',weaponType:weapons[1],muzzle:[3.5,-3],cells:ENEMY_TETROMINOES.weapon.map(([x,y])=>[x,y-2]),hp:Math.round(health.weapon*scale),maxHp:Math.round(health.weapon*scale)});
+    Object.assign(modules.find((room)=>room.type==='shield'),{capacity:Math.round((heavy?100:60)*scale),charge:Math.round((heavy?100:60)*scale),recharge:heavy?6:4,shieldDelay:0});
     const cells=modules.flatMap((module)=>module.cells);
-    const r=Math.ceil(Math.max(...cells.map(([x,y])=>Math.hypot((x+.5)*ENEMY_TILE,(y+.5)*ENEMY_TILE)))+9);
+    const r=Math.ceil(Math.max(...cells.map(([x,y])=>Math.hypot((Math.abs(x)+.5)*ENEMY_TILE,(Math.abs(y)+.5)*ENEMY_TILE)))+9);
     return {modules,r,cells:cells.length};
   }
   function enemyAlive(enemy){
@@ -1856,19 +1926,22 @@
   function startBattle(kind){
     hideEvent();
     const count=kind==='rescue'?2:save.sector>3&&Math.random()<.35?2:1;
-    const cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),layout=enemyLayout(kind!=='rescue',save.sector),enemyCells=count*layout.cells;
+    const choices=kind!=='rescue'&&save.sector>=3?Object.keys(ENEMY_LOADOUTS):['cannon','laser','missile'],first=Math.floor(Math.random()*choices.length);
+    const layouts=Array.from({length:count},(_,i)=>{const loadout=choices[(first+i)%choices.length];return {...enemyLayout(kind!=='rescue',save.sector,loadout),loadout};});
+    const cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),enemyCells=layouts.reduce((sum,layout)=>sum+layout.cells,0);
     const width=Math.max(2400+cellCount*16+enemyCells*8,shipRadius()*7+900),world={w:width,h:Math.max(1800,width*.72)};
     const enemies=[];
     for(let i=0;i<count;i++){
-      const modules=layout.modules.map((room)=>({...room}));
+      const layout=layouts[i],modules=layout.modules;
+      for(const room of modules)if(room.type==='weapon')room.cooldown=rand(.7,1.5);
       const hp=modules.reduce((sum,room)=>sum+room.hp,0);
-      enemies.push({x:world.w*.5+220+i*70,y:world.h*.5+(count===1?0:i===0?-135:135),angle:Math.PI,hp,maxHp:hp,r:layout.r,modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),name:kind==='rescue'?'PIRATE SKIFF':'RAIDER'});
+      enemies.push({x:world.w*.5+220+i*70,y:world.h*.5+(count===1?0:i===0?-135:135),angle:Math.PI,hp,maxHp:hp,r:layout.r,modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),loadout:layout.loadout,ammo:18+save.sector*4,name:`${ENEMY_LOADOUTS[layout.loadout].name} ${kind==='rescue'?'SKIFF':'RAIDER'}`});
     }
     const player={x:world.w*.5-260,y:world.h*.5,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,path:[],selected:false,r:shipRadius(),thrusters:{}};
     // Stocks and magazines persist: entering combat never creates ammunition.
     battle={kind,world,player,enemies,asteroids:makeAsteroids(world,Math.min(14,8+Math.ceil(cellCount/12)+count),player,enemies),projectiles:[],stars:Array.from({length:Math.min(650,Math.round(world.w*world.h/9500))},()=>({x:rand(0,world.w),y:rand(0,world.h),s:Math.random()<.17?2:1})),shake:0,shields:{}};
     recoverDrones();battle.drones=save.drones;updateDroneAssembly(0);battle.teleportCooldown=0;
-    enemies.forEach((enemy)=>{enemy.crew=enemy.modules.filter((room)=>room.type==='core'||room.type==='weapon').map((room,i)=>({id:`guard-${i}`,hp:70,room:enemy.modules.indexOf(room),x:room.cells[0][0],y:room.cells[0][1]}));});
+    enemies.forEach((enemy)=>{enemy.crew=enemy.modules.filter((room)=>room.type==='core'||room.type==='weapon').slice(0,2).map((room,i)=>({id:`guard-${i}`,hp:70,room:enemy.modules.indexOf(room),x:room.cells[0][0],y:room.cells[0][1]}));});
     persist();
     for(const module of save.modules){module.cooldown=rand(.25,.8);module.aimOffset=0;}
     updateDrones(0);
@@ -2102,7 +2175,7 @@
   function disruptSystems(shot){
     (battle.effects??=[]).push({x:shot.x,y:shot.y,r:shot.systemPulse,color:shot.color,time:.4,duration:.4,pulse:true});
     for(const enemy of battle.enemies){
-      if(enemy.hp<=0||enemy.modules?.some((room)=>room.type==='core'&&room.hp===0))continue;
+      if(enemy.hp<=0||enemy.modules?.some((room)=>room.type==='core'&&room.hp===0)||enemyShieldStrength(enemy)>0)continue;
       for(const room of liveEnemySystems(enemy))if(enemyRoomDistance(enemy,room,shot)<=shot.systemPulse){
         room.ionFactor=Math.min(systemEfficiency(room),shot.ion);room.ionTime=Math.max(room.ionTime||0,shot.ionDuration);
       }
@@ -2160,15 +2233,16 @@
     }
   }
   function weaponImpact(shot,target,hitRock=null,hitRoom=null) {
-    if(shot.chainSystems&&target){teslaImpact(shot,target,hitRoom);return;}
+    const directDamage=target?absorbEnemyShields(target,shot.damage):0;
+    if(shot.chainSystems&&target){if(directDamage>0)teslaImpact({...shot,damage:directDamage},target,hitRoom);return directDamage>0;}
     if(shot.systemPulse){
-      disruptSystems(shot);
-      if(target){
+      if(!target||directDamage>0)disruptSystems(shot);
+      if(target&&directDamage>0){
         const room=hitRoom||liveEnemySystems(target).sort((a,b)=>enemyRoomDistance(target,a,shot)-enemyRoomDistance(target,b,shot))[0];
-        if(room)damageWeaponSystem(target,room,shot.damage,shot);else hurtEnemy(target,shot.damage);
+        if(room)damageWeaponSystem(target,room,directDamage,shot);else hurtEnemy(target,directDamage);
       }
       if(hitRock)damageAsteroid(hitRock,shot.damage);
-      return;
+      return directDamage>0;
     }
     const affected=target?[target]:[];
     if(shot.splash){
@@ -2180,21 +2254,24 @@
       else if(shot.splash&&distance(rock,shot)<=shot.splash+rock.r)damageAsteroid(rock,shot.damage*.55);
     }
     for(const enemy of affected){
+      const damage=enemy===target?directDamage:absorbEnemyShields(enemy,shot.damage*.55);if(damage<=0)continue;
       const room=enemy===target?hitRoom:nearestEnemyRoom(enemy,shot);
       if(shot.ion)ionizeSystem(enemy,shot,room);
-      hurtEnemy(enemy,shot.damage*(enemy===target?1:.55),room,shot);
+      hurtEnemy(enemy,damage,room,shot);
       if(shot.slow){enemy.slowFactor=Math.min(enemy.slowTime>0?enemy.slowFactor:1,shot.slow);enemy.slowTime=Math.max(enemy.slowTime||0,shot.slowDuration);}
       if(shot.burn){enemy.burnDps=Math.max(enemy.burnDps||0,shot.burn);enemy.burnTime=Math.max(enemy.burnTime||0,shot.burnDuration);enemy.burnRoom=room;}
     }
-    if(target&&shot.chain){
+    if(target&&directDamage>0&&shot.chain){
       const chained=battle.enemies.filter((other)=>{
         if(other===target||!enemyAlive(other)||distance(other,target)>shot.chain)return false;
         const dist=distance(other,target)/COMBAT_TILE,angle=Math.atan2(other.y-target.y,other.x-target.x)-battle.player.angle;
         return hullRay(worldToHull(target,battle.player),angle,save.modules.flatMap(moduleCells),dist)>=dist;
       }).sort((a,b)=>distance(a,target)-distance(b,target))[0];
-      if(chained){hurtEnemy(chained,shot.damage*.5,nearestEnemyRoom(chained,target),target);(battle.effects??=[]).push({x:target.x,y:target.y,to:{x:chained.x,y:chained.y},color:shot.color,time:.2,duration:.2});}
+      if(chained){hurtEnemy(chained,absorbEnemyShields(chained,shot.damage*.5),nearestEnemyRoom(chained,target),target);(battle.effects??=[]).push({x:target.x,y:target.y,to:{x:chained.x,y:chained.y},color:shot.color,time:.2,duration:.2});}
     }
+    return directDamage>0;
   }
+
   function worldToHull(point,player) {
     const bounds=shipBounds(),dx=point.x-player.x,dy=point.y-player.y,cos=Math.cos(player.angle),sin=Math.sin(player.angle);
     return {x:(dx*cos+dy*sin)/COMBAT_TILE+bounds.cx,y:(-dx*sin+dy*cos)/COMBAT_TILE+bounds.cy};
@@ -2280,6 +2357,7 @@
       if(enemyAlive(enemy)&&enemy.burnTime>0){hurtEnemy(enemy,enemy.burnDps*Math.min(dt,enemy.burnTime),enemy.burnRoom);enemy.burnTime=Math.max(0,enemy.burnTime-dt);}
       enemy.slowTime=Math.max(0,(enemy.slowTime||0)-dt);
       for(const module of enemy.modules||[])module.ionTime=Math.max(0,(module.ionTime||0)-dt);
+      updateEnemyShields(enemy,dt);
     }
     b.effects=(b.effects||[]).filter((effect)=>(effect.time-=dt)>0);
     const living=b.enemies.filter(enemyAlive);
@@ -2308,12 +2386,7 @@
       }else{enemy.x+=Math.cos(time*.001+enemy.phase)*speed*.32*dt;enemy.y+=Math.sin(time*.001+enemy.phase)*speed*.32*dt;}
       if(resolveRockCollision(enemy,b.asteroids,b.world))enemy.pathTimer=0;
       enemy.angle+=clamp(angleDifference(enemy.angle,Math.atan2(dy,dx)),-dt*2,dt*2);
-      const c=Math.cos(enemy.angle),s=Math.sin(enemy.angle),muzzle={x:enemy.x+79*c+ENEMY_TILE*s,y:enemy.y+79*s-ENEMY_TILE*c};
-      const wanted=angleDifference(enemy.angle,Math.atan2(p.y-muzzle.y,p.x-muzzle.x));enemy.aimOffset=(enemy.aimOffset||0)+clamp(wanted-(enemy.aimOffset||0),-Math.PI*dt,Math.PI*dt);enemy.flash=Math.max(0,(enemy.flash||0)-dt);
-      const weaponPower=enemySystemEfficiency(enemy,'weapon');enemy.cooldown-=dt*weaponPower*enemySystemEfficiency(enemy,'core');if(weaponPower>0&&enemy.cooldown<=0&&dist<470&&Math.abs(wanted-enemy.aimOffset)<.015){
-        enemy.cooldown=rand(1.7,2.3);
-        enemy.flash=.07;fireProjectile('enemy',muzzle.x,muzzle.y,p,7+save.sector*.65,270,undefined,{muzzleClearance:36});
-      }
+      fireEnemyWeapons(enemy,dt);
     }
     for(let i=b.projectiles.length-1;i>=0;i--){
       const shot=b.projectiles[i];let step=dt;
@@ -2332,7 +2405,8 @@
         shot.vx=Math.cos(angle)*speed;shot.vy=Math.sin(angle)*speed;shot.launchRemaining=launch?.clearance||0;weapon.aimOffset=angle-p.angle-weaponGeometry(weapon).direction;shot.muzzleClearance=Math.min(36,weaponRange(weapon)*.5);weapon.flash=.07;
       }
       const speed=Math.hypot(shot.vx,shot.vy);
-      if(shot.guidance&&(!shot.target||!enemyAlive(shot.target))){
+      if(shot.guidance&&shot.owner==='enemy')shot.target=p;
+      if(shot.guidance&&shot.owner==='player'&&(!shot.target||!enemyAlive(shot.target))){
         shot.target=b.enemies.filter(enemyAlive).sort((a,c)=>distance(a,shot)-distance(c,shot))[0];
         if(!shot.target){b.projectiles.splice(i,1);continue;}
       }
@@ -2345,6 +2419,7 @@
       const travel=Math.min(speed*step,shot.remaining,shot.launchRemaining>0?shot.launchRemaining:Infinity);
       if(shot.owner==='enemy'&&!shot.evasionChecked&&rayCircle(shot,dx,dy,p,p.r+25)<=travel){
         shot.evasionChecked=true;shot.evaded=Math.random()<evasionChance();
+        if(shot.evaded&&shot.guidance){shot.guidance=0;shot.remaining=Math.min(shot.remaining,600);}
         if(shot.evaded)(b.effects??=[]).push({x:p.x,y:p.y-p.r-20,text:'MISS',color:'#9ce5df',time:.6,duration:.6});
       }
       let stop=travel,hit=false,target=null,hitRock=null,hitRoom=null,hitDrone=null,shielded=false,shieldAngle=0;
@@ -2358,7 +2433,7 @@
       }
       const targets=shot.owner==='player'?b.enemies.filter((enemy)=>enemyAlive(enemy)&&!shot.hitIds.has(enemy)):(shot.evaded?[]:[p]);
       for(const candidate of targets){
-        const contact=shot.owner==='player'?rayEnemyRoom(shot,dx,dy,candidate,stop):{distance:rayCircle(shot,dx,dy,candidate,candidate.r*.82),room:null};
+        const contact=shot.owner==='player'?(enemyShieldInterception(candidate,shot,dx,dy,stop)||rayEnemyRoom(shot,dx,dy,candidate,stop)):{distance:rayCircle(shot,dx,dy,candidate,candidate.r*.82),room:null};
         const entry=contact.distance;
         if(entry<stop||(!hit&&entry<=stop)){stop=entry;hit=true;target=candidate;hitRock=null;hitRoom=contact.room;}
       }
@@ -2372,22 +2447,25 @@
       shot.x+=dx*stop;shot.y+=dy*stop;shot.remaining-=stop;shot.life-=step;shot.muzzleClearance=Math.max(0,(shot.muzzleClearance||0)-stop);shot.launchRemaining=Math.max(0,(shot.launchRemaining||0)-stop);
       if(hitDrone){hitDrone.hp=Math.max(0,hitDrone.hp-shot.damage);}
       else if(target&&shot.owner==='player'){
-        weaponImpact(shot,target,null,hitRoom);shot.hitIds.add(target);
-        if(shot.pierce>0){shot.pierce--;hit=false;}
+        const penetrated=weaponImpact(shot,target,null,hitRoom);shot.hitIds.add(target);
+        if(penetrated&&shot.pierce>0){shot.pierce--;hit=false;}
       }else if(target){const remaining=shielded?absorbShields(shot.damage,shieldAngle):shot.damage;if(remaining>0)damagePlayer(remaining,shot);if(!battle)return;}
       else if(hit&&shot.owner==='player')weaponImpact(shot,null,hitRock);
       else if(hitRock)damageAsteroid(hitRock,shot.damage);
+      if(hit&&shot.owner==='enemy'&&shot.splash)enemyMissileImpact(shot,!!target||!!hitDrone,hitRock);
+      if(!battle)return;
       if(hit||shot.remaining<=1e-7||(!shot.guidance&&(shot.x<0||shot.x>b.world.w||shot.y<0||shot.y>b.world.h)))b.projectiles.splice(i,1);
     }
     if(b.enemies.every((enemy)=>!enemyAlive(enemy))){finishBattle(true);return;}
     if(time-lastHudRefresh>280){lastHudRefresh=time;renderHud();renderInspector();refreshCrewStatus();}
   }
-  function enemySprite(heavy,moving){
-    const key=`${heavy}:${moving}`;if(enemySprites.has(key))return enemySprites.get(key);
+  function enemySprite(enemy){
+    const moving=enemy.moving,heavy=enemy.modules.some((room)=>room.type==='armor');
+    const key=JSON.stringify([moving,enemy.modules.map(({type,cells})=>[type,cells])]);if(enemySprites.has(key))return enemySprites.get(key);
     const sprite=document.createElement('canvas');sprite.width=220*SPRITE_SCALE;sprite.height=160*SPRITE_SCALE;
     const g=sprite.getContext('2d');g.imageSmoothingEnabled=false;g.scale(SPRITE_SCALE,SPRITE_SCALE);g.translate(110,80);
-    const modules=enemyLayout(heavy).modules,occupied=new Set(modules.flatMap((module)=>module.cells.map(([x,y])=>`${x},${y}`)));
-    const colors={core:'#d98495',weapon:'#e3a373',engine:'#87b9c4',armor:'#9b9bad'};
+    const modules=enemy.modules,occupied=new Set(modules.flatMap((module)=>module.cells.map(([x,y])=>`${x},${y}`)));
+    const colors={core:'#d98495',weapon:'#e3a373',engine:'#87b9c4',armor:'#9b9bad',shield:'#b59ae0'};
     for(const module of modules)for(const [x,y] of module.cells){
       const px=x*ENEMY_TILE-11,py=y*ENEMY_TILE-11;
       g.fillStyle='#211a2a';g.fillRect(px,py,22,22);
@@ -2406,14 +2484,15 @@
     g.fillStyle='#1c2633';g.fillRect(-55,-8,14,16);g.fillStyle='#86b6c3';g.fillRect(-54,-6,10,12);
     g.fillStyle='#caeef0';g.fillRect(-50,-3,5,6);
     if(moving){g.fillStyle='#55d7ee';g.fillRect(-68,-5,13,10);g.fillStyle='#ffe3a4';g.fillRect(-75,-2,8,4);}
-
+    const shield=modules.find((room)=>room.type==='shield');if(shield){const [x,y]=shield.cells[0],px=x*ENEMY_TILE,py=y*ENEMY_TILE;g.fillStyle='#725990';g.fillRect(px-7,py-7,14,14);g.fillStyle='#e3d2ff';g.fillRect(px-2,py-6,4,12);g.fillRect(px-6,py-2,12,4);}
     if(heavy){g.fillStyle='#c2b9c9';g.fillRect(-10,39,20,5);g.fillStyle='#715e76';g.fillRect(-6,44,12,8);}
     enemySprites.set(key,sprite);return sprite;
   }
   function drawEnemy(enemy){
     const g=ctx,r=enemy.r;
     g.save();g.translate(enemy.x,enemy.y);g.rotate(enemy.angle);
-    g.drawImage(enemySprite(enemy.modules.length===4,enemy.moving),-110,-80,220,160);
+    g.drawImage(enemySprite(enemy),-110,-80,220,160);
+    for(const room of enemy.modules)if(room.type==='weapon'){const [x,y]=room.muzzle||[3.5,-1];g.save();g.translate(x*ENEMY_TILE,y*ENEMY_TILE);drawWeaponSprite(g,room.weaponType||'weapon',room.hp>0,room.hp>0?(room.flash||0):0);g.restore();}
     for(const room of enemy.modules){
       if(room.hp<=0){
         for(const [x,y] of room.cells){const px=x*ENEMY_TILE-11,py=y*ENEMY_TILE-11;
@@ -2428,9 +2507,13 @@
         g.fillStyle='#ef9a87';g.fillRect(cx-13,cy-16,26*room.hp/room.maxHp,3);
       }
     }
-    g.save();g.translate(79,-ENEMY_TILE);g.rotate(enemy.aimOffset||0);drawWeaponSprite(g,'weapon',enemy.modules.some((room)=>room.type==='weapon'&&room.hp>0),enemy.flash||0);g.restore();
     drawEnemyCrew(g,enemy);
     g.restore();
+    const strength=enemyShieldStrength(enemy),capacity=enemyShieldRooms(enemy).reduce((sum,room)=>sum+(room.capacity??100),0);
+    if(strength>0){const flash=enemyShieldRooms(enemy).some((room)=>room.shieldFlash>0);g.save();g.globalAlpha=.15+.45*strength/capacity+(flash ? .25 : 0);g.strokeStyle='#c3a3ef';g.lineWidth=flash?3:2;g.beginPath();g.arc(enemy.x,enemy.y,r+17,0,TAU);g.stroke();g.restore();}
+    g.save();g.font='10px monospace';g.textAlign='center';g.fillStyle='#e6c3b8';g.fillText(enemy.name,enemy.x,enemy.y-r-39);
+    g.fillStyle='#b9a3f7';g.fillText(`SHIELD ${Math.ceil(strength)} / ${capacity}`,enemy.x,enemy.y-r-25);
+    g.fillStyle='#6e617d';g.fillRect(enemy.x-40,enemy.y-r-19,80,4);g.fillStyle='#c1a0ef';g.fillRect(enemy.x-40,enemy.y-r-19,capacity?80*strength/capacity:0,4);g.restore();
     if((enemy.modules||[]).some((module)=>module.ionTime>0)){g.fillStyle='#80dce9';g.fillRect(enemy.x-16,enemy.y-r-6,5,5);}
     if(enemy.slowTime>0){g.fillStyle='#9ceaf0';g.fillRect(enemy.x-24,enemy.y-r-6,5,5);}
     if(enemy.burnTime>0){g.fillStyle='#f5a267';g.fillRect(enemy.x-16,enemy.y-r-6,5,5);}

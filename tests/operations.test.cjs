@@ -30,7 +30,7 @@ function setup(g){
     {id:2,type:'teleporter',x:2,y:0,rotation:0,hp:80,level:1},
     {id:3,type:'droneControl',x:2,y:2,rotation:0,hp:75,level:1}];
   save.crew.forEach((person)=>Object.assign(person,{x:.5,y:.5,task:'idle',hp:100}));g.setSave(save);g.setMode('combat');g.stubFlight();
-  const layout=g.enemyLayout(true),enemy={x:800,y:500,angle:Math.PI,r:90,modules:layout.modules,hp:415,maxHp:415,name:'RAIDER',crew:[],speed:0,path:[],pathTimer:100,cooldown:100,phase:0};
+  const layout=g.enemyLayout(true),enemy={x:800,y:500,angle:Math.PI,r:90,modules:layout.modules,hp:layout.modules.reduce((sum,room)=>sum+room.hp,0),maxHp:layout.modules.reduce((sum,room)=>sum+room.hp,0),name:'RAIDER',crew:[],speed:0,path:[],pathTimer:100,cooldown:100,phase:0};
   const battle={kind:'pirate',player:{x:500,y:500,r:80,angle:0,vx:0,vy:0,omega:0,thrusters:{}},world:{w:3000,h:2200},enemies:[enemy],asteroids:[],projectiles:[],effects:[],drones:[],teleportCooldown:0,ammo:20,maxAmmo:20,shake:0,stars:[]};g.setBattle(battle);return {save,battle,enemy,person:save.crew[0]};
 }
 function settle(g){for(let i=0;i<200;i++)g.updateCrew(.05);}
