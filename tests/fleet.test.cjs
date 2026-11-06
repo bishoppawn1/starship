@@ -13,7 +13,7 @@ function game(){
       weaponsHaveClearArc,engineThrusters,upgradeTraderStock,openTrader,buyTraderItem,onGridClick,setMode,renderCatalog,crewGoal,
       weaponCanTarget,weaponWorld,fireWeapon,fireProjectile,weaponImpact,updateBattle,
       enemyLayout,enemyAlive,rayEnemyRoom,hurtEnemy,enemySystemEfficiency,
-      shieldInterception,absorbShields,updateShields,resolveRockCollision,clearSegment,routeAroundRocks,
+      shieldInterception,absorbShields,updateShields,resolveRockCollision,clearSegment,safePoint,routeAroundRocks,orderMove,shipRadius,
       beginModuleMove,canPlace,placementPreview,systemEfficiency,enemyLayout,enemySystemEfficiency,drawHangar,drawExteriorHardware,
       selectModule(id){selectedModuleId=id;},hover(x,y){hoverCell={x,y};},rotateBuild,
       setSave(value){save=value;},getSave(){return save;},getMode(){return mode;},
@@ -194,12 +194,24 @@ test('enemy shots hit the shield barrier before they can damage a room',()=>{
   assert.equal(b.projectiles.length,0);
 });
 
-test('wreck routes leave a wide berth and direct impacts bounce ships outward',()=>{
+test('wreck routes allow close waypoints while direct impacts still bounce ships outward',()=>{
   const g=game(),wreck={x:500,y:500,r:30},world={w:1000,h:900};
   assert.equal(g.clearSegment({x:200,y:500},{x:800,y:500},40,[wreck]),false);
-  const route=g.routeAroundRocks({x:200,y:500},{x:800,y:500},40,[wreck],world);
+  const closeGoal={x:590,y:500};
+  assert.equal(g.safePoint(closeGoal,40,[wreck],world).x,closeGoal.x);
+  const route=g.routeAroundRocks({x:200,y:500},closeGoal,40,[wreck],world);
   assert.ok(route.length>1);
-  for(const point of route)assert.ok(Math.hypot(point.x-500,point.y-500)>=30+40+62);
+  assert.equal(route.at(-1).x,closeGoal.x);
+  for(const point of route)assert.ok(Math.hypot(point.x-500,point.y-500)>=30+40+8);
+  assert.equal(g.clearSegment({x:575,y:500},{x:700,y:500},40,[wreck]),true);
+  assert.equal(g.routeAroundRocks({x:575,y:500},{x:700,y:500},40,[wreck],world).length,1);
+  g.setSave(g.newSave());
+  const nearHull={x:wreck.x+wreck.r+g.shipRadius()+20,y:wreck.y};
+  assert.equal(g.safePoint(nearHull,g.shipRadius(),[wreck],world).x,nearHull.x);
+  g.setBattle({world,asteroids:[wreck],player:{x:200,y:500,r:40,selected:true,path:[],dest:null,targetAngle:0}});
+  g.orderMove(closeGoal);
+  assert.equal(g.getBattle().player.dest.x,closeGoal.x);
+  assert.ok(g.getBattle().player.path.length>1);
   const ship={x:563,y:500,r:40,vx:-30,vy:0};
   assert.equal(g.resolveRockCollision(ship,[wreck],world),true);
   assert.ok(ship.x>=575&&ship.vx>0);

@@ -3,7 +3,7 @@
 
   const GRID_W = 12, GRID_H = 10, TILE = 24, COMBAT_TILE = 30, ENEMY_TILE = 22, SAVE_KEY = 'starship-drift-save-v1';
   const TAU = Math.PI * 2;
-  const WRECK_BERTH = 62;
+  const WRECK_BERTH = 8;
   // Preserve the source drawing's little square pixels before rotating the
   // assembled image. The display canvas samples this at native screen density.
   const SPRITE_SCALE = 4;
@@ -1723,7 +1723,12 @@
     const dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy;
     return rocks.every((rock)=>{
       const t=clamp(((rock.x-a.x)*dx+(rock.y-a.y)*dy)/(length||1),0,1);
-      return Math.hypot(a.x+dx*t-rock.x,a.y+dy*t-rock.y)>=rock.r+radius+WRECK_BERTH;
+      const clearance=rock.r+radius+WRECK_BERTH;
+      const closest=Math.hypot(a.x+dx*t-rock.x,a.y+dy*t-rock.y);
+      if(closest>=clearance)return true;
+      // A ship that was bumped inside the navigation margin may depart outward.
+      const startDistance=distance(a,rock),endDistance=distance(b,rock);
+      return startDistance<clearance&&closest>=rock.r+radius+4.5&&endDistance>startDistance;
     });
   }
   function safePoint(point,radius,rocks,world){
@@ -1804,7 +1809,7 @@
         desiredX=clamp(dx*.38-p.vx*2.4,-55,55);desiredY=clamp(dy*.38-p.vy*2.4,-55,55);
         const magnitude=Math.hypot(desiredX,desiredY),factor=Math.min(1,55/(magnitude||1));desiredX*=factor;desiredY*=factor;
         for(const rock of battle.asteroids){
-          const rx=p.x-rock.x,ry=p.y-rock.y,d=Math.hypot(rx,ry)||1,clearance=rock.r+p.r+WRECK_BERTH+32;
+          const rx=p.x-rock.x,ry=p.y-rock.y,d=Math.hypot(rx,ry)||1,clearance=rock.r+p.r+WRECK_BERTH+12;
           if(d<clearance){const strength=(clearance-d)/clearance*105;desiredX+=rx/d*strength;desiredY+=ry/d*strength;}
         }
         if(dist>34&&Math.hypot(desiredX,desiredY)>9){
