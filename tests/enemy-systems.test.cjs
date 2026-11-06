@@ -13,7 +13,7 @@ function game(){
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
     globalThis.game={MODULES,ENEMY_LOADOUTS,newSave,enemyLayout,startBattle,enemyAlive,enemyWeaponMount,enemyWeaponStats,fireEnemyWeapons,
       enemyShieldState,enemyShieldStrength,absorbEnemyShields,updateEnemyShields,enemyShieldInterception,weaponImpact,fireProjectile,updateBattle,
-      hurtEnemy,enemyPath,enemySprite,drawEnemy,evasionChance,deployDrone,updateDrones,shieldState,moduleStation,
+      hurtEnemy,enemyPath,enemySprite,drawEnemy,evasionChance,updateDrones,shieldState,moduleStation,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
       stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;},setEvasion(value){evasionChance=()=>value;}};
   })();`);
@@ -115,9 +115,10 @@ test('enemy missiles can hit player shields, be evaded, intercepted by drones, o
   for(let i=0;i<100&&b.projectiles.length;i++)g.updateBattle(.02,0);assert.ok(state.charge<100);assert.equal(save.modules[0].hp,170);
   state.charge=100;g.setEvasion(1);room.cooldown=0;g.fireEnemyWeapons(enemy,0);room.cooldown=1000;const evaded=b.projectiles[0];
   for(let i=0;i<100&&!evaded.evasionChecked;i++)g.updateBattle(.02,0);assert.equal(evaded.evaded,true);assert.equal(evaded.guidance,0);assert.equal(state.charge,100);
-  g.setEvasion(0);b.projectiles=[];const bay={id:3,type:'droneControl',x:5,y:0,rotation:0,level:1,hp:85};save.modules.push(bay);g.deployDrone('defense');const drone=b.drones[0];drone.cooldown=0;
+  g.setEvasion(0);b.projectiles=[];const bay={id:3,type:'droneControl',x:5,y:0,rotation:0,level:1,hp:85},assembly={id:4,type:g.MODULES.droneAssembly?'droneAssembly':'armor',x:5,y:3,rotation:0,level:1,hp:85};save.modules.push(bay,assembly);
+  const drone={id:1,assembly:4,bay:3,type:'defense',hp:60,phase:'active',angle:0,cooldown:0};save.drones=[drone];b.drones=save.drones;
   room.cooldown=0;g.fireEnemyWeapons(enemy,0);const intercepted=b.projectiles[0];intercepted.x=b.player.x+150;intercepted.y=b.player.y;g.updateDrones(.01);assert.ok(!b.projectiles.includes(intercepted));
-  b.drones=[];const rock={x:700,y:820,r:20,hp:100,maxHp:100};b.asteroids=[rock];room.cooldown=0;g.fireEnemyWeapons(enemy,0);room.cooldown=1000;
+  b.drones=[];save.drones=[];assembly.hp=0;const rock={x:700,y:820,r:20,hp:100,maxHp:100};b.asteroids=[rock];room.cooldown=0;g.fireEnemyWeapons(enemy,0);room.cooldown=1000;
   for(let i=0;i<80&&b.projectiles.length;i++)g.updateBattle(.02,0);assert.ok(rock.hp<100);near(rock.hp,100-g.enemyWeaponStats(room).damage);assert.ok(b.effects.some(e=>e.r===38));
 });
 
