@@ -28,9 +28,9 @@
     teleporter: { name: 'Crew Teleporter', short: 'T', color: '#a5e2d7', shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 80, cost: 75, description: 'Send selected crew from this pad to an enemy within 600 units. Recall them after a 12-second recharge. Requires shared power.' },
     droneControl: { name: 'Drone Bay', short: 'D', color: '#b9cde4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 65, door:[2,.5], description: 'Launches assembled drones automatically through a clear exterior door. Two drone slots, plus one per upgrade. Build a Drone Assembly and leave the launch lane open.' },
     droneAssembly: { name: 'Drone Assembly', short: 'A', color: '#d3be8e', shape: [[0,0],[1,0],[0,1],[1,1]], station:[0,0], hp:80, cost:50, description:'Builds and replaces one configured drone automatically, without parts or launch costs. Requires power and a Drone Bay to operate the drone.' },
-    ammoAssembly: { name: 'Ammo Assembly', short: 'A', color: '#d8b579', shape: [[0,0],[0,1]], station: [0,0], hp: 75, cost: 45, description: 'Powered ammunition factory. Choose heavy rounds (2 supplies → 4) or missiles (3 supplies → 2). Crew collect finished rounds here and carry them to matching magazines.' },
+    ammoAssembly: { name: 'Ammo Assembly', short: 'A', color: '#d8b579', shape: [[0,0],[0,1]], station: [0,0], hp: 75, cost: 45, description: 'Powered ammunition factory. Uses shared power only to make heavy rounds (4 per batch) or missiles (2 per batch). Crew collect finished rounds here and carry them to matching magazines.' },
     armor: { name: 'Armor Plating', short: 'A', color: C.armor, shape: [[0,0],[1,0],[0,1]], station: null, hp: 115, cost: 20, description: 'Open, durable floor that can absorb damage.' },
-    cargo: { name: 'Ammo Hold', short: 'M', color: C.cargo, shape: [[0,0],[1,0],[2,0]], station: [1,0], hp: 65, cost: 25, description: 'A crew pickup point for recovered heavy rounds and missiles. Supplies and finished ammunition persist between battles; magazines must be loaded by crew.' }
+    cargo: { name: 'Ammo Hold', short: 'M', color: C.cargo, shape: [[0,0],[1,0],[2,0]], station: [1,0], hp: 65, cost: 25, description: 'A crew pickup point for recovered heavy rounds and missiles. Finished ammunition persists between battles; magazines must be loaded by crew.' }
   };
   // Every weapon participates in construction, crew operation, and combat through
   // the same definition. Corner mounts can turn; long barrels remain fixed.
@@ -62,7 +62,7 @@
     if(fixed){MODULES[id].shape=Array.from({length},(_,x)=>[x,0]);MODULES[id].mount=[length-1,0];MODULES[id].muzzle=[length,.5];MODULES[id].station=[0,0];}
   }
   const WEAPON_TYPES=Object.keys(MODULES).filter((type)=>MODULES[type].range);
-  const AMMO = {heavy:{name:'Heavy ammo',color:'#e6b875',cost:2,batch:4},missile:{name:'Missile ammo',color:'#b9d782',cost:3,batch:2}};
+  const AMMO = {heavy:{name:'Heavy ammo',color:'#e6b875',batch:4},missile:{name:'Missile ammo',color:'#b9d782',batch:2}};
   for(const type of WEAPON_TYPES){
     const def=MODULES[type];def.ammoType=['missile','swarm','torpedo'].includes(type)?'missile':['railgun','flak','siege','gauss'].includes(type)?'heavy':null;
     def.ammo=def.ammoType?(def.salvo||1):0;
@@ -266,12 +266,14 @@
   function normalizeAmmo(data){
     const count=(n)=>Number.isFinite(n)?Math.max(0,Math.floor(n)):0;
     if(data.ammoVersion!==1){
-      data.ammunition={supplies:24,heavy:8,missile:4};
-      const crates=count(data.ammoCrates);data.ammunition.supplies+=crates*12;data.ammunition.heavy+=crates*8;data.ammunition.missile+=crates*4;
+      data.ammunition={heavy:8,missile:4};
+      const crates=count(data.ammoCrates);data.ammunition.heavy+=crates*8;data.ammunition.missile+=crates*4;
       data.ammoVersion=1;
     }
     data.ammunition??={};
-    for(const key of ['supplies','heavy','missile'])data.ammunition[key]=count(data.ammunition[key]);
+    delete data.ammunition.supplies;
+    for(const node of data.map?.nodes||[])delete node.supplyPacks;
+    for(const key of ['heavy','missile'])data.ammunition[key]=count(data.ammunition[key]);
     delete data.ammoCrates;
     for(const module of data.modules){
       const def=MODULES[module.type];
@@ -290,20 +292,17 @@
   function magazineCount(module){return Math.max(0,Math.min(MODULES[module.type].magazine||0,Math.floor(module.magazine||0)));}
   function ammoLabel(def){return def.ammoType?`${def.ammo} ${def.ammoType.toUpperCase()} / TRIGGER`:'NO AMMO';}
   function recoverAmmoCrate(){
-    const stock=save.ammunition;stock.supplies+=12;stock.heavy+=8;stock.missile+=4;
-    persist();return '12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.';
-  }
-  function buyAmmoSupplies(){
-    if(mode!=='trade'||!tradeNode||save.metal<8||tradeNode.supplyPacks<1)return false;
-    tradeNode.supplyPacks--;save.metal-=8;save.ammunition.supplies+=12;persist();renderHud();return true;
+    const stock=save.ammunition;stock.heavy+=8;stock.missile+=4;
+    persist();return '8 heavy rounds and 4 missile rounds added to your stores.';
   }
   function updateAmmoProduction(dt){
     for(const assembly of activeModules('ammoAssembly')){
       const type=assembly.ammoRecipe||'heavy',recipe=AMMO[type];assembly.ammoStock??={heavy:0,missile:0};
-      if(save.ammunition.supplies<recipe.cost||(assembly.ammoStock[type]||0)+recipe.batch>24)continue;
-      assembly.ammoProgress=(assembly.ammoProgress||0)+dt*systemPower(assembly)*(1+(assembly.level-1)*.25);
+      const power=systemPower(assembly);
+      if(power<=0||(assembly.ammoStock[type]||0)+recipe.batch>24)continue;
+      assembly.ammoProgress=(assembly.ammoProgress||0)+dt*power*(1+(assembly.level-1)*.25);
       if(assembly.ammoProgress>=4){
-        assembly.ammoProgress-=4;save.ammunition.supplies-=recipe.cost;assembly.ammoStock[type]=(assembly.ammoStock[type]||0)+recipe.batch;persist();
+        assembly.ammoProgress-=4;assembly.ammoStock[type]=(assembly.ammoStock[type]||0)+recipe.batch;persist();
       }
     }
   }
@@ -318,10 +317,9 @@
   }
   function renderAmmo(){
     const panel=$('ammoPanel');if(!panel)return;
-    const supplies=$('ammoSupplies');if(supplies)supplies.textContent=save.ammunition.supplies;
+    const stores=$('ammoStores');if(stores)stores.textContent=`H ${save.ammunition.heavy} · M ${save.ammunition.missile}`;
     const stock=save.ammunition,assemblies=save.modules.filter((room)=>room.type==='ammoAssembly'),weapons=save.modules.filter((room)=>MODULES[room.type].ammoType);
-    panel.innerHTML=`<strong>SUPPLIES ${stock.supplies}</strong><p class="muted small">Supplies → assembly → crew → magazine. Assign Deliver ammo; empty magazines stop firing.</p><div class="ammo-stores">HEAVY ${stock.heavy} · MISSILE ${stock.missile}<small>Recovered stock · pickup at core / ammo hold</small></div>${mode==='trade'?`<button id="buyAmmoSupplies" ${save.metal<8||!tradeNode?.supplyPacks?'disabled':''}>BUY 12 SUPPLIES · ◆ 8 · ${tradeNode?.supplyPacks||0} PACKS</button>`:''}${assemblies.map((room)=>`<div class="ammo-row"><strong>ASSEMBLY ${room.id} · ${(room.ammoRecipe||'heavy').toUpperCase()}</strong><small>${room.hp<=0?'OFFLINE':save.ammunition.supplies<AMMO[room.ammoRecipe||'heavy'].cost?'NEEDS SUPPLIES':(room.ammoStock?.[room.ammoRecipe||'heavy']||0)+AMMO[room.ammoRecipe||'heavy'].batch>24?'OUTPUT FULL':`${Math.floor((room.ammoProgress||0)/4*100)}% · ${Math.round(systemPower(room)*100)}% POWER`} · STOCK H ${room.ammoStock?.heavy||0} / M ${room.ammoStock?.missile||0}</small></div>`).join('')}${assemblies.length?'':'<p class="muted small">Buy an Ammo Assembly at a trader to make rounds.</p>'}${weapons.map((room)=>`<div class="ammo-row"><strong>${MODULES[room.type].name}</strong><small>${MODULES[room.type].ammoType.toUpperCase()} MAG ${magazineCount(room)} / ${MODULES[room.type].magazine}${room.hp<=0?' · OFFLINE':magazineCount(room)<MODULES[room.type].ammo?' · EMPTY · NEEDS LOADER':''}</small></div>`).join('')}${weapons.length?'':'<p class="muted small">Current weapons are ammo-free.</p>'}`;
-    panel.querySelector?.('#buyAmmoSupplies')?.addEventListener('click',buyAmmoSupplies);
+    panel.innerHTML=`<strong>POWERED AMMO PRODUCTION</strong><p class="muted small">Power → assembly → crew → magazine. Assign Deliver ammo; empty magazines stop firing.</p><div class="ammo-stores">HEAVY ${stock.heavy} · MISSILE ${stock.missile}<small>Recovered stock · pickup at core / ammo hold</small></div>${assemblies.map((room)=>`<div class="ammo-row"><strong>ASSEMBLY ${room.id} · ${(room.ammoRecipe||'heavy').toUpperCase()}</strong><small>${room.hp<=0?'OFFLINE':systemPower(room)<=0?'NO POWER':(room.ammoStock?.[room.ammoRecipe||'heavy']||0)+AMMO[room.ammoRecipe||'heavy'].batch>24?'OUTPUT FULL':`${Math.floor((room.ammoProgress||0)/4*100)}% · ${Math.round(systemPower(room)*100)}% POWER`} · STOCK H ${room.ammoStock?.heavy||0} / M ${room.ammoStock?.missile||0}</small></div>`).join('')}${assemblies.length?'':'<p class="muted small">Buy an Ammo Assembly at a trader to make rounds.</p>'}${weapons.map((room)=>`<div class="ammo-row"><strong>${MODULES[room.type].name}</strong><small>${MODULES[room.type].ammoType.toUpperCase()} MAG ${magazineCount(room)} / ${MODULES[room.type].magazine}${room.hp<=0?' · OFFLINE':magazineCount(room)<MODULES[room.type].ammo?' · EMPTY · NEEDS LOADER':''}</small></div>`).join('')}${weapons.length?'':'<p class="muted small">Current weapons are ammo-free.</p>'}`;
   }
   const STARTER_SHIPS = [
     {id:'wayfarer',name:'Wayfarer',role:'LIGHT PATROL',description:'Twin pulse cannons. Ammo-free weapons and agile handling.'},
@@ -790,7 +788,7 @@
     const direction=['RIGHT','DOWN','LEFT','UP'][def.range?weaponFacingQuarter(module):module.rotation];
     const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° FOCUSED ARC · ${direction}`} · ${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
     const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · ${def.guidance?'UNLIMITED RANGE':`RANGE ${weaponRange(module)}`} · ${direction}${module.flipped?' · MIRRORED':''} · ${ammoLabel(def)}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE · ${def.thrust} BASE</div><div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
-    const ammoDetail=def.ammoType?`<div id="magazineDetail" class="inspector-detail">${def.ammoType.toUpperCase()} MAGAZINE ${magazineCount(module)} / ${def.magazine}${magazineCount(module)<def.ammo?' · EMPTY · NEEDS LOADER':''}</div>`:module.type==='ammoAssembly'?`<label class="weapon-range">PRODUCE <select id="ammoRecipe"><option value="heavy" ${module.ammoRecipe!=='missile'?'selected':''}>Heavy · 2 supplies → 4 rounds</option><option value="missile" ${module.ammoRecipe==='missile'?'selected':''}>Missile · 3 supplies → 2 rounds</option></select></label><p class="muted small">One batch every 4 seconds at full power. Finished rounds stay here until a loader collects them.</p>`:'';
+    const ammoDetail=def.ammoType?`<div id="magazineDetail" class="inspector-detail">${def.ammoType.toUpperCase()} MAGAZINE ${magazineCount(module)} / ${def.magazine}${magazineCount(module)<def.ammo?' · EMPTY · NEEDS LOADER':''}</div>`:module.type==='ammoAssembly'?`<label class="weapon-range">PRODUCE <select id="ammoRecipe"><option value="heavy" ${module.ammoRecipe!=='missile'?'selected':''}>Heavy · 4 rounds / batch</option><option value="missile" ${module.ammoRecipe==='missile'?'selected':''}>Missile · 2 rounds / batch</option></select></label><p class="muted small">Uses energy only. One batch every 4 seconds at full power. Finished rounds stay here until a loader collects them.</p>`:'';
     const rangeControl=def.range?`<div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div><div class="weapon-rules">${weaponBehavior(module.type)}</div>${!def.guidance?`<label class="weapon-range" for="weaponRange">RANGE LIMIT <input id="weaponRange" type="number" min="30" max="${def.range}" step="1" value="${weaponRange(module)}" ${!['hangar','trade'].includes(mode)?'disabled':''}><span>MAX ${def.range}</span></label>`:''}${mode==='trade'?'<button id="flipWeapon" class="outline-button full-width" type="button">FLIP WEAPON ↔ · FREE</button>':''}${def.mountFacings===2?`<button id="rotateWeapon" class="outline-button full-width" type="button" ${!['hangar','trade'].includes(mode)?'disabled':''}>TURN MOUNT 90° ↻</button>`:''}`:'';
     const droneInfo=module.type==='droneControl'?`<div class="inspector-detail">LAUNCH → ${direction} · ${droneBayClear(module)?'CLEAR TO SPACE':'BLOCKED · MOVE BAY TO EXTERIOR'} · ${droneBayCapacity(module)} SLOTS</div>`:module.type==='droneAssembly'?`<label class="drone-assembly">DRONE DESIGN<select id="inspectorDroneDesign" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===(module.droneType||'combat')?'selected':''}>${def.name}</option>`).join('')}</select></label><div class="inspector-detail">ONE DRONE · ${assemblyTime(module).toFixed(1)}s BUILD TIME · AUTOMATIC REPLACEMENT</div>`:'';
     $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}${ammoDetail}<div class="inspector-detail">${systemDemand(module)?`AUTO POWER ${systemSupply(module).toFixed(2)} · ${Math.round(systemPower(module)*100)}% PERFORMANCE`:module.type==='core'?`COMMAND POWER ${coreOutput()} · SHARED EQUALLY`:def.generation?`GENERATOR OUTPUT ${generatorOutput(module)} · SHARED EQUALLY · +1 PER UPGRADE`:'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${droneInfo}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>UPGRADE<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
@@ -837,7 +835,7 @@
     $('jumpButton').textContent=mode==='combat'?'IN COMBAT':mode==='map'?'RETURN TO SHIP':'OPEN SECTOR MAP ↗';
     $('revisitTrader').hidden=mode!=='hangar'||currentMapNode()?.type!=='trader';
     const cells=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),weapons=activeModules(...WEAPON_TYPES).length;
-    $('shipStats').innerHTML=`<div class="stat-card"><span>HULL INTEGRITY</span><strong class="${hullRatio()<.35?'bad':'good'}">${Math.round(hullRatio()*100)}%</strong></div><div class="stat-card"><span>MODULES</span><strong>${save.modules.length} <small style="font-size:9px;color:var(--muted)">/ ${cells} CELLS</small></strong></div><div class="stat-card"><span>WEAPONS</span><strong class="${weapons?'good':'bad'}">${weapons} ACTIVE</strong></div><div class="stat-card"><span>AMMO SUPPLIES</span><strong id="ammoSupplies">${save.ammunition.supplies}</strong></div>`;
+    $('shipStats').innerHTML=`<div class="stat-card"><span>HULL INTEGRITY</span><strong class="${hullRatio()<.35?'bad':'good'}">${Math.round(hullRatio()*100)}%</strong></div><div class="stat-card"><span>MODULES</span><strong>${save.modules.length} <small style="font-size:9px;color:var(--muted)">/ ${cells} CELLS</small></strong></div><div class="stat-card"><span>WEAPONS</span><strong class="${weapons?'good':'bad'}">${weapons} ACTIVE</strong></div><div class="stat-card"><span>AMMO STORES</span><strong id="ammoStores">H ${save.ammunition.heavy} · M ${save.ammunition.missile}</strong></div>`;
     const shields=save.modules.filter((module)=>SHIELD_TYPES.includes(module.type));
     if(shields.length){const maximum=shields.reduce((sum,module)=>sum+shieldStats(module).capacity,0),strength=shields.reduce((sum,module)=>sum+(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0),0);$('shipStats').innerHTML+=`<div class="stat-card"><span>SHIELD STRENGTH</span><strong>${Math.round(strength)} / ${maximum}</strong></div>`;}
     $('leftStatus').textContent=mode==='combat'?`ENGAGED // ${battle?.enemies.filter(enemyAlive).length||0} HOSTILES`:mode==='map'?`CHARTED // SECTOR ${String(save.sector).padStart(2,'0')}`:activeModules(...ENGINE_TYPES).length?'DOCKED // SYSTEMS READY':'DOCKED // ENGINE OFFLINE';
@@ -1588,7 +1586,7 @@
     return MODULES[type].name;
   }
   function upgradeTraderStock(node){
-    node.supplyPacks??=4;
+    delete node.supplyPacks;
     node.stock??=traderStock();delete node.dronePacks;
     if(!Array.isArray(node.recruits))node.recruits=traderRecruits();
     node.stockVersion=9;
@@ -1659,7 +1657,7 @@
       ]);
       if(variant===2)eventScene(node,'CONVOY REARGUARD','A small ore convoy needs time to reach a jump beacon. Pirate skiffs are gaining on its last ship.',[
         {label:'HOLD OFF THE SKIFFS →',action:()=>startBattle('rescue')},
-        {label:'COVER WITH AMMO DECOYS · −8 METAL',disabled:save.metal<8,action:()=>{save.metal-=8;recoverAmmoCrate();log('Convoy escaped and left a munitions crate.');concludeEvent('CONVOY CLEAR','Your decoys cost 8 metal. The grateful crew leaves 12 supplies, 8 heavy rounds and 4 missile rounds.','◇');}},
+        {label:'COVER WITH AMMO DECOYS · −8 METAL',disabled:save.metal<8,action:()=>{save.metal-=8;recoverAmmoCrate();log('Convoy escaped and left a munitions crate.');concludeEvent('CONVOY CLEAR','Your decoys cost 8 metal. The grateful crew leaves 8 heavy rounds and 4 missile rounds.','◇');}},
         {label:'STAY OUT OF THE FIGHT',action:()=>concludeEvent('CONVOY SIGNAL LOST','The convoy disappears from your scope.','◇')}
       ]);
       return;
@@ -1670,7 +1668,7 @@
         {label:'CUT OPEN THE INNER RACK · +30 METAL',action:()=>{save.metal+=30;const target=damageRandomModule(12);log('Inner rack yielded 30 metal but struck a room.');concludeEvent('RACK OPENED',`You gain 30 metal; tumbling cargo damages your ${MODULES[target.type].name.toLowerCase()} by 12.`,'✧');}}
       ]);
       if(variant===1)eventScene(node,'SEALED MUNITIONS POD','A military supply pod still has an intact ammunition seal. Its metal casing can also be recycled.',[
-        {label:'KEEP THE AMMUNITION · +1 CRATE',action:()=>{recoverAmmoCrate();log('One ammo crate unpacked into persistent ammunition stores.');concludeEvent('AMMO STORED','12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.','✧');}},
+        {label:'KEEP THE AMMUNITION · +1 CRATE',action:()=>{recoverAmmoCrate();log('One ammo crate unpacked into persistent ammunition stores.');concludeEvent('AMMO STORED','8 heavy rounds and 4 missile rounds added to your stores.','✧');}},
         {label:'RECYCLE THE CASING · +12 METAL',action:()=>{save.metal+=12;log('12 metal recycled from the pod.');concludeEvent('CASING RECYCLED','The crew strips the empty shell for usable alloy.','✧');}}
       ]);
       if(variant===2)eventScene(node,'REPAIR DRONE HULK','A damaged maintenance drone floats among cargo debris. Its repair arm still responds to commands.',[
@@ -1704,7 +1702,7 @@
         {label:'RESCUE THE MEDIC · +CREW',action:()=>{const recruit=awardCrew('MIRA','#bca8f1');concludeEvent('MEDIC RESCUED',`${recruit} joins your crew. Assign a repair job or another role in the crew panel.`,'▣');}}
       ]);
       if(variant===2)eventScene(node,'SILENT GUNSHIP','The derelict gunship has intact ammunition lockers and a working laser repeater in its exterior mount.',[
-        {label:'TAKE AMMUNITION · +1 CRATE',action:()=>{recoverAmmoCrate();log('One ammo crate taken from a gunship.');concludeEvent('AMMUNITION RECOVERED','12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.','▣');}},
+        {label:'TAKE AMMUNITION · +1 CRATE',action:()=>{recoverAmmoCrate();log('One ammo crate taken from a gunship.');concludeEvent('AMMUNITION RECOVERED','8 heavy rounds and 4 missile rounds added to your stores.','▣');}},
         {label:'RECOVER LASER REPEATER · +WEAPON',action:()=>{awardWeapon('laser');concludeEvent('LASER REPEATER RECOVERED','The working weapon is secured in your hold. Visit a trader to install it on your ship.','▣');}}
       ]);
       return;
@@ -1715,7 +1713,7 @@
         {label:'RECYCLE THE ANTENNA · +14 METAL',action:()=>{save.metal+=14;log('14 metal recovered from a relay.');concludeEvent('ANTENNA RECYCLED','The relay goes dark as its copper is stowed aboard.','⌁');}}
       ]);
       if(variant===1)eventScene(node,'OLD NAVIGATION BUOY','A retired patrol buoy has sealed emergency ammunition and a recyclable steel chassis.',[
-        {label:'TAKE EMERGENCY AMMO · +1 CRATE',action:()=>{recoverAmmoCrate();log('Patrol buoy supplied an ammo crate.');concludeEvent('AMMO RECOVERED','12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.','⌁');}},
+        {label:'TAKE EMERGENCY AMMO · +1 CRATE',action:()=>{recoverAmmoCrate();log('Patrol buoy supplied an ammo crate.');concludeEvent('AMMO RECOVERED','8 heavy rounds and 4 missile rounds added to your stores.','⌁');}},
         {label:'RECYCLE THE CHASSIS · +11 METAL',action:()=>{save.metal+=11;log('11 metal recovered from a patrol buoy.');concludeEvent('CHASSIS RECYCLED','The buoy is broken down into useful steel.','⌁');}}
       ]);
       if(variant===2)eventScene(node,'ABANDONED JUMP MARKER','A jump marker is out of alignment. Replacement couplers would reopen a distant two-way lane.',[
@@ -1734,7 +1732,7 @@
         {label:'LEAVE THE CONTAINER',action:()=>concludeEvent('TRAP BYPASSED','You pass the mine perimeter without touching the cargo.','◌')}
       ]);
       if(variant===2)eventScene(node,'DEACTIVATED TORPEDO NET','A line of failed torpedoes hangs in the current. Their propellant is gone, but the warheads can supply your guns.',[
-        {label:'RECOVER WARHEADS · +1 AMMO CRATE',action:()=>{recoverAmmoCrate();log('Torpedo net yielded one ammo crate.');concludeEvent('WARHEADS SECURED','12 supplies, 8 heavy rounds and 4 missile rounds added to your stores.','◌');}},
+        {label:'RECOVER WARHEADS · +1 AMMO CRATE',action:()=>{recoverAmmoCrate();log('Torpedo net yielded one ammo crate.');concludeEvent('WARHEADS SECURED','8 heavy rounds and 4 missile rounds added to your stores.','◌');}},
         {label:'RECYCLE CASINGS · +13 METAL',action:()=>{save.metal+=13;log('13 metal recycled from torpedo casings.');concludeEvent('CASINGS RECYCLED','The crew strips the empty housings for alloy.','◌');}}
       ]);
       return;

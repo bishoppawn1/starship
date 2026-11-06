@@ -13,7 +13,7 @@ function game(){
     document:{getElementById:(id)=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,querySelectorAll:()=>[]}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
     globalThis.game={AMMO,MODULES,WEAPON_TYPES,STARTER_SHIPS,newSave,normalizeAmmo,loadSave,persist,recoverAmmoCrate,updateAmmoProduction,magazineCount,ammoSources,updateCrew,crewGoal,crewStatus,crewRoutes,
-      moduleStation,moduleCells,moduleClearance,connectedHull,weaponsHaveClearArc,engineThrusters,updateBattle,startBattle,finishBattle,upgradeTraderStock,buyAmmoSupplies,concludeEvent,startNewGame,showStarterPicker,
+      moduleStation,moduleCells,moduleClearance,connectedHull,weaponsHaveClearArc,engineThrusters,updateBattle,startBattle,finishBattle,upgradeTraderStock,renderAmmo,renderInspector,concludeEvent,startNewGame,showStarterPicker,
       setSave(value){save=value;for(const key of Object.keys(crewRoutes))delete crewRoutes[key];},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
       getMode(){return mode;},setMode(value){mode=value;},getEventOpen(){return eventOpen;},setPending(value){pendingNodeId=value;eventOpen=true;},setTrade(value){mode='trade';tradeNode=value;},
       stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;}};
@@ -39,28 +39,38 @@ test('only launchers and heavy ballistic weapons require ammunition; light and e
   for(const type of ['weapon','autocannon','gatling','scattergun','plasma','ion','laser','heavyLaser','disruptor','tesla','cryo','inferno','proton'])assert.equal(g.MODULES[type].ammo,0,type);
 });
 
-test('crates unpack immediately and old crates migrate exactly once without refilling depleted supplies',()=>{
+test('crates unpack immediately and old crates migrate exactly once without refilling depleted ammunition',()=>{
   const g=game(),save=g.newSave();g.setSave(save);const before={...save.ammunition};g.recoverAmmoCrate();
-  assert.deepEqual({...save.ammunition},{supplies:before.supplies+12,heavy:before.heavy+8,missile:before.missile+4});
+  assert.deepEqual({...save.ammunition},{heavy:before.heavy+8,missile:before.missile+4});
   delete save.ammoVersion;delete save.ammunition;save.ammoCrates=2;g.normalizeAmmo(save);
-  assert.deepEqual({...save.ammunition},{supplies:48,heavy:24,missile:12});assert.equal(save.ammoCrates,undefined);
-  save.ammunition.supplies=0;save.ammunition.heavy=0;g.persist();const loaded=g.loadSave();
-  assert.deepEqual({...loaded.ammunition},{supplies:0,heavy:0,missile:12});
+  assert.deepEqual({...save.ammunition},{heavy:24,missile:12});assert.equal(save.ammoCrates,undefined);
+  save.ammunition.heavy=0;g.persist();const loaded=g.loadSave();
+  assert.deepEqual({...loaded.ammunition},{heavy:0,missile:12});
 });
 
-test('assemblies convert finite supplies into local typed stock and stop without supplies, power or output space',()=>{
+test('assemblies make typed ammo using only power and stop when disabled, unpowered or full',()=>{
   const g=game(),save=logistics(g),assembly=save.modules[3];save.modules=[save.modules[0],assembly];save.crew=[];
-  const before=save.ammunition.supplies;g.updateAmmoProduction(4);
-  assert.equal(assembly.ammoStock.heavy,4);assert.equal(save.ammunition.supplies,before-2);assert.equal(save.ammunition.heavy,8);
-  assembly.ammoRecipe='missile';g.updateAmmoProduction(4);assert.equal(assembly.ammoStock.missile,2);assert.equal(save.ammunition.supplies,before-5);
+  assert.equal(save.ammunition.supplies,undefined);const metal=save.metal;g.updateAmmoProduction(4);
+  assert.equal(assembly.ammoStock.heavy,4);assert.equal(save.ammunition.heavy,8);assert.equal(save.metal,metal);
+  assembly.ammoRecipe='missile';g.updateAmmoProduction(4);assert.equal(assembly.ammoStock.missile,2);
   assembly.hp=0;g.updateAmmoProduction(4);assert.equal(assembly.ammoStock.missile,2);
-  assembly.hp=75;save.ammunition.supplies=0;g.updateAmmoProduction(4);assert.equal(assembly.ammoStock.missile,2);
-  save.ammunition.supplies=20;assembly.ammoStock.missile=24;g.updateAmmoProduction(4);assert.equal(save.ammunition.supplies,20);
-  assembly.ammoStock.missile=0;save.modules[0].hp=0;g.updateAmmoProduction(4);assert.equal(assembly.ammoStock.missile,0);
+  assembly.hp=75;assembly.ammoStock.missile=24;g.updateAmmoProduction(4);assert.equal(assembly.ammoStock.missile,24);
+  assembly.ammoStock.missile=0;save.modules[0].hp=0;assembly.ammoProgress=4;g.updateAmmoProduction(4);assert.equal(assembly.ammoStock.missile,0);
+  save.modules[0].hp=170;assembly.ammoProgress=0;
+  for(let i=0;i<30;i++){assembly.ammoStock.missile=0;g.updateAmmoProduction(4);assert.equal(assembly.ammoStock.missile,2);}
+  assert.equal(save.ammunition.supplies,undefined);assert.equal(save.metal,metal);
+});
+
+test('shared power scales factory speed and upgrades improve production',()=>{
+  const g=game(),save=logistics(g),assembly=save.modules[3];save.crew=[];
+  // Five consumers share eight units, so the factory runs at 80%.
+  save.modules.push(room(g,5,'shield',0,4),room(g,6,'engine',2,4));
+  g.updateAmmoProduction(4);assert.equal(assembly.ammoStock.heavy,0);g.updateAmmoProduction(1);assert.equal(assembly.ammoStock.heavy,4);
+  assembly.level=3;g.updateAmmoProduction(4/1.2);assert.equal(assembly.ammoStock.heavy,8);
 });
 
 test('loaders physically pick up finite matching stock and deliver it only to the correct magazine',()=>{
-  const g=game(),save=logistics(g);save.ammunition={supplies:0,heavy:4,missile:0};
+  const g=game(),save=logistics(g);save.ammunition={heavy:4,missile:0};
   g.updateCrew(0);assert.deepEqual({...save.crew[0].carrying},{type:'heavy',amount:4});assert.equal(save.ammunition.heavy,0);assert.equal(save.modules[1].magazine,0);
   assert.match(g.crewStatus(save.crew[0]),/CARRYING 4 HEAVY/);tick(g,8);
   assert.equal(save.modules[1].magazine,4);assert.equal(save.modules[2].magazine,0);assert.equal(save.crew[0].carrying,undefined);
@@ -69,13 +79,13 @@ test('loaders physically pick up finite matching stock and deliver it only to th
 });
 
 test('loaders collect from assembly output and never manufacture rounds when all sources are empty',()=>{
-  const g=game(),save=logistics(g);save.ammunition={supplies:0,heavy:0,missile:0};save.modules[3].ammoStock.heavy=4;
+  const g=game(),save=logistics(g);save.ammunition={heavy:0,missile:0};save.modules[3].ammoStock.heavy=4;
   tick(g,15);assert.equal(save.modules[1].magazine,4);assert.equal(save.modules[3].ammoStock.heavy,0);
   tick(g,15);assert.equal(save.modules[1].magazine,4);assert.equal(save.crew[0].workModuleId,null);
 });
 
 test('multiple loaders cannot duplicate shared stock and disconnected ammo cannot be teleported',()=>{
-  const g=game(),save=logistics(g);save.crew.push({id:'second',task:'load',x:.5,y:.5,hp:100});save.ammunition={supplies:0,heavy:4,missile:0};
+  const g=game(),save=logistics(g);save.crew.push({id:'second',task:'load',x:.5,y:.5,hp:100});save.ammunition={heavy:4,missile:0};
   save.modules[2]=room(g,3,'railgun',2,1);g.normalizeAmmo(save);tick(g,20);
   assert.equal(save.modules[1].magazine+save.modules[2].magazine+save.crew.reduce((n,p)=>n+(p.carrying?.amount||0),0),4);
   save.ammunition.heavy=0;save.modules[3].x=50;save.modules[3].ammoStock.heavy=4;tick(g,15);
@@ -89,20 +99,24 @@ test('in-flight cargo and weapon magazines survive reload; excess cargo returns 
   assert.equal(loaded.ammunition.heavy,3);assert.equal(loaded.crew[0].carrying,undefined);
 });
 
-test('an empty heavy magazine prevents firing despite stocked stores, while light shots fire with no supplies',()=>{
+test('an empty heavy magazine prevents firing despite stocked stores, while light shots fire with no ammunition',()=>{
   const g=game();let {save,b,gun}=battle(g,'railgun',0);g.updateBattle(.05,0);assert.equal(b.projectiles.length,0);assert.equal(save.ammunition.heavy,8);
   gun.magazine=g.MODULES.railgun.ammo;g.updateBattle(.05,50);assert.equal(b.projectiles.length,1);assert.equal(gun.magazine,0);
   b.projectiles=[];gun.cooldown=0;g.updateBattle(.05,100);assert.equal(b.projectiles.length,0);
   for(const type of ['weapon','laser','heavyLaser','autocannon']){
-    ({save,b,gun}=battle(g,type,0));save.ammunition={supplies:0,heavy:0,missile:0};g.updateBattle(.05,0);assert.equal(b.projectiles.length,1,type);
+    ({save,b,gun}=battle(g,type,0));save.ammunition={heavy:0,missile:0};g.updateBattle(.05,0);assert.equal(b.projectiles.length,1,type);
   }
 });
 
-test('traders supply assembly modules and finite supply packs without restocking sold offers',()=>{
-  const g=game(),save=g.newSave();g.setSave(save);const node={type:'trader',stock:[{type:'ammoAssembly',qty:0,price:45}]};g.upgradeTraderStock(node);
-  assert.equal(node.stock.filter((item)=>item.type==='ammoAssembly').length,1);assert.equal(node.stock[0].qty,0);
-  g.setTrade(node);const before=save.ammunition.supplies;assert.equal(g.buyAmmoSupplies(),true);assert.equal(save.ammunition.supplies,before+12);assert.equal(save.metal,82);
-  node.supplyPacks=0;g.upgradeTraderStock(node);assert.equal(g.buyAmmoSupplies(),false);assert.equal(node.supplyPacks,0);
+test('old supply resources and market packs are removed without changing rounds, magazines or cargo',()=>{
+  const g=game(),save=logistics(g);save.ammunition.supplies=123;save.modules[1].magazine=2;
+  save.crew[0].carrying={type:'missile',amount:3};const node=save.map.nodes.find((node)=>node.type==='trader');node.supplyPacks=4;
+  g.persist();const loaded=g.loadSave();g.setSave(loaded);
+  assert.deepEqual({...loaded.ammunition},{heavy:8,missile:4});assert.equal(loaded.modules[1].magazine,2);assert.equal(loaded.crew[0].carrying.amount,3);
+  assert.equal(loaded.map.nodes.find((n)=>n.id===node.id).supplyPacks,undefined);
+  node.stock=[{type:'ammoAssembly',qty:0,price:45}];g.upgradeTraderStock(node);assert.equal(node.stock[0].qty,0);assert.equal(node.supplyPacks,undefined);
+  g.setTrade(node);g.renderAmmo();const html=g.elements.get('ammoPanel').innerHTML;
+  assert.ok(html.includes('Power → assembly → crew → magazine'));assert.ok(!/SUPPLIES|BUY 12/.test(html));
 });
 
 test('every starting ship has a connected non-overlapping hull, clear mounts and paired reverse thrust',()=>{
@@ -124,10 +138,10 @@ test('encounter results resolve the beacon and return directly to the map with n
 });
 
 test('entering battles and revisiting the map never refills stocks or magazines',()=>{
-  const g=game(),save=g.newSave('arsenal');g.setSave(save);save.ammunition={supplies:0,heavy:0,missile:0};
+  const g=game(),save=g.newSave('arsenal');g.setSave(save);save.ammunition={heavy:0,missile:0};
   save.modules.find((room)=>room.type==='missile').magazine=2;
   for(let i=0;i<2;i++){
-    g.startBattle('pirate');assert.deepEqual({...save.ammunition},{supplies:0,heavy:0,missile:0});
+    g.startBattle('pirate');assert.deepEqual({...save.ammunition},{heavy:0,missile:0});
     assert.equal(save.modules.filter((room)=>room.type==='missile').reduce((n,m)=>n+m.magazine,0),2);
     assert.equal(g.getBattle().ammo,undefined);g.setBattle(null);
   }
