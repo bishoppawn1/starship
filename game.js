@@ -647,11 +647,11 @@
   }
   function renderCrew(){
     $('crewList').innerHTML=save.crew.map((person)=>{
-      const template=crewAppearance(person),route=crewRoutes[person.id],moving=route?.path?.length&&distance(person,route.path[0])>.08;
-      return `<div class="crew-card"><div class="crew-top"><span class="crew-avatar" style="--crew-color:${template.color}">${template.initial}</span><strong>${template.name}</strong><small>${moving?'WALKING':'AT STATION'}</small></div><select data-crew="${person.id}" aria-label="${template.name} assignment">${Object.entries(TASKS).map(([value,label])=>`<option value="${value}" ${person.task===value?'selected':''}>${label}</option>`).join('')}</select></div>`;
+      const template=crewAppearance(person);
+      return `<div class="crew-card"><div class="crew-top"><span class="crew-avatar" style="--crew-color:${template.color}">${template.initial}</span><strong>${template.name}</strong><small>${crewStatus(person)}</small></div><select data-crew="${person.id}" aria-label="${template.name} assignment">${Object.entries(TASKS).map(([value,label])=>`<option value="${value}" ${person.task===value?'selected':''}>${label}</option>`).join('')}</select></div>`;
     }).join('');
     $('crewList').querySelectorAll('select').forEach((select)=>select.addEventListener('change',()=>{
-      const person=save.crew.find((member)=>member.id===select.dataset.crew);person.task=select.value;delete crewRoutes[person.id];
+      const person=save.crew.find((member)=>member.id===select.dataset.crew);person.task=select.value;delete crewRoutes[person.id];updateCrew(0);
       persist();log(`${crewAppearance(person).name} assigned to ${TASKS[person.task].toLowerCase()}.`);renderCrew();
     }));
   }
@@ -943,7 +943,7 @@
 
   function walkPath(start,end){
     const occupied=occupancy(),from=`${Math.floor(start.x)},${Math.floor(start.y)}`,to=`${Math.floor(end.x)},${Math.floor(end.y)}`;
-    if(from===to)return[];
+    if(from===to)return distance(start,end)>.08?[{x:end.x,y:end.y}]:[];
     const queue=[from],seen=new Set([from]),previous=new Map();
     while(queue.length){
       const key=queue.shift();if(key===to)break;const [x,y]=key.split(',').map(Number);
@@ -955,43 +955,78 @@
     const path=[];let key=to;while(key!==from){const [x,y]=key.split(',').map(Number);path.unshift({x:x+.5,y:y+.5});key=previous.get(key);}
     return path;
   }
-  function crewGoal(person,route){
-    const core=save.modules.find((module)=>module.type==='core');
-    if(person.task==='pilot')return {module:core,point:moduleStation(core)};
-    if(person.task==='engine'){
-      const engines=save.modules.filter((module)=>ENGINE_TYPES.includes(module.type)&&module.hp>0);
-      const module=engines.reduce((best,candidate)=>!best||distance(person,moduleStation(candidate))<distance(person,moduleStation(best))?candidate:best,null)||core;
-      return {module,point:moduleStation(module)};
+  function crewWorkPlan(extraPerson=null){
+    const people=[...save.crew];
+    if(extraPerson&&!people.includes(extraPerson))people.push(extraPerson);
+    const assignments=new Map(),occupied=occupancy(),components=new Map();
+    // Crew may only reserve consoles in their connected floor component.
+    function component(point){
+      const key=`${Math.floor(point.x)},${Math.floor(point.y)}`;
+      if(components.has(key))return components.get(key);
+      const cells=new Set(),queue=occupied.has(key)?[key]:[];
+      for(let i=0;i<queue.length;i++){
+        const cell=queue[i];if(cells.has(cell))continue;cells.add(cell);
+        const [x,y]=cell.split(',').map(Number);
+        for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){const next=`${x+dx},${y+dy}`;if(occupied.has(next)&&!cells.has(next))queue.push(next);}
+      }
+      for(const cell of cells)components.set(cell,cells);
+      return cells;
     }
-    if(person.task==='gun'){
-      const weapons=save.modules.filter((module)=>WEAPON_TYPES.includes(module.type)&&module.hp>0);
-      if(!weapons.length)return {module:core,point:moduleStation(core)};
-      const module=weapons.reduce((best,candidate)=>distance(person,moduleStation(candidate))<distance(person,moduleStation(best))?candidate:best,weapons[0]);
-      return {module,point:moduleStation(module)};
+    const reachable=(person,module)=>{const point=moduleStation(module);return component(person).has(`${Math.floor(point.x)},${Math.floor(point.y)}`);};
+    for(const task of ['pilot','engine','gun','shield','repair','load']){
+      const modules=save.modules.filter((module)=>{
+        if(module.hp<=0)return false;
+        if(task==='pilot')return module.type==='core';
+        if(task==='engine')return ENGINE_TYPES.includes(module.type);
+        if(task==='gun')return WEAPON_TYPES.includes(module.type);
+        if(task==='shield')return SHIELD_TYPES.includes(module.type);
+        if(task==='repair')return module.hp<maxHp(module);
+        return !!battle&&WEAPON_TYPES.includes(module.type)&&MODULES[module.type].ammo>0;
+      });
+      const crew=people.filter((person)=>person.task===task),free=new Set(modules),waiting=new Set(crew);
+      function reserve(person,module){assignments.set(person,module);free.delete(module);waiting.delete(person);}
+      // Keep operators at work, then honor reservations made before arrival.
+      for(const person of crew){
+        const module=modules.find((module)=>free.has(module)&&distance(person,moduleStation(module))<.16&&
+          ((person.workTask===task&&person.workModuleId===module.id)||(person.workTask===undefined&&!['repair','load'].includes(task))));
+        if(module)reserve(person,module);
+      }
+      for(const person of waiting){
+        const module=modules.find((module)=>module.id===person.workModuleId);
+        if(person.workTask===task&&free.has(module)&&reachable(person,module))reserve(person,module);
+      }
+      for(const person of waiting){
+        const options=[...free].filter((module)=>reachable(person,module));
+        options.sort((a,b)=>(task==='repair'?a.hp/maxHp(a)-b.hp/maxHp(b):0)||distance(person,moduleStation(a))-distance(person,moduleStation(b)));
+        if(options.length)reserve(person,options[0]);
+      }
+      for(const person of crew){person.workTask=task;person.workModuleId=assignments.get(person)?.id??null;}
     }
-    if(person.task==='shield'){
-      const shields=save.modules.filter((module)=>SHIELD_TYPES.includes(module.type)&&module.hp>0);
-      if(!shields.length)return {module:core,point:moduleStation(core)};
-      const module=shields.reduce((best,candidate)=>distance(person,moduleStation(candidate))<distance(person,moduleStation(best))?candidate:best,shields[0]);
-      return {module,point:moduleStation(module)};
+    for(const person of people)if(person.task==='idle'){person.workTask='idle';person.workModuleId=null;}
+    return assignments;
+  }
+  function crewGoal(person,route={},plan=crewWorkPlan(person)){
+    const core=save.modules.find((module)=>module.type==='core'),work=plan.get(person);
+    let module=work||core;
+    if(person.task==='load'&&work&&route.phase!=='drop'){
+      const sources=activeModules('cargo');
+      module=sources.reduce((best,candidate)=>!best||distance(person,moduleStation(candidate))<distance(person,moduleStation(best))?candidate:best,null)||core;
     }
-    if(person.task==='repair'){
-      const damaged=save.modules.filter((module)=>module.hp>0&&module.hp<maxHp(module)).sort((a,b)=>a.hp/maxHp(a)-b.hp/maxHp(b));
-      const module=damaged[0]||core;return {module,point:moduleStation(module)};
-    }
-    if(person.task==='load'&&battle){
-      const pickup=activeModules('cargo')[0]||core,weapon=activeModules(...WEAPON_TYPES).find((module)=>MODULES[module.type].ammo>0);
-      const module=route.phase==='drop'&&weapon?weapon:pickup;
-      return {module,point:moduleStation(module)};
-    }
-    const module=person.task==='load'?(activeModules('cargo')[0]||core):core;
-    return {module,point:moduleStation(module)};
+    return {module,point:moduleStation(module),working:!!work};
+  }
+  function crewStatus(person){
+    const route=crewRoutes[person.id];
+    if(route?.path?.length&&distance(person,route.path[0])>.08)return 'WALKING';
+    if(person.task==='idle')return 'STAND BY';
+    return route?.working===false?'WAITING':'AT STATION';
   }
   function updateCrew(dt){
+    const plan=crewWorkPlan();
     for(const person of save.crew){
       let route=crewRoutes[person.id];
       if(!route){route={path:[],target:'',phase:'pickup'};crewRoutes[person.id]=route;}
-      const goal=crewGoal(person,route),target=`${person.task}:${goal.module.id}:${route.phase}`;
+      const goal=crewGoal(person,route,plan),target=`${person.task}:${goal.module.id}:${route.phase}`;
+      route.working=goal.working;
       if(route.target!==target){route.path=walkPath(person,goal.point);route.target=target;}
       let travel=dt*2.4;
       while(route.path.length&&travel>0){
@@ -999,7 +1034,7 @@
         if(d<=travel){person.x=next.x;person.y=next.y;travel-=d;route.path.shift();}
         else {person.x+=(next.x-person.x)/d*travel;person.y+=(next.y-person.y)/d*travel;travel=0;}
       }
-      if(person.task==='load'&&battle&&!route.path.length&&distance(person,goal.point)<.12){
+      if(person.task==='load'&&goal.working&&battle&&!route.path.length&&distance(person,goal.point)<.12){
         if(route.phase==='drop'){battle.ammo=Math.min(battle.maxAmmo,battle.ammo+2);route.phase='pickup';}
         else route.phase='drop';
         route.target='';
@@ -1008,7 +1043,7 @@
   }
   function crewAtStation(task,module){
     const point=moduleStation(module);
-    return save.crew.filter((person)=>person.task===task&&distance(person,point)<.16).length;
+    return Math.min(1,save.crew.filter((person)=>person.task===task&&(person.workModuleId===undefined||person.workModuleId===module.id)&&distance(person,point)<.16).length);
   }
 
   function setMode(next){
@@ -2055,9 +2090,8 @@
   function refreshCrewStatus(){
     const force=$('engineForce'),module=selectedModule();if(force&&ENGINE_TYPES.includes(module?.type))force.textContent=Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0);
     $('crewList').querySelectorAll('.crew-card').forEach((card,index)=>{
-      const person=save.crew[index],route=crewRoutes[person.id];
-      const moving=route?.path?.length&&distance(person,route.path[0])>.08;
-      card.querySelector('small').textContent=moving?'WALKING':'AT STATION';
+      const person=save.crew[index];
+      card.querySelector('small').textContent=crewStatus(person);
     });
   }
   function frame(time){

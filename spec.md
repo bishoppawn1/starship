@@ -65,7 +65,8 @@ The game is hosted from this repository on GitHub Pages, so the playable build m
 
 - Ships have a persistent crew roster that can grow through trading. Each trader offers one or two named recruits for 40–55 metal. **Crew** in the market filters to recruitment cards. Hiring consumes that offer once, places the new crew member at the command console, and preserves their identity, color, position, and later job in saves. There is no fixed three-person crew limit.
 - Every crew member can be assigned to pilot, operate engines, weapons or shields, repair systems, deliver ammo, or stand by. Jobs become effective at their system stations; recruits use the same movement and job rules as the starting crew.
-- Crew can repair damaged systems.
+- Assigning work reserves an available matching station, including while its operator is walking there. Weapons, engines, shields, and the pilot console each take one operator. Current operators and valid reservations stay in place; new assignments choose the nearest reachable unclaimed station. Extra crew wait at the command room until a station opens. Reassignment, disabled or removed systems, and completed repairs release reservations; saved jobs keep their valid station choices when loading.
+- Repair crews spread across different damaged rooms, prioritizing the most damaged unclaimed room. Loaders reserve different ammunition-consuming weapons throughout pickup and delivery; they may share an ammo source. A loader with no available destination waits without generating ammunition.
 - Crew assigned to shield operation walk to a shield console and increase its recharge rate when stationed there.
 - Crew can perform support tasks, including delivering ammunition to weapons that require it.
 - Crew walk along connected floor cells to system stations. An assignment becomes effective when the crew member reaches the relevant station.
