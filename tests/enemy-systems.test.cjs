@@ -81,24 +81,32 @@ test('explosion damage reaches nearby shields and boarding sabotage bypasses pro
 
 test('enemy cannon, laser and missile shots use their real families, rates, ranges and ammunition',()=>{
   const g=game();for(const type of ['cannon','laser','missile']){
-    const {b,enemy}=setup(g,type),room=enemy.modules.find(m=>m.type==='weapon'),stats=g.enemyWeaponStats(room);room.cooldown=0;g.fireEnemyWeapons(enemy,.01);
+    const {b,enemy}=setup(g,type),room=enemy.modules.find(m=>m.type==='weapon'),stats=g.enemyWeaponStats(room);room.cooldown=0;g.fireEnemyWeapons(enemy,.1);
     assert.equal(b.projectiles.length,1,type);const shot=b.projectiles[0];assert.equal(shot.family,stats.family);near(Math.hypot(shot.vx,shot.vy),stats.speed);assert.equal(shot.damage,stats.damage);assert.equal(enemy.ammo,22-stats.ammo);assert.equal(room.cooldown,stats.reload);
     if(type==='missile'){assert.equal(shot.target,b.player);assert.ok(shot.guidance>0);assert.equal(shot.remaining,Infinity);}else assert.equal(shot.guidance,0);
-    enemy.ammo=0;room.cooldown=0;g.fireEnemyWeapons(enemy,.01);assert.equal(b.projectiles.length,type==='laser'?2:1);
+    enemy.ammo=0;room.cooldown=0;g.fireEnemyWeapons(enemy,.1);assert.equal(b.projectiles.length,type==='laser'?2:1);
   }
 });
 
 test('missiles acquire from outside cannon range and home on the player rather than another enemy',()=>{
-  const g=game(),{b,enemy}=setup(g,'missile'),room=enemy.modules.find(m=>m.type==='weapon');enemy.x=1800;room.cooldown=0;g.fireEnemyWeapons(enemy,.01);assert.equal(b.projectiles.length,1);
+  const g=game(),{b,enemy}=setup(g,'missile'),room=enemy.modules.find(m=>m.type==='weapon');enemy.x=1800;room.cooldown=0;g.fireEnemyWeapons(enemy,.1);assert.equal(b.projectiles.length,1);
   const shot=b.projectiles[0];shot.launchRemaining=0;b.player.y+=200;g.updateBattle(.1,0);assert.equal(shot.target,b.player);assert.ok(shot.vy>0);assert.equal(shot.remaining,Infinity);
   const laser=ship(g,'laser');laser.x=1800;laser.modules.find(m=>m.type==='weapon').cooldown=0;b.enemies.push(laser);g.fireEnemyWeapons(laser,.1);assert.equal(b.projectiles.filter(s=>s.source===laser).length,0);
 });
 
 test('mixed batteries fire independently and ion or disabled weapon rooms affect only their battery',()=>{
   const g=game(),{b,enemy}=setup(g,'assault'),rooms=enemy.modules.filter(m=>m.type==='weapon');for(const room of rooms)room.cooldown=0;
-  g.fireEnemyWeapons(enemy,.01);assert.equal(b.projectiles.length,2);assert.equal(new Set(b.projectiles.map(s=>s.family)).size,2);
+  g.fireEnemyWeapons(enemy,.1);assert.equal(b.projectiles.length,2);assert.equal(new Set(b.projectiles.map(s=>s.family)).size,2);
   const laser=rooms[0],missile=rooms[1];laser.cooldown=10;missile.cooldown=10;laser.ionTime=3;laser.ionFactor=.5;g.fireEnemyWeapons(enemy,1);near(laser.cooldown,9.5);near(missile.cooldown,9);
-  laser.hp=0;missile.cooldown=0;b.projectiles=[];g.fireEnemyWeapons(enemy,.01);assert.equal(b.projectiles.length,1);assert.equal(b.projectiles[0].weaponType,'missile');
+  laser.hp=0;missile.cooldown=0;b.projectiles=[];g.fireEnemyWeapons(enemy,.1);assert.equal(b.projectiles.length,1);assert.equal(b.projectiles[0].weaponType,'missile');
+});
+
+test('enemy barrels turn toward their target before firing and their shots match the drawn aim',()=>{
+  const g=game(),{b,enemy}=setup(g,'laser'),room=enemy.modules.find(m=>m.type==='weapon');b.player.y+=180;room.cooldown=0;
+  g.fireEnemyWeapons(enemy,.01);assert.equal(b.projectiles.length,0);assert.ok(Math.abs(room.aimOffset)>0);
+  for(let i=0;i<20&&!b.projectiles.length;i++)g.fireEnemyWeapons(enemy,.05);assert.equal(b.projectiles.length,1);
+  const shot=b.projectiles[0];near(Math.sin(Math.atan2(shot.vy,shot.vx)),Math.sin(enemy.angle+room.aimOffset));
+  g.draws.length=0;g.drawEnemy(enemy);assert.ok(g.draws.some(([fn,angle])=>fn==='rotate'&&angle===room.aimOffset));
 });
 
 test('enemy missiles can hit player shields, be evaded, intercepted by drones, or explode on wrecks',()=>{

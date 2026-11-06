@@ -1825,14 +1825,15 @@
     const rooms=enemy.modules?.length?enemy.modules.filter((room)=>room.type==='weapon'&&room.hp>0):[enemy];
     for(const room of rooms){
       const efficiency=systemEfficiency(room)*enemySystemEfficiency(enemy,'core'),stats=enemyWeaponStats(room),mount=enemyWeaponMount(enemy,room),player=battle.player;
+      const aim=Math.atan2(player.y-mount.y,player.x-mount.x),wanted=stats.guidance?0:clamp(angleDifference(mount.direction,aim),-stats.arc*Math.PI/360,stats.arc*Math.PI/360);
+      room.aimOffset=(room.aimOffset||0)+clamp(wanted-(room.aimOffset||0),-Math.PI*dt*efficiency,Math.PI*dt*efficiency);
       room.cooldown=(room.cooldown??enemy.cooldown??.7)-dt*efficiency;room.flash=Math.max(0,(room.flash||0)-dt);
-      if(efficiency<=0||room.cooldown>0||distance(mount,player)>stats.range||(enemy.ammo??0)<stats.ammo)continue;
-      const aim=Math.atan2(player.y-mount.y,player.x-mount.x);
+      if(efficiency<=0||room.cooldown>0||distance(mount,player)>stats.range||(enemy.ammo??0)<stats.ammo||Math.abs(wanted-room.aimOffset)>=.015)continue;
       if(!stats.guidance&&Math.abs(angleDifference(mount.direction,aim))>stats.arc*Math.PI/360)continue;
-      const angle=stats.guidance?mount.direction:aim;
+      const angle=mount.direction+room.aimOffset;
       const clearance=stats.guidance?Math.max(4,...(enemy.modules||[]).flatMap((part)=>part.cells.map(([x])=>(x+.5-(room.muzzle?.[0]??3.5))*ENEMY_TILE+4))):0;
       enemy.ammo-=stats.ammo;room.cooldown=stats.reload;room.flash=.1;
-      fireProjectile('enemy',mount.x+Math.cos(angle)*.01,mount.y+Math.sin(angle)*.01,player,stats.damage,stats.speed,stats.range,{angle,family:stats.family,color:stats.color,guidance:stats.guidance,target:stats.guidance?player:null,launchRemaining:clearance,splash:stats.splash,source:enemy,weaponType:stats.type});
+      fireProjectile('enemy',mount.x+Math.cos(angle)*.01,mount.y+Math.sin(angle)*.01,player,stats.damage,stats.speed,stats.range,{angle,muzzleClearance:36,family:stats.family,color:stats.color,guidance:stats.guidance,target:stats.guidance?player:null,launchRemaining:clearance,splash:stats.splash,source:enemy,weaponType:stats.type});
     }
   }
   function enemyShieldRooms(enemy){return (enemy.modules||[]).filter((room)=>room.type==='shield');}
@@ -2492,7 +2493,7 @@
     const g=ctx,r=enemy.r;
     g.save();g.translate(enemy.x,enemy.y);g.rotate(enemy.angle);
     g.drawImage(enemySprite(enemy),-110,-80,220,160);
-    for(const room of enemy.modules)if(room.type==='weapon'){const [x,y]=room.muzzle||[3.5,-1];g.save();g.translate(x*ENEMY_TILE,y*ENEMY_TILE);drawWeaponSprite(g,room.weaponType||'weapon',room.hp>0,room.hp>0?(room.flash||0):0);g.restore();}
+    for(const room of enemy.modules)if(room.type==='weapon'){const [x,y]=room.muzzle||[3.5,-1];g.save();g.translate(x*ENEMY_TILE,y*ENEMY_TILE);g.rotate(room.aimOffset||0);drawWeaponSprite(g,room.weaponType||'weapon',room.hp>0,room.hp>0?(room.flash||0):0);g.restore();}
     for(const room of enemy.modules){
       if(room.hp<=0){
         for(const [x,y] of room.cells){const px=x*ENEMY_TILE-11,py=y*ENEMY_TILE-11;
