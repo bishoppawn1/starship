@@ -15,8 +15,8 @@ function game(){
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
     globalThis.game={MODULES,SHIELD_TYPES,TASKS,newSave,loadSave,persist,canPlace,moduleCells,moduleStation,exteriorCells,weaponHasEscape,
       createGrid,panBuild,centerBuildView,shipArtFrame,shipBounds,drawArena,shipSprite,gridButtons,buildView,startBattle,shipRadius,
-      traderStock,openTrader,buyTraderItem,buyRecruit,upgradeTraderStock,crewGoal,renderCrew,crewAtStation,
-      normalizeSystems,commandCore,coreOutput,powerUsed,systemDemand,sharedPower,systemSupply,systemPower,upgradeCorePower,engineThrusters,evasionChance,weaponWorld,renderSystems,
+      traderStock,openTrader,buyTraderItem,buyRecruit,upgradeTraderStock,onGridClick,crewGoal,renderCrew,crewAtStation,
+      normalizeSystems,commandCore,coreOutput,generatorOutput,auxiliaryOutput,totalPower,powerUsed,systemDemand,sharedPower,systemSupply,systemPower,upgradeCorePower,engineThrusters,evasionChance,weaponWorld,renderSystems,
       shieldStats,shieldState,absorbShields,shieldInterception,updateShields,fireProjectile,updateBattle,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
       setMode(value){mode=value;},stubFlight(){navigatePlayer=()=>{};}};
@@ -157,4 +157,47 @@ test('combat sends only damage beyond the remaining shield strength to the hull'
   const before=save.modules.reduce((sum,module)=>sum+module.hp,0);
   g.fireProjectile('enemy',700,500,b.player,20,400,400);g.updateBattle(.5,0);
   near(save.modules.reduce((sum,module)=>sum+module.hp,0),before-8);assert.equal(state.charge,0);assert.equal(b.projectiles.length,0);
+});
+
+
+test('purchased generators contribute only after installation and survive save/load without restocking',()=>{
+  const g=game(),save=g.newSave();save.metal=500;g.setSave(save);
+  const node=save.map.nodes.find((n)=>n.type==='trader');g.openTrader(node);
+  const offer=node.stock.find((item)=>item.type==='generator'),qty=offer.qty,metal=save.metal;
+  assert.ok(offer);assert.equal(g.buyTraderItem('generator'),true);
+  assert.equal(save.inventory.generator,1);assert.equal(offer.qty,qty-1);assert.equal(save.metal,metal-offer.price);assert.equal(g.totalPower(),8);
+  let spot;
+  for(let y=-10;y<15&&!spot;y++)for(let x=-10;x<15;x++)if(g.canPlace('generator',x,y,0)){spot={x,y};break;}
+  assert.ok(spot);g.onGridClick(spot.x,spot.y);
+  const generator=save.modules.find((module)=>module.type==='generator');assert.ok(generator);
+  assert.equal(g.moduleCells(generator).length,2);assert.equal(save.inventory.generator,0);assert.equal(g.totalPower(),10);
+  assert.equal(g.systemDemand(generator),0);assert.equal(g.powerUsed(),8);g.renderSystems();
+  const panel=g.elements.get('systemsPanel').innerHTML;assert.ok(panel.includes('SHIP POWER · 10'));assert.ok(panel.includes('COMMAND CORE 8 + GENERATORS 2'));
+  g.persist();const loaded=g.loadSave();g.setSave(loaded);assert.equal(g.totalPower(),10);
+  const market=loaded.map.nodes.find((n)=>n.id===node.id),before=JSON.stringify(market);g.openTrader(market);
+  assert.equal(JSON.stringify(market),before);assert.equal(market.stock.find((item)=>item.type==='generator').qty,qty-1);
+  assert.equal(loaded.modules.find((module)=>module.id===generator.id).type,'generator');
+});
+
+test('stacked generators raise equal system performance and lose output only when disabled',()=>{
+  const g=game(),save=g.newSave();g.setSave(save);
+  save.modules.push({id:10,type:'shield',x:7,y:7,rotation:0,level:1,hp:85},{id:11,type:'engine',x:7,y:10,rotation:0,level:1,hp:80});
+  const consumers=save.modules.filter((module)=>g.systemDemand(module));for(const module of consumers)near(g.systemPower(module),8/12);
+  const generator={id:12,type:'generator',x:9,y:7,rotation:0,level:1,hp:65};save.modules.push(generator);
+  for(const module of consumers)near(g.systemPower(module),10/12);
+  const second={...generator,id:13,x:9,y:8};save.modules.push(second);assert.equal(g.auxiliaryOutput(),4);
+  for(const module of consumers)near(g.systemPower(module),1);
+  generator.hp=1;assert.equal(g.generatorOutput(generator),2);assert.equal(g.totalPower(),12);
+  generator.hp=0;assert.equal(g.generatorOutput(generator),0);for(const module of consumers)near(g.systemPower(module),10/12);
+  generator.hp=65;generator.level=3;assert.equal(g.generatorOutput(generator),4);assert.equal(g.totalPower(),14);
+  assert.equal(g.powerUsed(),12);assert.equal(g.coreOutput(),8);assert.equal(g.systemSupply(generator),0);
+  g.persist();g.setSave(g.loadSave());assert.equal(g.totalPower(),14);
+});
+
+test('older traders gain a generator offer once while retaining other stock and sold-out generators',()=>{
+  const g=game(),node={type:'trader',stockVersion:4,stock:[{type:'weapon',qty:0,price:51},{type:'shield',qty:0,price:53}]};
+  g.upgradeTraderStock(node);assert.ok(node.stockVersion>=5);
+  assert.deepEqual(node.stock[0],{type:'weapon',qty:0,price:51});assert.equal(node.stock[1].qty,0);
+  const offer=node.stock.find((item)=>item.type==='generator');assert.equal(offer.qty,1);assert.equal(offer.price,g.MODULES.generator.cost);
+  offer.qty=0;const before=JSON.stringify(node);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node),before);
 });

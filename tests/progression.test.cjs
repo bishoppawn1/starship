@@ -48,7 +48,8 @@ test('sector charts stay connected and include reachable limited-stock traders',
     assert.ok(map.nodes.some(node => node.type === 'outpost'));
     assert.ok(map.nodes.some(node => node.type === 'lifeboat'));
     for (const node of map.nodes.filter(node => node.type === 'trader')) {
-      assert.ok(node.stock.length<=8);
+      assert.ok(node.stock.length<=5+Object.values(g.MODULES).filter((def)=>!def.range&&def.cost>0).length);
+      assert.ok(node.stock.some(item=>item.type==='generator'&&item.qty>0));
       assert.equal(node.stock.filter(item=>g.MODULES[item.type].range).reduce((sum,item)=>sum+item.qty,0),5);
       assert.equal(new Set(node.stock.map(item => item.type)).size, node.stock.length);
       assert.ok(node.stock.every(item => item.qty > 0 && item.price > 0));
