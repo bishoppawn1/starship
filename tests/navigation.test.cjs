@@ -6,7 +6,7 @@ const path=require('node:path');
 function game(){
   const sandbox={Math,performance:{now:()=>0},localStorage:{getItem:()=>null},document:{getElementById:()=>({getContext:()=>({})}),createElement:()=>({getContext:()=>({})})}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
-    globalThis.game={newSave,navigatePlayer,engineThrusters,angleForAvailableTorque,angleDifference,shipRadius,routeAroundRocks,orderMove,
+    globalThis.game={newSave,navigatePlayer,engineThrusters,angleForAvailableTorque,angleDifference,shipRadius,routeAroundRocks,orderMove,rotateArrival,
       setSave(value){save=value;},setBattle(value){battle=value;}};
   })();`);
   vm.runInNewContext(source,sandbox);return sandbox.game;
@@ -66,6 +66,29 @@ test('a destination change during translation settles at the new requested pose'
   const destination={x:850,y:1250};player.dest={...destination};player.path=[{...destination}];player.targetAngle=-.5;
   const result=fly(g,player,160);assert.equal(player.dest,null);assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);
   assert.ok(Math.abs(g.angleDifference(player.angle,-.5))<.06);assert.ok(result.turning<Math.PI*6);
+});
+
+test('changing arrival rotation during a move turns immediately and still completes the route',()=>{
+  const {g,player}=setup('wayfarer',{selected:true});g.orderMove({x:1450,y:1000});
+  for(let frame=0;frame<90;frame++)g.navigatePlayer(1/60);
+  assert.ok(player.x>1000&&player.dest);
+  for(let step=0;step<6;step++)g.rotateArrival(1);
+  assert.ok(player.turnOrderPending);const angle=player.angle,position=player.x;
+  for(let frame=0;frame<120;frame++)g.navigatePlayer(1/60);
+  assert.ok(player.angle>angle+.2,'the ship should begin turning before reaching the waypoint');
+  assert.ok(player.x<1450&&player.dest,'the ship should still be en route');
+  assert.ok(player.x>position-15,'turning should not erase the move order');
+  const result=fly(g,player,160);
+  assert.equal(player.dest,null,`route unfinished after ${result.seconds}s`);
+  assert.ok(Math.abs(g.angleDifference(player.angle,Math.PI/2))<.06);
+});
+
+test('a rotation chosen before a move also starts turning during travel',()=>{
+  const {g,player}=setup('wayfarer',{selected:true});
+  for(let step=0;step<4;step++)g.rotateArrival(-1);
+  g.orderMove({x:1400,y:1000});assert.ok(player.turnOrderPending);
+  for(let frame=0;frame<120;frame++)g.navigatePlayer(1/60);
+  assert.ok(player.angle<-.2&&player.dest);
 });
 
 test('a ship follows its wreck-avoidance waypoints and completes the move order',()=>{

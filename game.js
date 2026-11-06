@@ -2261,8 +2261,10 @@
     const p=battle.player,engines=engineThrusters(),cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0);
     const mass=Math.max(2,cellCount*.3),inertia=mass*p.r*p.r*.42,lever=Math.max(20,p.r*.58);
     if(p.arrival&&p.dest&&(p.dest.x!==p.arrival.x||p.dest.y!==p.arrival.y))p.arrival=null;
-    let desiredX=-p.vx*1.6,desiredY=-p.vy*1.6,heading=p.dest?p.angle:p.targetAngle;
-    if(p.dest&&!p.arrival){
+    if(p.turnOrderPending&&Math.abs(angleDifference(p.angle,p.targetAngle))<.06&&Math.abs(p.omega)<.1)p.turnOrderPending=false;
+    const orienting=!!p.dest&&!p.arrival&&!!p.turnOrderPending;
+    let desiredX=orienting?0:-p.vx*1.6,desiredY=orienting?0:-p.vy*1.6,heading=p.dest&&!orienting?p.angle:p.targetAngle;
+    if(p.dest&&!p.arrival&&!orienting){
       if(p.path.length>1&&distance(p,p.path[0])<34)p.path.shift();
       const waypoint=p.path[0]||p.dest;
       const dx=waypoint.x-p.x,dy=waypoint.y-p.y,dist=Math.hypot(dx,dy),speed=Math.hypot(p.vx,p.vy);
@@ -2291,7 +2293,7 @@
     if(p.arrival){desiredX=0;desiredY=0;heading=p.targetAngle;}
     const turn=angleForAvailableTorque(p,heading,engines);
     // Turning first prevents sustained sideways acceleration from becoming an orbit.
-    if(p.dest){const alignment=Math.max(0,Math.cos(turn));desiredX*=alignment**4;desiredY*=alignment**4;}
+    if(p.dest&&!p.arrival&&!orienting){const alignment=Math.max(0,Math.cos(turn));desiredX*=alignment**4;desiredY*=alignment**4;}
     // Leave headroom for opposing engines to cancel translation during a turn.
     const positiveTorque=engines.reduce((sum,engine)=>sum+Math.max(0,engine.torque),0)*.45;
     const negativeTorque=engines.reduce((sum,engine)=>sum+Math.max(0,-engine.torque),0)*.45;
@@ -2912,12 +2914,13 @@
     const p=battle.player,goal=safePoint(point,p.r,battle.asteroids,battle.world);
     const path=routeAroundRocks(p,goal,p.r,battle.asteroids,battle.world);
     if(!path.length){toast('No clear route to that location.');return;}
-    p.arrival=null;p.dest=goal;p.path=path;
+    p.arrival=null;p.dest=goal;p.path=path;p.turnOrderPending=p.turnOrderPending||Math.abs(angleDifference(p.angle,p.targetAngle))>.06;
     $('combatHint').textContent='THRUSTERS STEERING TO WAYPOINT · RIGHT CLICK TO REDIRECT';
   }
   function rotateArrival(step){
     if(!battle)return;if(!battle.player.selected){toast('Select your ship first.');return;}
     battle.player.targetAngle+=step*Math.PI/12;
+    if(battle.player.dest)battle.player.turnOrderPending=true;
     const degrees=((Math.round(battle.player.targetAngle*180/Math.PI)%360)+360)%360;
     $('combatRotationLabel').textContent=`${degrees}°`;
     $('combatHint').textContent='SHIP TURNING UNDER ENGINE THRUST';
