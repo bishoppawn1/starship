@@ -268,7 +268,8 @@
   const storedSave = loadSave();
   let save = storedSave || newSave(), hasSave = !!storedSave, screen = 'menu', mode = 'hangar', selectedCatalog = null, selectedModuleId = 1;
   let movingModuleId=null, refittingFootprint=false;
-  const buildView={x:0,y:0};
+  const BUILD_ZOOMS=[.4,.5,.65,.8,1,1.25,1.6,2];
+  const buildView={x:0,y:0,cols:GRID_W,rows:GRID_H,zoomIndex:4};
   let tradeNode=null, marketFilter='all';
   let buildRotation = 0, buildWeaponFacing = 0, hoverCell = null, battle = null, eventOpen = false, pendingNodeId = null;
   let toastTimer = null, lastFrame = performance.now(), lastHudRefresh = 0;
@@ -404,7 +405,17 @@
     if(canvas.width!==w||canvas.height!==h){canvas.width=w;canvas.height=h;}
   }
   function panBuild(dx,dy){buildView.x+=dx;buildView.y+=dy;hoverCell=null;renderGrid();}
-  function centerBuildView(redraw=true){const b=shipBounds();buildView.x=Math.floor(b.cx-GRID_W/2);buildView.y=Math.floor(b.cy-GRID_H/2);hoverCell=null;if(redraw)renderGrid();}
+  function centerBuildView(redraw=true){const b=shipBounds();buildView.x=Math.floor(b.cx-buildView.cols/2);buildView.y=Math.floor(b.cy-buildView.rows/2);hoverCell=null;if(redraw)renderGrid();}
+  function zoomBuild(direction,anchorX=.5,anchorY=.5){
+    const next=clamp(buildView.zoomIndex+direction,0,BUILD_ZOOMS.length-1);
+    if(next===buildView.zoomIndex)return;
+    const ax=clamp(anchorX,0,1),ay=clamp(anchorY,0,1);
+    const focusX=buildView.x+ax*buildView.cols,focusY=buildView.y+ay*buildView.rows;
+    buildView.zoomIndex=next;buildView.cols=Math.round(GRID_W/BUILD_ZOOMS[next]);buildView.rows=Math.round(GRID_H/BUILD_ZOOMS[next]);
+    buildView.x=Math.floor(focusX-ax*buildView.cols);buildView.y=Math.floor(focusY-ay*buildView.rows);
+    hoverCell={x:Math.floor(buildView.x+ax*buildView.cols),y:Math.floor(buildView.y+ay*buildView.rows)};
+    rebuildGridCells();renderGrid();
+  }
 
   function moduleClearance(module){
     if(ENGINE_TYPES.includes(module.type)){
@@ -504,9 +515,14 @@
     persist();renderAll();
   }
 
-  function createGrid() {
+  function rebuildGridCells(){
     const grid=$('buildGrid');
-    for(let y=0;y<GRID_H;y++)for(let x=0;x<GRID_W;x++){
+    grid.textContent='';gridButtons.length=0;
+    const stack=$('shipGridStack');
+    stack.style.setProperty('--view-cols',buildView.cols);
+    stack.style.setProperty('--view-rows',buildView.rows);
+    stack.style.setProperty('--build-zoom',BUILD_ZOOMS[buildView.zoomIndex]);
+    for(let y=0;y<buildView.rows;y++)for(let x=0;x<buildView.cols;x++){
       const cell=document.createElement('button');cell.type='button';cell.className='grid-cell';cell.setAttribute('role','gridcell');
       cell.dataset.x=x;cell.dataset.y=y;
       const point=()=>({x:+cell.dataset.x,y:+cell.dataset.y});
@@ -515,8 +531,18 @@
       cell.addEventListener('click',()=>{const p=point();onGridClick(p.x,p.y);});
       grid.append(cell);gridButtons.push(cell);
     }
+  }
+  function createGrid() {
+    const grid=$('buildGrid');rebuildGridCells();
     grid.addEventListener('mouseleave',()=>{hoverCell=null;renderGrid();});
-    grid.addEventListener('wheel',(event)=>{event.preventDefault();if(event.deltaX||event.shiftKey)panBuild(Math.sign(event.deltaX||event.deltaY)*3,0);else panBuild(0,Math.sign(event.deltaY)*3);},{passive:false});
+    let wheelAccum=0;
+    $('buildViewport').addEventListener('wheel',(event)=>{
+      event.preventDefault();wheelAccum+=(event.deltaMode===1?event.deltaY*16:event.deltaY);
+      if(Math.abs(wheelAccum)<50)return;
+      const rect=grid.getBoundingClientRect(),inside=event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom;
+      const ax=inside?(event.clientX-rect.left)/rect.width:.5,ay=inside?(event.clientY-rect.top)/rect.height:.5;
+      zoomBuild(wheelAccum<0?1:-1,ax,ay);wheelAccum=0;
+    },{passive:false});
     document.querySelectorAll('[data-pan]').forEach((button)=>button.addEventListener('click',()=>{const [x,y]=button.dataset.pan.split(',').map(Number);panBuild(x,y);}));
     $('centerBuild').addEventListener('click',()=>centerBuildView());
   }
@@ -576,7 +602,7 @@
     for(const module of save.modules)for(const [rx,ry] of moduleClearance(module))reserved.set(`${rx},${ry}`,module.type);
     if(selectedCatalog&&hoverCell){const place=placementAt(selectedCatalog,hoverCell.x,hoverCell.y,buildRotation);valid=place.valid;for(const [dx,dy] of placementGeometry(selectedCatalog,buildRotation).cells)ghost.add(`${place.x+dx},${place.y+dy}`);}
     for(const [index,cell] of gridButtons.entries()){
-      cell.dataset.x=buildView.x+index%GRID_W;cell.dataset.y=buildView.y+Math.floor(index/GRID_W);
+      cell.dataset.x=buildView.x+index%buildView.cols;cell.dataset.y=buildView.y+Math.floor(index/buildView.cols);
       const x=+cell.dataset.x,y=+cell.dataset.y,key=`${x},${y}`,module=occupied.get(key);
       cell.className='grid-cell';cell.style.removeProperty('--module-color');cell.textContent='';
       if(module){cell.classList.add('occupied');if(module.id===selectedModuleId)cell.classList.add('selected');cell.style.setProperty('--module-color',MODULES[module.type].color);cell.setAttribute('aria-label',`${MODULES[module.type].name}, level ${module.level}, ${Math.ceil(module.hp)} health`);}
@@ -587,7 +613,7 @@
     $('placementHint').textContent=mode!=='trade'?'CLICK A ROOM TO INSPECT · VISIT A TRADER TO REFIT':selectedCatalog?(hoverCell?(valid?(movingModuleId!==null?'CLICK TO MOVE ROOM':'CLICK TO INSTALL HELD MODULE'):'ROOMS NEED OPEN HULL SPACE AND CLEAR EXHAUST'):'HOVER OVER THE GRID TO INSTALL MODULE'):'CLICK A ROOM TO INSPECT OR MOVE · INSTALL STORED PARTS';
     $('buildWeaponFacing').hidden=!selectedCatalog||MODULES[selectedCatalog].mountFacings!==2;
     $('buildWeaponFacing').textContent=`MOUNT: ${['RIGHT','DOWN','LEFT','UP'][(buildRotation+(buildWeaponFacing?3:0))%4]} ↻`;
-    $('buildCoordinates').textContent=`X ${buildView.x}…${buildView.x+GRID_W-1} · Y ${buildView.y}…${buildView.y+GRID_H-1}`;
+    $('buildCoordinates').textContent=`${Math.round(BUILD_ZOOMS[buildView.zoomIndex]*100)}% · X ${buildView.x}…${buildView.x+buildView.cols-1} · Y ${buildView.y}…${buildView.y+buildView.rows-1}`;
     drawHangar();
   }
   function onGridClick(x,y) {
@@ -929,7 +955,8 @@
     return {valid:place.valid,module:{level:1,hp:MODULES[selectedCatalog].hp,...original,footprint:refittingFootprint?null:original?.footprint,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing}};
   }
   function drawHangar(){
-    drawInterior(hangarCtx,true,{},{x:buildView.x,y:buildView.y,w:GRID_W,h:GRID_H,scale:SPRITE_SCALE});
+    sizeArtCanvas(hangarCanvas,{w:buildView.cols,h:buildView.rows,scale:SPRITE_SCALE});
+    drawInterior(hangarCtx,true,{},{x:buildView.x,y:buildView.y,w:buildView.cols,h:buildView.rows,scale:SPRITE_SCALE});
     const preview=placementPreview();if(!preview)return;
     const g=hangarCtx,module=preview.module,color=preview.valid?'rgba(111,235,196,.22)':'rgba(255,101,111,.25)';
     if(MODULES[module.type].range)drawWeaponArc(g,module,TILE,color,[...save.modules.filter((part)=>part.id!==movingModuleId),module]);

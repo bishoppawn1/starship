@@ -14,7 +14,7 @@ function game(){
     document:{getElementById:(id)=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,querySelectorAll:()=>[]}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
     globalThis.game={MODULES,SHIELD_TYPES,TASKS,newSave,loadSave,persist,canPlace,moduleCells,moduleStation,exteriorCells,weaponHasEscape,
-      createGrid,panBuild,centerBuildView,shipArtFrame,shipBounds,drawArena,shipSprite,gridButtons,buildView,startBattle,shipRadius,
+      createGrid,panBuild,zoomBuild,centerBuildView,shipArtFrame,shipBounds,drawArena,shipSprite,gridButtons,buildView,startBattle,shipRadius,
       traderStock,openTrader,buyTraderItem,buyRecruit,upgradeTraderStock,onGridClick,crewGoal,renderCrew,crewAtStation,
       normalizeSystems,commandCore,coreOutput,generatorOutput,auxiliaryOutput,totalPower,powerUsed,systemDemand,sharedPower,systemSupply,systemPower,upgradeCorePower,engineThrusters,evasionChance,weaponWorld,renderSystems,
       shieldStats,shieldState,absorbShields,shieldInterception,updateShields,fireProjectile,updateBattle,
@@ -56,6 +56,12 @@ test('panning reuses a bounded set of interactive cells with unrestricted world 
   const g=game();g.setSave(g.newSave());g.createGrid();assert.equal(g.gridButtons.length,120);
   g.panBuild(-100,200);assert.equal(+g.gridButtons[0].dataset.x,-100);assert.equal(+g.gridButtons[0].dataset.y,200);
   assert.equal(+g.gridButtons[119].dataset.x,-89);assert.equal(+g.gridButtons[119].dataset.y,209);
+  const centerX=g.buildView.x+g.buildView.cols/2,centerY=g.buildView.y+g.buildView.rows/2;
+  g.zoomBuild(-1);assert.equal(g.buildView.cols,15);assert.equal(g.buildView.rows,13);assert.equal(g.gridButtons.length,195);
+  assert.ok(Math.abs(g.buildView.x+g.buildView.cols/2-centerX)<=.5);
+  assert.ok(Math.abs(g.buildView.y+g.buildView.rows/2-centerY)<=.5);
+  assert.equal(+g.gridButtons.at(-1).dataset.x,g.buildView.x+14);
+  g.zoomBuild(1);assert.equal(g.gridButtons.length,120);
   g.centerBuildView();assert.ok(g.buildView.x<5&&g.buildView.y<4);
 });
 
