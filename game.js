@@ -53,7 +53,9 @@
     {id:'cryo',name:'Cryo Projector',color:'#a2eaf0',range:260,arc:140,damage:8,reload:.9,ammo:1,speed:300,cost:54,slow:.4,slowDuration:4,family:'plasma',description:'Cold bursts slow pursuers for four seconds.'},
     {id:'inferno',name:'Inferno Projector',color:'#f39a64',range:230,arc:130,damage:6,reload:1,ammo:1,speed:290,cost:57,burn:5,burnDuration:4,family:'plasma',description:'Incendiary hits burn for five damage per second.'},
     {id:'proton',name:'Proton Lance',color:'#f0df82',range:620,arc:25,damage:24,reload:2.8,ammo:0,speed:950,cost:98,fixed:true,length:4,hullPass:true,family:'energy',description:'A narrow lance passes safely through your own hull sections, stopping at the first enemy ship.'},
-    {id:'gauss',name:'Gauss Repeater',color:'#9ac4dd',range:510,arc:55,damage:12,reload:1.6,ammo:2,speed:650,cost:84,fixed:true,length:3,salvo:2,spread:4,pierce:1,family:'rail',description:'Twin magnetic slugs each pierce a second target.'}
+    {id:'gauss',name:'Gauss Repeater',color:'#9ac4dd',range:510,arc:55,damage:12,reload:1.6,ammo:2,speed:650,cost:84,fixed:true,length:3,salvo:2,spread:4,pierce:1,family:'rail',description:'Twin magnetic slugs each pierce a second target.'},
+    {id:'beam',name:'Sweep Beam',color:'#ed967e',range:460,arc:100,damage:18,reload:3.4,ammo:0,speed:0,cost:80,beamDuration:1.2,family:'beam',description:'Sweeps left to right across rooms: 18 damage per room, only 6 against shields.'},
+    {id:'heavyBeam',name:'Heavy Beam',color:'#e9c986',range:580,arc:55,damage:30,reload:5,ammo:0,speed:0,cost:115,fixed:true,length:3,beamDuration:1.8,family:'beam',description:'A long, heavy sweep deals 30 damage per room, only 10 against shields.'}
   ];
   for(const {id,fixed,length=2,...stats} of WEAPON_DESIGNS){
     const base=fixed?MODULES.railgun:MODULES.weapon;
@@ -88,7 +90,9 @@
     cryo:{shape:[[0,0],[1,0]],station:[0,0],mount:[1,0]},
     inferno:{shape:[[0,0],[0,1]],station:[0,1],mount:[0,0]},
     proton:{shape:[[0,0],[1,0],[2,0],[3,0]],station:[0,0],mount:[3,0]},
-    gauss:{shape:[[0,0],[1,0],[1,1],[2,1]],station:[0,0],mount:[2,1]}
+    gauss:{shape:[[0,0],[1,0],[1,1],[2,1]],station:[0,0],mount:[2,1]},
+    beam:{shape:[[0,0],[1,0],[0,1]],station:[0,1],mount:[1,0]},
+    heavyBeam:{shape:[[0,0],[1,0],[2,0]],station:[0,0],mount:[2,0]}
   };
   for(const [type,layout] of Object.entries(WEAPON_FOOTPRINTS))Object.assign(MODULES[type],layout,{muzzle:[layout.mount[0]+1,layout.mount[1]+.5]});
   MODULES.gatling.burstInterval=.09;MODULES.gauss.burstInterval=.12;MODULES.swarm.burstInterval=.1;
@@ -400,7 +404,8 @@
   }
 
   const missileLaunchCache=new WeakMap();
-  const DRONE_PROGRAMS={combat:{name:'Combat',color:'#efb77d'},defense:{name:'Defense',color:'#89ddd8'},repair:{name:'Repair',color:'#a6ddb0'},boarding:{name:'Boarding',color:'#d8a2df'}};
+  const droneFlightCache=new WeakMap();
+  const DRONE_PROGRAMS={combat:{name:'Combat',color:'#efb77d'},beam:{name:'Beam',color:'#ed967e'},defense:{name:'Defense',color:'#89ddd8'},repair:{name:'Repair',color:'#a6ddb0'},boarding:{name:'Boarding',color:'#d8a2df'}};
   function crewAlive(person){return person.hp===undefined||person.hp>0;}
   function crewHome(person){return crewAlive(person)&&!person.aboard;}
   function normalizeCrew(data){
@@ -761,6 +766,7 @@
 
   function weaponBehavior(type){
     const d=MODULES[type],rules=[];
+    if(d.beamDuration)rules.push(`Left-to-right sweep · ${d.beamDuration}s · ${d.damage} per room once · ${+(d.damage/3).toFixed(2)} shield damage (⅓)`);
     if(d.burstInterval)rules.push(`${d.salvo} rounds · ${d.burstInterval}s apart`);
     else if(d.salvo>1)rules.push(`${d.salvo}-shot spread`);
     if(d.guidance)rules.push('Unlimited range · Homing after hull clearance');
@@ -1088,6 +1094,10 @@
         body(-6,-4,14,8);r(-4,-2,8,4,red);for(const y of [-3,1])barrel(7,y,18,2);r(22,-4,5,8,dark);r(25,-2,2,4,'#e5a9a0');break;
       case 'heavyLaser':
         body(-6,-6,18,12);r(-4,-4,11,8,red);r(1,-4,2,8,bright);barrel(11,-2,18,4);r(16,-4,3,8,dark);r(27,-3,4,6,steel);r(29,-2,2,4,'#f2b0ac');break;
+      case 'beam':
+        body(-6,-4,17,8);r(-4,-2,10,4,red);barrel(10,-1,14,2);r(16,-6,3,12,dark);r(23,-7,5,14,steel);r(26,-5,3,10,'#ed967e');r(29,-3,2,6,light);break;
+      case 'heavyBeam':
+        body(-7,-7,20,14);r(-5,-5,12,10,red);barrel(12,-2,12,4);for(const x of [13,18])r(x,-6,2,12,steel);r(23,-9,6,18,dark);r(26,-7,4,14,'#e9c986');r(30,-5,2,10,light);break;
       case 'missile':
         // An armored pod with three recessed rocket mouths and loaded warheads.
         body(-7,-9,27,18);r(-5,-7,7,14,red);r(-5,-7,7,1,bright);r(2,-8,18,16,steel);r(3,-7,16,14,dark);
@@ -1490,6 +1500,23 @@
     assembly.droneType=type;assembly.buildProgress=0;
     save.drones=(save.drones||[]).filter((drone)=>drone.assembly!==id);persist();renderInspector();renderOperations();return true;
   }
+  function moveAttackDrone(drone,enemy,dt,power){
+    const player=battle.player,radius=enemy.r+65+(drone.id%3)*12,bearing=Math.atan2(drone.y-enemy.y,drone.x-enemy.x);
+    const sign=drone.id%2?1:-1,orbiting=distance(drone,enemy)<=radius+25,angle=bearing+(orbiting?dt*power*sign:0);
+    const obstacles=[...(battle.asteroids||[]),{x:player.x,y:player.y,r:player.r+4},{x:enemy.x,y:enemy.y,r:enemy.r+22}];
+    const offsets=orbiting?[0,.4,.8,1.2,1.8,2.4,Math.PI,4,4.8,5.6]:[0,.4,-.4,.8,-.8,1.2,-1.2,1.8,-1.8,2.4,-2.4,Math.PI];
+    const world=battle.world||{w:Infinity,h:Infinity},goals=offsets.map((offset)=>({x:enemy.x+Math.cos(angle+offset*sign)*radius,y:enemy.y+Math.sin(angle+offset*sign)*radius}));
+    const goal=goals.find((point)=>point.x>17&&point.y>17&&point.x<world.w-17&&point.y<world.h-17&&obstacles.every((rock)=>distance(point,rock)>rock.r+9+WRECK_BERTH+1))||safePoint(goals[0],9,obstacles,world);
+    let path=[goal],cached=droneFlightCache.get(drone);
+    if(!clearSegment(drone,goal,9,obstacles)){
+      if(!cached||cached.enemy!==enemy||(cached.time-=dt)<=0||!cached.path.length||!clearSegment(drone,cached.path[0],9,obstacles)){
+        cached={enemy,time:.5,path:routeAroundRocks(drone,goal,9,obstacles,world)};droneFlightCache.set(drone,cached);
+      }
+      path=cached.path;
+    }else droneFlightCache.delete(drone);
+    moveActor(drone,path,dt*220*power);drone.angle=Math.atan2(drone.y-enemy.y,drone.x-enemy.x);
+    drone.facing=Math.atan2(enemy.y-drone.y,enemy.x-drone.x);
+  }
   function updateDrones(dt){
     updateDroneAssembly(dt);if(battle)battle.drones=save.drones;
     for(const drone of save.drones){
@@ -1519,23 +1546,32 @@
         if(range<=Math.max(10,step)){[drone.x,drone.y]=room.cells[0];drone.phase='boarding';drone.path=[];}
         continue;
       }
-      drone.angle+=dt*1.1*power;const radius=player.r+35;drone.x=player.x+Math.cos(drone.angle)*radius;drone.y=player.y+Math.sin(drone.angle)*radius;
       const chosen=battle.enemies[battle.droneTarget??0],enemy=chosen&&enemyAlive(chosen)?chosen:battle.enemies.filter(enemyAlive).sort((a,b)=>distance(a,drone)-distance(b,drone))[0];
+      const attacking=['combat','beam'].includes(drone.type);
+      if(attacking&&enemy)moveAttackDrone(drone,enemy,dt,power);
+      else{drone.angle+=dt*1.1*power;const radius=player.r+35;drone.x=player.x+Math.cos(drone.angle)*radius;drone.y=player.y+Math.sin(drone.angle)*radius;drone.facing=drone.angle+Math.PI/2;}
       if(drone.type==='boarding'){
         if(enemy&&distance(enemy,player)<=600&&Math.abs(angleDifference(drone.angle,Math.atan2(enemy.y-player.y,enemy.x-player.x)))<.2){drone.enemy=battle.enemies.indexOf(enemy);drone.room=Math.max(0,enemy.modules.findIndex((room)=>room.type==='weapon'&&room.hp>0));drone.phase='outbound';}
         continue;
       }
       if(drone.cooldown>0)continue;
-      if(drone.type==='combat'){
-        if(enemy&&distance(enemy,drone)<700&&hullRay(worldToHull(drone,player),Math.atan2(enemy.y-drone.y,enemy.x-drone.x)-player.angle,save.modules.flatMap(moduleCells),distance(enemy,drone)/COMBAT_TILE)>=distance(enemy,drone)/COMBAT_TILE-1e-7){fireProjectile('player',drone.x,drone.y,enemy,6,800,750,{drone:true,color:'#f3ad7d',family:'laser'});drone.cooldown=1.6;}
+      if(attacking){
+        if(enemy&&distance(enemy,drone)<enemy.r+220&&hullRay(worldToHull(drone,player),Math.atan2(enemy.y-drone.y,enemy.x-drone.x)-player.angle,save.modules.flatMap(moduleCells),distance(enemy,drone)/COMBAT_TILE)>=distance(enemy,drone)/COMBAT_TILE-1e-7){
+          if(drone.type==='beam')startBeam(drone,enemy,{drone:true,damage:9,range:400,duration:1,color:DRONE_PROGRAMS.beam.color});
+          else fireProjectile('player',drone.x,drone.y,enemy,6,800,750,{drone:true,color:'#f3ad7d',family:'laser'});
+          drone.cooldown=drone.type==='beam'?3:1.6;
+        }
       }else{
         const incoming=battle.projectiles.filter((shot)=>shot.owner==='enemy'&&!(shot.delay>0)&&distance(shot,player)<player.r+230).sort((a,b)=>distance(a,player)-distance(b,player))[0];
         if(incoming){battle.projectiles.splice(battle.projectiles.indexOf(incoming),1);(battle.effects??=[]).push({x:drone.x,y:drone.y,to:{x:incoming.x,y:incoming.y},color:'#89ddd8',time:.2,duration:.2});drone.cooldown=.8;}
       }
     }
   }
-  function drawDroneSprite(g,x,y,type){
+  function drawDroneSprite(g,x,y,type,facing=0){
+    g.save();g.translate(x,y);g.rotate(facing);x=0;y=0;
     g.fillStyle='#132535';g.fillRect(x-7,y-5,14,10);g.fillRect(x-10,y-2,20,4);g.fillStyle=DRONE_PROGRAMS[type].color;g.fillRect(x-5,y-3,10,6);g.fillStyle='#e5f4df';g.fillRect(x-2,y-2,4,2);
+    if(type==='beam'){g.fillStyle='#9aa79f';g.fillRect(x+5,y-5,3,10);g.fillStyle='#f7d8a7';g.fillRect(x+8,y-3,3,6);}
+    g.restore();
   }
   function drawEnemyCrew(g,enemy){
     const index=battle.enemies.indexOf(enemy);
@@ -1555,7 +1591,7 @@
   function renderOperations(){
     renderCrewOrders();const panel=$('dronePanel');if(!panel)return;
     const bays=save.modules.filter((module)=>module.type==='droneControl'),assemblies=save.modules.filter((module)=>module.type==='droneAssembly'),drones=save.drones||[];
-    panel.innerHTML=`<strong>${bays.length} BAYS · ${assemblies.length} ASSEMBLIES · ${drones.filter((drone)=>drone.hp>0).length} DRONES</strong><p class="muted small">Assembly → crew → bay → launch. Assign Deliver drones or Deliver ammo / drones. Finished drones wait for pickup; launch is automatic after loading.</p>${bays.map((bay)=>`<div class="drone-row">BAY (${bay.x}, ${bay.y}) · ${bay.hp<=0?'OFFLINE':!droneBayClear(bay)?'BLOCKED LAUNCH LANE':`${droneCount(bay)} / ${droneBayCapacity(bay)} SLOTS · CLEAR EXIT`}</div>`).join('')}${assemblies.map((assembly)=>{
+    panel.innerHTML=`<strong>${bays.length} BAYS · ${assemblies.length} ASSEMBLIES · ${drones.filter((drone)=>drone.hp>0).length} DRONES</strong><p class="muted small">Assembly → crew → bay → launch. Assign Deliver drones or Deliver ammo / drones. Finished drones wait for pickup; launch is automatic after loading. Combat and beam drones circle the selected enemy. Beam drones sweep for 9 damage per room, or 3 against shields.</p>${bays.map((bay)=>`<div class="drone-row">BAY (${bay.x}, ${bay.y}) · ${bay.hp<=0?'OFFLINE':!droneBayClear(bay)?'BLOCKED LAUNCH LANE':`${droneCount(bay)} / ${droneBayCapacity(bay)} SLOTS · CLEAR EXIT`}</div>`).join('')}${assemblies.map((assembly)=>{
       const drone=drones.find((drone)=>drone.assembly===assembly.id&&drone.hp>0),type=DRONE_PROGRAMS[assembly.droneType]?assembly.droneType:'combat';
       return `<div class="drone-assembly"><label>${MODULES.droneAssembly.name.toUpperCase()} (${assembly.x}, ${assembly.y})<select data-drone-design="${assembly.id}" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===type?'selected':''}>${def.name}</option>`).join('')}</select></label><small>${assembly.hp<=0?'ASSEMBLY OFFLINE':drone?`${Math.ceil(drone.hp)} HP · ${drone.phase==='stored'?(drone.carrier?'CREW FETCHING':bays.some((bay)=>bay.hp>0&&droneBayClear(bay))?'AWAITING CREW PICKUP':'WAITING FOR CLEAR BAY'):drone.phase==='carried'?'IN TRANSIT WITH CREW':drone.phase==='ready'?'LOADED · READY':drone.powered===false?'BAY OFFLINE':drone.phase.toUpperCase()}`:`BUILDING ${Math.min(100,Math.floor((assembly.buildProgress||0)/assemblyTime(assembly)*100))}%`}</small></div>`;
     }).join('')}${!assemblies.length?'<p class="muted small">Build a Drone Assembly and an exterior Drone Bay at a trader.</p>':''}${battle?`<p class="muted small">TELEPORTER ${boardingPad()?`${Math.ceil(battle.teleportCooldown||0)}s RECHARGE · 600 RANGE`:'NOT INSTALLED / OFFLINE'}</p>${battle.enemies.map((enemy,i)=>enemyAlive(enemy)?`<button data-drone-target="${i}" aria-pressed="${(battle.droneTarget??0)===i}">TARGET ${enemy.name} ${i+1}</button>`:'').join('')}`:''}`;
@@ -2349,6 +2385,62 @@
     return Math.abs(angleDifference(mount.direction,aim))<=def.arc*Math.PI/360
       &&(def.hullPass||hullRay(weaponGeometry(weapon),aim-player.angle,save.modules.flatMap(moduleCells),dist/COMBAT_TILE)>=dist/COMBAT_TILE);
   }
+  function beamSpan(origin,target){return clamp(Math.atan2((target.r||25)+12,distance(origin,target)),.06,.55);}
+  function startBeam(emitter,target,options){
+    const origin=options.drone?emitter:weaponWorld(emitter,battle.player);
+    (battle.beams??=[]).push({emitter,target,...options,elapsed:0,span:beamSpan(origin,target),hitRooms:new Set(),x:origin.x,y:origin.y,to:{x:origin.x,y:origin.y}});
+  }
+  function beamEmitterPower(beam){
+    if(beam.drone){
+      const drone=beam.emitter,bay=save.modules.find((room)=>room.id===drone.bay);
+      return save.drones.includes(drone)&&drone.hp>0&&drone.phase==='active'&&bay&&droneBayClear(bay)?systemPower(bay):0;
+    }
+    return save.modules.includes(beam.emitter)&&beam.emitter.hp>0?systemPower(beam.emitter):0;
+  }
+  function traceBeam(beam,progress){
+    const player=battle.player,origin=beam.drone?beam.emitter:weaponWorld(beam.emitter,player);
+    let angle=Math.atan2(beam.target.y-origin.y,beam.target.x-origin.x)+(progress*2-1)*beam.span;
+    if(!beam.drone){
+      const half=MODULES[beam.emitter.type].arc*Math.PI/360;
+      beam.emitter.aimOffset=clamp(angleDifference(origin.direction,angle),-half,half);angle=origin.direction+beam.emitter.aimOffset;beam.emitter.flash=.08;
+    }else beam.emitter.facing=angle;
+    const dx=Math.cos(angle),dy=Math.sin(angle),cells=save.modules.flatMap(moduleCells);
+    let stop=Math.min(beam.range,hullRay(worldToHull(origin,player),angle-player.angle,cells,beam.range/COMBAT_TILE)*COMBAT_TILE),target=null,room=null,rock=null,hullDistance=Infinity;
+    for(const candidate of battle.asteroids||[]){const entry=rayCircle(origin,dx,dy,candidate,candidate.r);if(entry<stop){stop=entry;rock=candidate;}}
+    for(const enemy of battle.enemies){
+      if(!enemyAlive(enemy))continue;
+      const contact=rayEnemyRoom(origin,dx,dy,enemy,beam.range);
+      const entry=enemyShieldStrength(enemy)>0?Math.min(contact.distance,rayCircle(origin,dx,dy,enemy,enemy.r+17)):contact.distance;
+      if(entry<stop){stop=entry;target=enemy;room=contact.room;hullDistance=contact.distance;rock=null;}
+    }
+    const point={x:origin.x+dx*stop,y:origin.y+dy*stop},key=target?(hullDistance<=beam.range?room||target:null):rock;
+    if(key&&!beam.hitRooms.has(key)){
+      beam.hitRooms.add(key);
+      if(target){
+        // Shield strength is reduced at one third of hull damage. Only the
+        // unabsorbed fraction becomes full-strength damage after collapse.
+        const damage=absorbEnemyShields(target,beam.damage/3)*3;
+        if(damage>1e-7)hurtEnemy(target,damage,room,{x:origin.x+dx*hullDistance,y:origin.y+dy*hullDistance});
+      }else if(rock)damageAsteroid(rock,beam.damage);
+      (battle.effects??=[]).push({...point,r:12,color:beam.color,time:.18,duration:.18});
+    }
+    beam.x=origin.x;beam.y=origin.y;beam.to=point;
+  }
+  function updateBeams(dt){
+    for(const beam of battle.beams||[]){
+      if(!enemyAlive(beam.target)){beam.done=true;continue;}
+      const power=beamEmitterPower(beam);if(!power){beam.done=true;continue;}
+      const next=Math.min(beam.duration,beam.elapsed+dt*(beam.drone?power:1)),steps=Math.max(1,Math.ceil((next-beam.elapsed)/.015));
+      for(let i=0;i<=steps;i++){if(!enemyAlive(beam.target))break;traceBeam(beam,(beam.elapsed+(next-beam.elapsed)*i/steps)/beam.duration);}
+      beam.elapsed=next;beam.done=next>=beam.duration;
+    }
+    battle.beams=(battle.beams||[]).filter((beam)=>!beam.done);
+  }
+  function drawBeam(g,beam){
+    g.save();g.lineCap='round';g.strokeStyle=beam.color;g.globalAlpha=.22;g.lineWidth=9;
+    g.beginPath();g.moveTo(beam.x,beam.y);g.lineTo(beam.to.x,beam.to.y);g.stroke();
+    g.globalAlpha=.95;g.lineWidth=3;g.stroke();g.strokeStyle='#fff6db';g.lineWidth=1;g.stroke();g.restore();
+  }
   function fireProjectile(owner,x,y,target,damage,speed,range=speed*2.3,options={}){
     const angle=options.angle??Math.atan2(target.y-y,target.x-x);
     battle.projectiles.push({owner,x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,damage,life:range/speed,remaining:range,hitIds:new Set(),hitRooms:new Set(),...options});
@@ -2357,7 +2449,7 @@
     const mount=weaponWorld(weapon,player),base=weaponGeometry(weapon).direction,def=MODULES[weapon.type];
     if(!target)return 0;
     const launch=def.guidance?missileLaunch(weapon):null;
-    return launch?angleDifference(base,launch.angle):clamp(angleDifference(mount.direction,Math.atan2(target.y-mount.y,target.x-mount.x)),-def.arc*Math.PI/360,def.arc*Math.PI/360);
+    return launch?angleDifference(base,launch.angle):clamp(angleDifference(mount.direction,Math.atan2(target.y-mount.y,target.x-mount.x))-(def.beamDuration?beamSpan(mount,target):0),-def.arc*Math.PI/360,def.arc*Math.PI/360);
   }
   function turnWeapon(weapon,player,target,dt){
     const wanted=weaponAim(weapon,player,target),current=weapon.aimOffset||0;
@@ -2369,6 +2461,7 @@
     const aim=Math.atan2(target.y-mount.y,target.x-mount.x),spread=(def.spread||0)*Math.PI/180,half=def.arc*Math.PI/360;
     const launch=def.guidance?missileLaunch(weapon):null;
     if(def.guidance&&!launch)return;weapon.aimOffset=weaponAim(weapon,player,target);weapon.flash=.07;
+    if(def.beamDuration){startBeam(weapon,target,{damage:def.damage+(weapon.level-1)*5,range:weaponRange(weapon),duration:def.beamDuration,color:def.color});return;}
     for(let i=0;i<salvo;i++){
       const angle=launch?player.angle+launch.angle:mount.direction+clamp(angleDifference(mount.direction,aim+(salvo===1?0:(i/(salvo-1)-.5)*spread)),-half,half);
       fireProjectile('player',mount.x+Math.cos(angle)*.01,mount.y+Math.sin(angle)*.01,target,def.damage+(weapon.level-1)*5,def.speed,weaponRange(weapon),{
@@ -2614,6 +2707,7 @@
     for(const weapon of activeModules(...WEAPON_TYPES)){
       weapon.flash=Math.max(0,(weapon.flash||0)-dt);
       const def=MODULES[weapon.type],mount=weaponWorld(weapon,p);weapon.cooldown-=dt;
+      if(b.beams?.some((beam)=>beam.emitter===weapon))continue;
       const burst=b.projectiles.find((shot)=>shot.emitter===weapon&&shot.delay>0&&shot.burstTarget&&enemyAlive(shot.burstTarget)&&weaponCanTarget(weapon,p,shot.burstTarget));
       const target=burst?.burstTarget||living.filter((enemy)=>weaponCanTarget(weapon,p,enemy)).sort((a,c)=>distance(a,mount)-distance(c,mount))[0];
       const aligned=turnWeapon(weapon,p,target,dt);
@@ -2637,6 +2731,7 @@
       enemy.angle+=clamp(angleDifference(enemy.angle,Math.atan2(p.y-enemy.y,p.x-enemy.x)),-dt*2,dt*2);
       fireEnemyWeapons(enemy,dt);
     }
+    updateBeams(dt);
     for(let i=b.projectiles.length-1;i>=0;i--){
       const shot=b.projectiles[i];let step=dt;
       if(shot.delay>0){
@@ -2693,7 +2788,7 @@
           stop=shield.distance;hit=true;target=p;hitRock=null;shielded=true;shieldAngle=shield.angle;
         }
       }
-      if(shot.owner==='enemy'&&!shot.evaded)for(const drone of b.drones||[])if(drone.hp>0&&['combat','defense'].includes(drone.type)){const entry=rayCircle(shot,dx,dy,drone,9);if(entry<stop){stop=entry;hit=true;target=null;hitRock=null;shielded=false;hitDrone=drone;}}
+      if(shot.owner==='enemy'&&!shot.evaded)for(const drone of b.drones||[])if(drone.hp>0&&['combat','beam','defense'].includes(drone.type)&&['launching','active'].includes(drone.phase)){const entry=rayCircle(shot,dx,dy,drone,9);if(entry<stop){stop=entry;hit=true;target=null;hitRock=null;shielded=false;hitDrone=drone;}}
       shot.x+=dx*stop;shot.y+=dy*stop;shot.remaining-=stop;shot.life-=step;shot.muzzleClearance=Math.max(0,(shot.muzzleClearance||0)-stop);shot.launchRemaining=Math.max(0,(shot.launchRemaining||0)-stop);
       if(hitDrone){hitDrone.hp=Math.max(0,hitDrone.hp-shot.damage);}
       else if(target&&shot.owner==='player'){
@@ -2846,7 +2941,8 @@
     ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(shipSprite,(minX-art.x)*TILE*art.scale,(minY-art.y)*TILE*art.scale,width*TILE*art.scale,height*TILE*art.scale,(minX-bounds.cx)*COMBAT_TILE,(minY-bounds.cy)*COMBAT_TILE,width*COMBAT_TILE,height*COMBAT_TILE);
     ctx.restore();
     drawShields(p);
-    for(const drone of b.drones||[])if(drone.hp>0&&drone.type!=='repair'&&['launching','active','outbound'].includes(drone.phase))drawDroneSprite(ctx,drone.x,drone.y,drone.type);
+    for(const drone of b.drones||[])if(drone.hp>0&&drone.type!=='repair'&&['launching','active','outbound'].includes(drone.phase))drawDroneSprite(ctx,drone.x,drone.y,drone.type,drone.facing||0);
+    for(const beam of b.beams||[])drawBeam(ctx,beam);
     for(const effect of b.effects||[]){
       ctx.globalAlpha=effect.time/effect.duration;ctx.fillStyle=effect.color;
       if(effect.text){ctx.font='14px monospace';ctx.fillText(effect.text,effect.x,effect.y-(1-effect.time/effect.duration)*15);}

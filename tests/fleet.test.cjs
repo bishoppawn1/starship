@@ -56,8 +56,8 @@ test('starter migration repairs only the untouched legacy design and never dupli
   g.migrateStarter(custom);assert.equal(custom.modules.length,4);
 });
 
-test('exactly 20 distinct weapons support all room rotations, crew stations, and firing',()=>{
-  const g=game();assert.equal(g.WEAPON_TYPES.length,20);assert.equal(new Set(g.WEAPON_TYPES.map((type)=>g.MODULES[type].name)).size,20);
+test('exactly 22 distinct weapons support all room rotations, crew stations, and firing',()=>{
+  const g=game();assert.equal(g.WEAPON_TYPES.length,22);assert.equal(new Set(g.WEAPON_TYPES.map((type)=>g.MODULES[type].name)).size,22);
   const signatures=new Set();
   for(const type of g.WEAPON_TYPES){
     const def=g.MODULES[type];signatures.add([def.range,def.arc,def.damage,def.reload,def.ammo,def.salvo||1].join(','));
@@ -66,10 +66,10 @@ test('exactly 20 distinct weapons support all room rotations, crew stations, and
     }
     const {b,gun}=combat(g,type);g.getSave().modules.push(gun);
     const mount=g.weaponWorld(gun,b.player),target=enemy(mount.x+100,mount.y);b.enemies=[target];
-    g.fireWeapon(gun,b.player,target);assert.equal(b.projectiles.length,def.salvo||1);assert.ok(b.projectiles.every((shot)=>shot.remaining===def.range));
+    g.fireWeapon(gun,b.player,target);if(def.beamDuration){assert.equal(b.beams.length,1);assert.equal(b.beams[0].range,def.range);}else{assert.equal(b.projectiles.length,def.salvo||1);assert.ok(b.projectiles.every((shot)=>shot.remaining===def.range));}
     assert.equal(g.crewGoal({task:'gun',x:3,y:3},{}).module.type,type);
   }
-  assert.equal(signatures.size,20);
+  assert.equal(signatures.size,22);
 });
 
 test('traders draw limited random stock with repeats and no guaranteed module type',()=>{
@@ -154,8 +154,8 @@ test('every weapon is included in automatic combat fire and spends its own trigg
   const g=game();
   for(const type of g.WEAPON_TYPES){
     const {b,gun}=combat(g,type);g.getSave().modules.push(gun);const def=g.MODULES[type];gun.magazine=def.magazine;const mount=g.weaponWorld(gun,b.player);
-    b.enemies=[enemy(mount.x+100,mount.y)];g.updateBattle(.001,0);
-    assert.equal(gun.magazine,def.magazine-def.ammo,type);assert.equal(b.ammo,100);assert.equal(b.projectiles.length,def.salvo||1,type);
+    b.enemies=[enemy(mount.x+100,mount.y)];g.updateBattle(.001,0);if(def.beamDuration)for(let step=0;step<500&&!b.beams?.length;step++)g.updateBattle(.001,0);
+    assert.equal(gun.magazine,def.magazine-def.ammo,type);assert.equal(b.ammo,100);assert.equal(def.beamDuration?b.beams.length:b.projectiles.length,def.beamDuration?1:def.salvo||1,type);
   }
 });
 

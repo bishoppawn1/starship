@@ -77,12 +77,12 @@ test('swarm rockets launch one at a time while scatter and flak salvos remain si
   }
 });
 
-test('all twenty weapon types can land real shots through the combat loop',()=>{
+test('all twenty-two weapon types can land real shots through the combat loop',()=>{
   const g=game();for(const type of g.WEAPON_TYPES){const {b,weapon,target}=combat(g,type);g.fireWeapon(weapon,b.player,target);for(let i=0;i<150;i++)g.updateBattle(.02,0);assert.ok(target.hp<1000,`${type} never hit its target`);}
 });
 
 test('each weapon has a distinct drawn silhouette, including pods and torpedo tubes',()=>{
-  const g=game(),signatures=new Set();for(const type of g.WEAPON_TYPES){const rectangles=[],context={save(){},restore(){},translate(){},fillRect(...args){rectangles.push(args);}};g.drawWeaponSprite(context,type);signatures.add(JSON.stringify(rectangles));}assert.equal(signatures.size,20);
+  const g=game(),signatures=new Set();for(const type of g.WEAPON_TYPES){const rectangles=[],context={save(){},restore(){},translate(){},fillRect(...args){rectangles.push(args);}};g.drawWeaponSprite(context,type);signatures.add(JSON.stringify(rectangles));}assert.equal(signatures.size,22);
 });
 
 test('UI behavior details are derived from the real burst, guidance, and status settings',()=>{

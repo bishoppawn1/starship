@@ -77,7 +77,7 @@ test('mirrored weapon sprites and hull-clipped overlays agree with real shot dir
   const g=game();for(const type of g.WEAPON_TYPES){
     const {weapon,b}=setup(g,type,{flipped:true}),mount=g.weaponWorld(weapon,b.player),target=enemy(mount.x-120,mount.y);b.enemies=[target];
     assert.equal(g.weaponCanTarget(weapon,b.player,target),true,type);g.fireWeapon(weapon,b.player,target);
-    assert.ok(b.projectiles[0].vx<0,type);
+    if(g.MODULES[type].beamDuration){g.updateBattle(.02,0);assert.ok(b.beams[0].to.x<b.beams[0].x,type);}else assert.ok(b.projectiles[0].vx<0,type);
     for(let step=0;step<180;step++)g.updateBattle(.02,0);assert.ok(target.hp<10000,`${type} did not hit from its mirrored mount`);
   }
   const {weapon,save}=setup(g,'weapon',{flipped:true}),points=[],context={beginPath(){},moveTo(){},lineTo(x,y){points.push([x,y]);},closePath(){},fill(){},stroke(){}};
