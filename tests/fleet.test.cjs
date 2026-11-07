@@ -183,7 +183,7 @@ test('a swept player projectile damages the first pirate room it crosses',()=>{
   assert.equal(engine.hp,engine.maxHp-14);assert.equal(core.hp,core.maxHp);
 });
 
-test('focused shield strength covers one arc and recharges faster than full-hull strength',()=>{
+test('local focused shield covers its own arc and recharges faster than a wide field',()=>{
   const g=game(),save=g.newSave();save.modules=save.modules.filter((module)=>module.type!=='shield');
   save.modules.push({id:20,type:'shield',x:1,y:1,rotation:0,level:1,hp:85});
   save.modules.push({id:21,type:'focusShield',x:8,y:6,rotation:0,level:1,hp:75});
@@ -192,11 +192,11 @@ test('focused shield strength covers one arc and recharges faster than full-hull
   const front=g.shieldInterception({x:700,y:500},-1,0,player,300);
   const back=g.shieldInterception({x:300,y:500},1,0,player,300);
   assert.ok(front.distance<back.distance,'the focused barrier extends ahead of the wide shell');
-  assert.equal(g.absorbShields(50,0),0);
+  assert.equal(g.absorbShields(50,[save.modules.find((room)=>room.id===21)]),0);
   assert.equal(battle.shields[21].charge,110);
-  assert.equal(g.absorbShields(50,Math.PI),0);
-  assert.equal(g.absorbShields(50,Math.PI),0);
-  assert.equal(g.absorbShields(50,Math.PI),50);
+  assert.equal(g.absorbShields(50,[save.modules.find((room)=>room.id===20)]),0);
+  assert.equal(g.absorbShields(50,[save.modules.find((room)=>room.id===20)]),0);
+  assert.equal(g.absorbShields(50,[save.modules.find((room)=>room.id===20)]),50);
   assert.equal(battle.shields[20].charge,0);
   g.updateShields(2.5);assert.ok(battle.shields[21].charge>110);assert.ok(battle.shields[20].charge>0);assert.ok(g.shieldStats(save.modules.at(-1)).recharge>g.shieldStats(save.modules.at(-2)).recharge);
 });
@@ -244,7 +244,7 @@ test('trader moves keep room identity, damage, upgrades, range, and crew, withou
   g.selectModule(gun.id);assert.equal(g.beginModuleMove(),false);
   g.openTrader({type:'trader',stock:[]});g.selectModule(gun.id);assert.equal(g.beginModuleMove(),true);
   const metal=save.metal,inventory=JSON.stringify(save.inventory),original={...gun};
-  g.onGridClick(0,0);assert.equal(JSON.stringify(gun),JSON.stringify(original));
+  assert.equal(g.canPlace(gun.type,0,0,gun.rotation),true);assert.equal(JSON.stringify(gun),JSON.stringify(original));
   let destination;
   for(let y=0;y<10;y++)for(let x=0;x<12;x++)if(g.canPlace(gun.type,x,y,gun.rotation)&&(x!==gun.x||y!==gun.y))destination={x,y};
   assert.ok(destination);g.onGridClick(destination.x,destination.y);
@@ -254,13 +254,13 @@ test('trader moves keep room identity, damage, upgrades, range, and crew, withou
   assert.ok(save.modules.flatMap(g.moduleCells).some(([x,y])=>x===Math.floor(save.crew[0].x)&&y===Math.floor(save.crew[0].y)));
 });
 
-test('moving a connecting room cannot disconnect other rooms and leaving a trader cancels the move',()=>{
+test('moving a bridge may disconnect rooms, and leaving a connected hull cancels an unconfirmed move',()=>{
   const g=game(),save=g.newSave();save.modules=[
     {id:1,type:'core',x:4,y:4,rotation:0,hp:170,level:1},
     {id:2,type:'armor',footprint:{shape:[[0,0],[1,0],[2,0]],station:null},x:6,y:4,rotation:0,hp:65,level:1},
     {id:3,type:'core',x:9,y:4,rotation:0,hp:170,level:1}];g.setSave(save);
   g.openTrader({type:'trader',stock:[]});g.selectModule(2);g.beginModuleMove();
-  assert.equal(g.canPlace('armor',4,3,0),false);
+  assert.equal(g.canPlace('armor',4,3,0),true);
   const before=JSON.stringify(save.modules);g.setMode('hangar');g.onGridClick(4,3);assert.equal(JSON.stringify(save.modules),before);
 });
 

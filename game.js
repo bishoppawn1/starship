@@ -22,12 +22,12 @@
     heavyEngine: { name: 'Heavy Ion Engine', short: 'E', color: '#a7c99b', shape: [[0,0],[1,0],[0,1],[1,1],[0,2],[1,2]], station: [0,1], hp: 125, cost: 70, thrust: 620, description: 'Six-cell drive with three exhaust nozzles. High force for heavy hulls. Keep the exhaust clear.' },
     weapon: { name: 'Pulse Cannon', short: 'W', color: C.weapon, shape: [[0,0],[1,0],[1,1]], station: [1,1], mount: [1,0], muzzle: [2,.5], hp: 75, cost: 45, range: 420, arc: 130, damage: 14, reload: 1.2, ammo: 1, description: 'A crewed pulse cannon with a 130° forward firing arc.' },
     railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range slug pierces two aligned rooms within a narrow 50° arc.' },
-    shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:100, recharge:10, description: 'A 100-strength full-hull shield. Shared power and a crew operator improve recharge.' },
-    focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:160, recharge:16, arc:105, description: 'A 160-strength shield covering a 105° sector. Aim it independently in the inspector, including during combat; room placement does not lock its direction.' },
+    shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:100, recharge:10, shieldRadius:90, description: 'Projects a 100-strength local bubble 90 units (3 tiles) from this room. Distant hull sections remain exposed. Shared power and crew improve recharge.' },
+    focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:160, recharge:16, shieldRadius:120, arc:105, description: 'Projects a local 160-strength, 105° sector up to 120 units (4 tiles) from this room. Position and aim determine which hull sections are protected.' },
     generator: { name: 'Small Power Generator', short: 'G', color: '#e5be72', shape: [[0,0],[1,0]], station: [0,0], hp: 65, cost: 35, generation: 2, description: 'Compact two-cell generator. Adds 2 shared power; each upgrade adds 1 more. No crew or power required.' },
     teleporter: { name: 'Crew Teleporter', short: 'T', color: '#a5e2d7', shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 80, cost: 75, description: 'Send selected crew from this pad to an enemy within 600 units. Recall them after a 12-second recharge. Requires shared power.' },
     droneControl: { name: 'Drone Bay', short: 'D', color: '#b9cde4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 65, door:[2,.5], description: 'Launches crew-loaded drones automatically through a clear exterior door. Two drone slots, plus one per upgrade. Build a Drone Assembly and leave the launch lane open.' },
-    droneAssembly: { name: 'Drone Assembly', short: 'A', color: '#d3be8e', shape: [[0,0],[1,0],[0,1],[1,1]], station:[0,0], hp:80, cost:50, description:'Builds and replaces one configured drone. Crew must carry the finished drone to a bay; no parts or launch costs. Requires power and a Drone Bay to operate the drone.' },
+    droneAssembly: { name: 'Drone Assembly', short: 'A', color: '#d3be8e', shape: [[0,0],[1,0],[0,1],[1,1]], station:[0,0], hp:80, cost:50, description:'Continuously builds drones for crew to carry to a bay. Pause production when you have enough. Requires shared power; no parts or launch costs.' },
     ammoAssembly: { name: 'Ammo Assembly', short: 'A', color: '#d8b579', shape: [[0,0],[0,1]], station: [0,0], hp: 75, cost: 45, description: 'Powered ammunition factory. Uses shared power only to make heavy rounds (4 per batch) or missiles (2 per batch). Crew collect finished rounds here and carry them to matching magazines.' },
     armor: { name: 'Armor Plating', short: 'A', color: C.armor, shape: [[0,0],[1,0],[0,1]], station: null, hp: 115, cost: 20, description: 'Open, durable floor that can absorb damage.' }
   };
@@ -536,6 +536,7 @@
   }
   function connectedHull(modules) {
     const cells=new Set(modules.flatMap(moduleCells).map(([x,y])=>`${x},${y}`));
+    if(!cells.size)return false;
     const queue=[cells.values().next().value],seen=new Set(queue);
     for(const key of queue){const [x,y]=key.split(',').map(Number);for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
       const next=`${x+dx},${y+dy}`;if(cells.has(next)&&!seen.has(next)){seen.add(next);queue.push(next);}
@@ -549,7 +550,7 @@
       save.modules=original.filter((module)=>module!==moving);
       try {
         const candidate={...moving,x,y,rotation,weaponFacing:buildWeaponFacing,flipped:placementFlipped(type),footprint:refittingFootprint?null:moving.footprint};
-        return canPlaceFootprint(type,x,y,rotation,candidate.footprint)&&connectedHull([...save.modules,candidate])&&weaponsHaveClearArc([...save.modules,candidate])&&droneLanesPreserved([...save.modules,candidate],original);
+        return canPlaceFootprint(type,x,y,rotation,candidate.footprint,mode!=='trade')&&(mode==='trade'||connectedHull([...save.modules,candidate]))&&weaponsHaveClearArc([...save.modules,candidate])&&droneLanesPreserved([...save.modules,candidate],original);
       } finally {save.modules=original;}
     }
     if(!canPlaceFootprint(type,x,y,rotation))return false;
@@ -652,12 +653,12 @@
     const outside=exteriorCells(new Set(occupied.keys()));
     return moduleClearance(module).every(([x,y])=>!occupied.has(`${x},${y}`)&&!reserved.has(`${x},${y}`)&&outside.has(`${x},${y}`));
   }
-  function canPlaceFootprint(type,x,y,rotation,footprint=null) {
+  function canPlaceFootprint(type,x,y,rotation,footprint=null,requireConnection=true) {
     const occupied=occupancy(),candidate={type,x,y,rotation,weaponFacing:buildWeaponFacing,flipped:placementFlipped(type),footprint},cells=moduleCells(candidate);
     if(cells.some(([cx,cy])=>occupied.has(`${cx},${cy}`)))return false;
     const reserved=new Set(save.modules.flatMap(moduleClearance).map(([cx,cy])=>`${cx},${cy}`));
     if(cells.some(([cx,cy])=>reserved.has(`${cx},${cy}`)))return false;
-    if(!cells.some(([cx,cy])=>[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>occupied.has(`${cx+dx},${cy+dy}`))))return false;
+    if(requireConnection&&!cells.some(([cx,cy])=>[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>occupied.has(`${cx+dx},${cy+dy}`))))return false;
     const blocked=new Set([...occupied.keys(),...cells.map(([cx,cy])=>`${cx},${cy}`)]);
     const clearance=moduleClearance(candidate);
     if(clearance.some(([cx,cy])=>blocked.has(`${cx},${cy}`)))return false;
@@ -740,11 +741,13 @@
     rearrangingShip=!rearrangingShip;renderAll();return true;
   }
   function renderRefitControls(){
-    const moving=save.modules.find((module)=>module.id===movingModuleId),grid=$('buildGrid');
+    const moving=save.modules.find((module)=>module.id===movingModuleId),grid=$('buildGrid'),disconnected=!connectedHull(save.modules);
+    $('leaveTrader').disabled=disconnected;
+    $('leaveTrader').title=disconnected?'Reconnect every room before leaving the trader.':'';
     $('rearrangeShip').textContent=rearrangingShip?'FINISH REARRANGING':'REARRANGE SHIP · FREE';
     $('rearrangeShip').setAttribute('aria-pressed',String(rearrangingShip));
     $('cancelRoomMove').hidden=!moving;
-    $('refitStatus').textContent=moving?`Moving ${MODULES[moving.type].name}. Click a clear connected position to place it. Q / E rotate${MODULES[moving.type].range?' · F flips':''}. Escape cancels.`:rearrangingShip?'Click a room to pick it up, then click its new position. Moving rooms is free.':'Drag any room to move it, or choose Rearrange Ship to use clicks.';
+    $('refitStatus').textContent=(disconnected?'ROOMS DISCONNECTED · Reconnect every room by an edge before leaving. ':'')+(moving?`Moving ${MODULES[moving.type].name}. Click clear space to place it. Q / E rotate${MODULES[moving.type].range?' · F flips':''}. Escape cancels.`:rearrangingShip?'Click a room to pick it up, then click its new position. Temporary gaps are allowed while docked.':'Drag any room to move it, or choose Rearrange Ship to use clicks. Temporary gaps are allowed while docked.');
     grid.classList[mode==='trade'&&rearrangingShip?'add':'remove']('rearranging-ship');
     grid.classList[moving?'add':'remove']('moving-room');
   }
@@ -865,7 +868,7 @@
     if(existing&&!selectedCatalog){selectedModuleId=existing.id;if(mode==='trade'&&rearrangingShip)beginModuleMove();else renderAll();return;}
     if(mode!=='trade'||!selectedCatalog){toast('Visit a trader to buy and install modules.');return;}
     const place=placementAt(selectedCatalog,x,y,buildRotation);
-    if(!place.valid){toast('Connect rooms and keep exhaust and a weapon arc clear to space.');return;}
+    if(!place.valid){toast(movingModuleId!==null?'Keep rooms clear of each other, exhaust, and weapon arcs.':'Connect rooms and keep exhaust and a weapon arc clear to space.');return;}
     if(movingModuleId!==null){
       const module=save.modules.find((part)=>part.id===movingModuleId),oldCells=new Set(moduleCells(module).map(([cx,cy])=>`${cx},${cy}`));
       const occupants=save.crew.filter((person)=>oldCells.has(`${Math.floor(person.x)},${Math.floor(person.y)}`));
@@ -899,12 +902,12 @@
     if(!module){$('moduleInspector').innerHTML='<div class="empty-inspector">Click a ship room to inspect its station, firing arc, upgrade, or repair it.</div>';return;}
     const def=MODULES[module.type],maximum=maxHp(module),ratio=module.hp/maximum,upgradeCost=25*module.level+(module.type==='core'?10:0),repairCost=Math.ceil((maximum-module.hp)/10)*3;
     const direction=['RIGHT','DOWN','LEFT','UP'][def.range?weaponFacingQuarter(module):module.rotation];
-    const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° FOCUSED ARC · AIM ${shieldDirection(module)}°`} · ${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
-    const shieldAim=module.type==='focusShield'?`<label class="weapon-range">AIM SHIELD<select id="shieldDirection" aria-label="Shield direction">${[...new Set([0,45,90,135,180,225,270,315,shieldDirection(module)])].sort((a,b)=>a-b).map((degrees)=>`<option value="${degrees}" ${degrees===shieldDirection(module)?'selected':''}>${degrees}°${({0:' · RIGHT',90:' · DOWN',180:' · LEFT',270:' · UP'})[degrees]||''}</option>`).join('')}</select></label><div class="shield-aim-controls"><button data-shield-turn="-15" type="button" aria-label="Aim shield counterclockwise">↶ 15°</button><button data-shield-turn="15" type="button" aria-label="Aim shield clockwise">15° ↷</button></div><p class="muted small">Direction follows the ship, independently of this room. Re-aim at any time; no refit needed.</p>`:'';
+    const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'LOCAL BUBBLE':`${def.arc}° LOCAL ARC · AIM ${shieldDirection(module)}°`} · ${def.shieldRadius} RANGE FROM ROOM · ${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
+    const shieldAim=module.type==='focusShield'?`<label class="weapon-range">AIM SHIELD<select id="shieldDirection" aria-label="Shield direction">${[...new Set([0,45,90,135,180,225,270,315,shieldDirection(module)])].sort((a,b)=>a-b).map((degrees)=>`<option value="${degrees}" ${degrees===shieldDirection(module)?'selected':''}>${degrees}°${({0:' · RIGHT',90:' · DOWN',180:' · LEFT',270:' · UP'})[degrees]||''}</option>`).join('')}</select></label><div class="shield-aim-controls"><button data-shield-turn="-15" type="button" aria-label="Aim shield counterclockwise">↶ 15°</button><button data-shield-turn="15" type="button" aria-label="Aim shield clockwise">15° ↷</button></div><p class="muted small">Field starts at this room. Move the room to relocate protection; aim follows the ship. Re-aim at any time.</p>`:'';
     const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · ${def.guidance?'UNLIMITED RANGE':`RANGE ${weaponRange(module)}`} · ${direction}${module.flipped?' · MIRRORED':''} · ${ammoLabel(def)}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE · ${def.thrust} BASE</div><div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
     const ammoDetail=def.ammoType?`<div id="magazineDetail" class="inspector-detail">${def.ammoType.toUpperCase()} MAGAZINE ${magazineCount(module)} / ${def.magazine}${magazineCount(module)<def.ammo?' · EMPTY · NEEDS LOADER':''}</div>`:module.type==='ammoAssembly'?`<label class="weapon-range">PRODUCE <select id="ammoRecipe"><option value="heavy" ${module.ammoRecipe!=='missile'?'selected':''}>Heavy · 4 rounds / batch</option><option value="missile" ${module.ammoRecipe==='missile'?'selected':''}>Missile · 2 rounds / batch</option></select></label><p class="muted small">Uses energy only. One batch every 4 seconds at full power. Finished rounds stay here until a loader collects them.</p>`:'';
     const rangeControl=def.range?`<div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div><div class="weapon-rules">${weaponBehavior(module.type)}</div>${!def.guidance?`<label class="weapon-range" for="weaponRange">RANGE LIMIT <input id="weaponRange" type="number" min="30" max="${def.range}" step="1" value="${weaponRange(module)}" ${!['hangar','trade'].includes(mode)?'disabled':''}><span>MAX ${def.range}</span></label>`:''}${mode==='trade'?'<button id="flipWeapon" class="outline-button full-width" type="button">FLIP WEAPON ↔ · FREE</button>':''}${def.mountFacings===2?`<button id="rotateWeapon" class="outline-button full-width" type="button" ${!['hangar','trade'].includes(mode)?'disabled':''}>TURN MOUNT 90° ↻</button>`:''}`:'';
-    const droneInfo=module.type==='droneControl'?`<div class="inspector-detail">LAUNCH → ${direction} · ${droneBayClear(module)?'CLEAR TO SPACE':'BLOCKED · MOVE BAY TO EXTERIOR'} · ${droneBayCapacity(module)} SLOTS</div>`:module.type==='droneAssembly'?`<label class="drone-assembly">DRONE DESIGN<select id="inspectorDroneDesign" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===(module.droneType||'combat')?'selected':''}>${def.name}</option>`).join('')}</select></label><div class="inspector-detail">ONE DRONE · ${assemblyTime(module).toFixed(1)}s BUILD TIME · AUTOMATIC REPLACEMENT</div>`:'';
+    const droneInfo=module.type==='droneControl'?`<div class="inspector-detail">LAUNCH → ${direction} · ${droneBayClear(module)?'CLEAR TO SPACE':'BLOCKED · MOVE BAY TO EXTERIOR'} · NO DRONE LIMIT</div>`:module.type==='droneAssembly'?`<label class="drone-assembly">DRONE DESIGN<select id="inspectorDroneDesign" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===(module.droneType||'combat')?'selected':''}>${def.name}</option>`).join('')}</select></label><div class="inspector-detail">CONTINUOUS PRODUCTION · ${assemblyTime(module).toFixed(1)}s PER DRONE AT FULL POWER</div>`:'';
     $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}${shieldAim}${ammoDetail}<div class="inspector-detail">${systemDemand(module)?`AUTO POWER ${systemSupply(module).toFixed(2)} · ${Math.round(systemPower(module)*100)}% PERFORMANCE`:module.type==='core'?'PILOT CONSOLE · ROOM UPGRADES ADD HULL ONLY':def.generation?`GENERATOR OUTPUT ${generatorOutput(module)} · SHARED EQUALLY · +1 PER UPGRADE`:'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${droneInfo}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>${module.type==='core'?'REINFORCE ROOM':'UPGRADE'}<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
     if(module.type==='focusShield'){
       $('shieldDirection').addEventListener('change',(event)=>setShieldDirection(module.id,+event.target.value));
@@ -1228,7 +1231,7 @@
     g.globalAlpha=.7;
     for(const [x,y] of moduleCells(module)){g.fillStyle=preview.valid?'#81e4bb':'#ed7783';g.fillRect(x*TILE+1,y*TILE+1,TILE-2,TILE-2);}
     g.globalAlpha=1;drawStation(g,module);drawExteriorHardware(g,module);
-    if(SHIELD_TYPES.includes(module.type))drawShieldCoverage(g,module,TILE,[...save.modules.filter((part)=>part.id!==movingModuleId),module]);
+    if(SHIELD_TYPES.includes(module.type))drawShieldCoverage(g,module,TILE);
     if(MODULES[module.type].range){
       const mount=weaponGeometry(module);g.fillStyle='#fff2bd';g.fillRect(mount.x*TILE-2,mount.y*TILE-2,4,4);
     }
@@ -1377,7 +1380,7 @@
       if(attackers.length&&enemy.crew?.length&&enemy.crew.every((guard)=>guard.hp<=0)){enemy.captured=true;const core=enemy.modules.find((room)=>room.type==='core');if(core)core.hp=0;enemy.hp=0;for(const person of boarders)if(crewAlive(person))recallCrew(person.id,true);}
     });
   }
-  function droneBayCapacity(bay){return bay.level+1;}
+  function droneBayCapacity(){return Infinity;}
   function droneBayDoor(bay){const [x,y]=moduleGeometry(bay).door;return {x:bay.x+x,y:bay.y+y,direction:bay.rotation*Math.PI/2};}
   function droneBayClear(bay,modules=save.modules){
     const door=droneBayDoor(bay),cells=modules.flatMap(moduleCells),limit=hullEscapeLimit(door,cells);
@@ -1414,8 +1417,7 @@
   }
   function droneDeliveryBay(person,drone){
     const point=person.droneCargo===drone.id?person:dronePickupPoint(drone);
-    const bays=save.modules.filter((bay)=>bay.type==='droneControl'&&bay.hp>0&&droneBayClear(bay)&&
-      (save.drones||[]).filter((other)=>other!==drone&&other.hp>0&&other.bay===bay.id&&(other.phase!=='stored'||other.carrier)).length<droneBayCapacity(bay)&&droneCanReach(point,moduleStation(bay)));
+    const bays=save.modules.filter((bay)=>bay.type==='droneControl'&&bay.hp>0&&droneBayClear(bay)&&droneCanReach(point,moduleStation(bay)));
     return bays.find((bay)=>bay.id===person.droneJob?.bay)||bays.sort((a,b)=>distance(point,moduleStation(a))-distance(point,moduleStation(b)))[0];
   }
   function planDroneDeliveries(people,assignments){
@@ -1455,10 +1457,10 @@
   }
   function normalizeDrones(data){
     delete data.droneParts;for(const node of data.map?.nodes||[])delete node.dronePacks;
-    const seen=new Set();data.drones=(Array.isArray(data.drones)?data.drones:[]).filter((drone)=>{
+    data.drones=(Array.isArray(data.drones)?data.drones:[]).filter((drone)=>{
       const assembly=data.modules.find((module)=>module.id===drone.assembly&&module.type==='droneAssembly');
-      if(!assembly||seen.has(assembly.id)||!(drone.hp>0))return false;
-      seen.add(assembly.id);drone.type=DRONE_PROGRAMS[drone.type]?drone.type:'combat';drone.hp=clamp(drone.hp,0,60);drone.path=[];delete drone.enemy;delete drone.room;
+      if(!assembly||!(drone.hp>0))return false;
+      drone.type=DRONE_PROGRAMS[drone.type]?drone.type:'combat';drone.hp=clamp(drone.hp,0,60);drone.path=[];delete drone.enemy;delete drone.room;
       const bay=data.modules.find((module)=>module.id===drone.bay&&module.type==='droneControl'),person=data.crew.find((person)=>person.id===drone.carrier);
       if(drone.phase==='carried'&&person&&crewAlive(person)&&['load','drone'].includes(person.task)&&!person.carrying&&person.droneCargo===drone.id){
         Object.assign(drone,{x:person.x,y:person.y});person.droneJob=bay?{drone:drone.id,bay:bay.id}:undefined;
@@ -1478,7 +1480,7 @@
       if(!data.drones.some((drone)=>drone.id===person.droneJob?.drone&&drone.carrier===person.id))delete person.droneJob;
     }
     data.nextDroneId=Math.max(data.nextDroneId||0,...data.drones.map((drone)=>drone.id||0));
-    for(const module of data.modules){delete module.aimOffset;if(module.type==='droneAssembly'){module.droneType=DRONE_PROGRAMS[module.droneType]?module.droneType:'combat';module.buildProgress=clamp(module.buildProgress||0,0,15);}}
+    for(const module of data.modules){delete module.aimOffset;if(module.type==='droneAssembly'){module.droneType=DRONE_PROGRAMS[module.droneType]?module.droneType:'combat';module.buildProgress=clamp(module.buildProgress||0,0,assemblyTime(module));module.buildPaused=!!module.buildPaused;}}
   }
   function recoverDrones(){
     save.drones??=[];
@@ -1490,22 +1492,23 @@
     }
   }
   function droneCount(bay){return (save.drones||[]).filter((drone)=>drone.bay===bay.id&&drone.hp>0&&(drone.phase!=='stored'||drone.carrier)).length;}
-  function assemblyTime(assembly){return 15/(1+.25*(assembly.level-1));}
+  function assemblyTime(assembly){return 4/(1+.25*(assembly.level-1));}
   function updateDroneAssembly(dt){
     save.drones??=[];let changed=false;
     for(let i=save.drones.length-1;i>=0;i--)if(save.drones[i].hp<=0||!save.modules.some((module)=>module.id===save.drones[i].assembly&&module.type==='droneAssembly')){save.drones.splice(i,1);changed=true;}
     for(const assembly of save.modules.filter((module)=>module.type==='droneAssembly')){
-      if(save.drones.some((drone)=>drone.assembly===assembly.id))continue;
-      const power=systemPower(assembly);if(!power)continue;
+      const power=systemPower(assembly);if(!power||assembly.buildPaused)continue;
       assembly.buildProgress=(assembly.buildProgress||0)+dt*power;
-      if(assembly.buildProgress+1e-7<assemblyTime(assembly))continue;
-      assembly.buildProgress=0;const point=moduleStation(assembly);
-      save.nextDroneId=(save.nextDroneId||0)+1;
-      save.drones.push({id:save.nextDroneId,assembly:assembly.id,type:DRONE_PROGRAMS[assembly.droneType]?assembly.droneType:'combat',hp:60,phase:'stored',cooldown:.5,angle:0,path:[],...point});changed=true;
+      const duration=assemblyTime(assembly),point=moduleStation(assembly);
+      while(assembly.buildProgress+1e-7>=duration){
+        assembly.buildProgress=Math.max(0,assembly.buildProgress-duration);
+        save.nextDroneId=(save.nextDroneId||0)+1;
+        save.drones.push({id:save.nextDroneId,assembly:assembly.id,type:DRONE_PROGRAMS[assembly.droneType]?assembly.droneType:'combat',hp:60,phase:'stored',cooldown:.5,angle:0,path:[],...point});changed=true;
+      }
     }
     if(changed)persist();
   }
-  function droneBayFor(drone){return activeModules('droneControl').find((bay)=>bay.id===drone.bay&&droneBayClear(bay)&&droneCount(bay)<=droneBayCapacity(bay));}
+  function droneBayFor(drone){return activeModules('droneControl').find((bay)=>bay.id===drone.bay&&droneBayClear(bay));}
   function launchAssembledDrone(drone){
     if(drone.phase!=='ready')return false;
     const bay=droneBayFor(drone);if(!bay)return false;
@@ -1520,7 +1523,11 @@
     const assembly=save.modules.find((module)=>module.id===id&&module.type==='droneAssembly');if(!assembly)return false;
     if((assembly.droneType||'combat')===type)return true;
     assembly.droneType=type;assembly.buildProgress=0;
-    save.drones=(save.drones||[]).filter((drone)=>drone.assembly!==id);persist();renderInspector();renderOperations();return true;
+    persist();renderInspector();renderOperations();return true;
+  }
+  function toggleDroneProduction(id){
+    const assembly=save.modules.find((module)=>module.id===id&&module.type==='droneAssembly');if(!assembly)return false;
+    assembly.buildPaused=!assembly.buildPaused;persist();renderInspector();renderOperations();return true;
   }
   function moveAttackDrone(drone,enemy,dt,power){
     const player=battle.player,radius=enemy.r+65+(drone.id%3)*12,bearing=Math.atan2(drone.y-enemy.y,drone.x-enemy.x);
@@ -1613,11 +1620,12 @@
   function renderOperations(){
     renderCrewOrders();const panel=$('dronePanel');if(!panel)return;
     const bays=save.modules.filter((module)=>module.type==='droneControl'),assemblies=save.modules.filter((module)=>module.type==='droneAssembly'),drones=save.drones||[];
-    panel.innerHTML=`<strong>${bays.length} BAYS · ${assemblies.length} ASSEMBLIES · ${drones.filter((drone)=>drone.hp>0).length} DRONES</strong><p class="muted small">Assembly → crew → bay → launch. Assign Deliver drones or Deliver ammo / drones. Finished drones wait for pickup; launch is automatic after loading. Combat and beam drones circle the selected enemy. Beam drones sweep for 9 damage per room, or 3 against shields.</p>${bays.map((bay)=>`<div class="drone-row">BAY (${bay.x}, ${bay.y}) · ${bay.hp<=0?'OFFLINE':!droneBayClear(bay)?'BLOCKED LAUNCH LANE':`${droneCount(bay)} / ${droneBayCapacity(bay)} SLOTS · CLEAR EXIT`}</div>`).join('')}${assemblies.map((assembly)=>{
-      const drone=drones.find((drone)=>drone.assembly===assembly.id&&drone.hp>0),type=DRONE_PROGRAMS[assembly.droneType]?assembly.droneType:'combat';
-      return `<div class="drone-assembly"><label>${MODULES.droneAssembly.name.toUpperCase()} (${assembly.x}, ${assembly.y})<select data-drone-design="${assembly.id}" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===type?'selected':''}>${def.name}</option>`).join('')}</select></label><small>${assembly.hp<=0?'ASSEMBLY OFFLINE':drone?`${Math.ceil(drone.hp)} HP · ${drone.phase==='stored'?(drone.carrier?'CREW FETCHING':bays.some((bay)=>bay.hp>0&&droneBayClear(bay))?'AWAITING CREW PICKUP':'WAITING FOR CLEAR BAY'):drone.phase==='carried'?'IN TRANSIT WITH CREW':drone.phase==='ready'?'LOADED · READY':drone.powered===false?'BAY OFFLINE':drone.phase.toUpperCase()}`:`BUILDING ${Math.min(100,Math.floor((assembly.buildProgress||0)/assemblyTime(assembly)*100))}%`}</small></div>`;
+    panel.innerHTML=`<strong>${bays.length} BAYS · ${assemblies.length} ASSEMBLIES · ${drones.filter((drone)=>drone.hp>0).length} DRONES</strong><p class="muted small">Assemblies build continuously, including while exploring. Assign Deliver drones or Deliver ammo / drones to carry them to a clear bay. Bays have no drone limit; loaded drones launch automatically in combat. Pause an assembly when you have enough.</p>${bays.map((bay)=>`<div class="drone-row">BAY (${bay.x}, ${bay.y}) · ${bay.hp<=0?'OFFLINE':!droneBayClear(bay)?'BLOCKED LAUNCH LANE':`${droneCount(bay)} DRONES · NO SLOT LIMIT · CLEAR EXIT`}</div>`).join('')}${assemblies.map((assembly)=>{
+      const built=drones.filter((drone)=>drone.assembly===assembly.id&&drone.hp>0),stored=built.filter((drone)=>drone.phase==='stored').length,loaded=built.filter((drone)=>drone.phase==='ready').length,type=DRONE_PROGRAMS[assembly.droneType]?assembly.droneType:'combat';
+      return `<div class="drone-assembly"><label>${MODULES.droneAssembly.name.toUpperCase()} (${assembly.x}, ${assembly.y})<select data-drone-design="${assembly.id}" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===type?'selected':''}>${def.name}</option>`).join('')}</select></label><small>${built.length} BUILT · ${stored} WAITING FOR CREW · ${loaded} LOADED · ${assembly.hp<=0?'OFFLINE':assembly.buildPaused?'PRODUCTION PAUSED':systemPower(assembly)<=0?'NO POWER':`${Math.min(100,Math.floor((assembly.buildProgress||0)/assemblyTime(assembly)*100))}% NEXT DRONE`}</small><button type="button" data-drone-production="${assembly.id}">${assembly.buildPaused?'RESUME':'PAUSE'} PRODUCTION</button></div>`;
     }).join('')}${!assemblies.length?'<p class="muted small">Build a Drone Assembly and an exterior Drone Bay at a trader.</p>':''}${battle?`<p class="muted small">TELEPORTER ${boardingPad()?`${Math.ceil(battle.teleportCooldown||0)}s RECHARGE · 600 RANGE`:'NOT INSTALLED / OFFLINE'}</p>${battle.enemies.map((enemy,i)=>enemyAlive(enemy)?`<button data-drone-target="${i}" aria-pressed="${(battle.droneTarget??0)===i}">TARGET ${enemy.name} ${i+1}</button>`:'').join('')}`:''}`;
     panel.querySelectorAll('[data-drone-design]').forEach((select)=>select.addEventListener('change',()=>setDroneDesign(+select.dataset.droneDesign,select.value)));
+    panel.querySelectorAll('[data-drone-production]').forEach((button)=>button.addEventListener('click',()=>toggleDroneProduction(+button.dataset.droneProduction)));
     panel.querySelectorAll('[data-drone-target]').forEach((button)=>button.addEventListener('click',()=>{battle.droneTarget=+button.dataset.droneTarget;renderOperations();}));
   }
 
@@ -1747,6 +1755,9 @@
   }
 
   function setMode(next){
+    if(mode==='trade'&&next!=='trade'&&!connectedHull(save.modules)){
+      toast('Reconnect every room by an edge before leaving the trader.');renderRefitControls();return false;
+    }
     mode=next;
     if(next!=='trade'){selectedCatalog=null;movingModuleId=null;rearrangingShip=false;roomDrag=null;refittingFootprint=false;tradeNode=null;}
     const shipView=next==='hangar'||next==='trade';
@@ -1801,8 +1812,12 @@
   function concludeEvent(title,body,icon='✦'){
     advanceRoute();hideEvent();openMap();log(`${title}: ${body}`);persist();renderAll();toast(`${icon} ${title}`);
   }
-  function damageRandomModule(amount){
+  function damageRandomModule(amount,localShields=false){
     const live=save.modules.filter((module)=>module.hp>0),target=live[Math.floor(Math.random()*live.length)];
+    if(localShields){
+      const cells=moduleCells(target),[x,y]=cells[Math.floor(Math.random()*cells.length)],point={x:(x+.5)*COMBAT_TILE,y:(y+.5)*COMBAT_TILE};
+      if(activeModules(...SHIELD_TYPES).some((shield)=>shieldContains(shieldGeometry(shield),point)))return null;
+    }
     target.hp=Math.max(1,target.hp-amount);return target;
   }
   function awardCrew(name,color){
@@ -1959,7 +1974,7 @@
     }
     if(node.type==='minefield'){
       if(variant===0)eventScene(node,'DRIFTING MINES','Old anti-ship mines drift across the route. Their metal cases look salvageable, but several fuses are still blinking.',[
-        {label:'SWEEP AND SALVAGE',action:()=>{save.metal+=22;const protectedShip=activeModules('shield','focusShield').length>0;const target=protectedShip?null:damageRandomModule(14);log('22 metal salvaged from a minefield.');concludeEvent('MINES CLEARED',target?`The mines yield 22 metal, but your ${MODULES[target.type].name.toLowerCase()} takes 14 damage.`:'Your shield holds while the crew collects 22 metal.','◌');}},
+        {label:'SWEEP AND SALVAGE',action:()=>{save.metal+=22;const target=damageRandomModule(14,true);log('22 metal salvaged from a minefield.');concludeEvent('MINES CLEARED',target?`The mines yield 22 metal, but your ${MODULES[target.type].name.toLowerCase()} takes 14 damage.`:'Your shield holds while the crew collects 22 metal.','◌');}},
         {label:'SKIRT THE FIELD',action:()=>concludeEvent('FIELD AVOIDED','The crew takes the long clear lane around the mines.','◌')}
       ]);
       if(variant===1)eventScene(node,'FREIGHT CONTAINER TRAP','A sealed container lies inside a mine perimeter. Remote cutters can free it, but replacement blades cost metal.',[
@@ -1997,11 +2012,14 @@
   }
   function showGame(){
     screen='playing';$('mainMenu').hidden=true;$('quitScreen').hidden=true;$('appShell').hidden=false;
-    centerBuildView(false);setMode('hangar');renderAll();
+    centerBuildView(false);
+    const node=currentMapNode();
+    if(!connectedHull(save.modules)&&node?.type==='trader')openTrader(node);else setMode('hangar');
+    renderAll();
   }
   function showStarterPicker(){
     $('menuConfirm').hidden=true;$('starterPicker').hidden=false;
-    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>100-strength full-hull shield · ${ship.id==='wayfarer'?3:ship.id==='drones'?5:6} crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
+    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>100-strength local shield · ${ship.id==='wayfarer'?3:ship.id==='drones'?5:6} crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
     const original=save;
     try{
       for(const preview of $('starterLineup').querySelectorAll('canvas[data-starter-preview]')){
@@ -2140,9 +2158,13 @@
   function enemyMissileImpact(shot,playerHit=false,hitRock=null){
     (battle.effects??=[]).push({x:shot.x,y:shot.y,r:shot.splash,color:shot.color,time:.35,duration:.35});
     for(const rock of [...battle.asteroids])if(rock!==hitRock&&distance(rock,shot)<=shot.splash+rock.r)damageAsteroid(rock,shot.damage*.55);
-    if(!playerHit&&!shot.evaded&&distance(battle.player,shot)<=shot.splash+battle.player.r){
-      const angle=Math.atan2(shot.y-battle.player.y,shot.x-battle.player.x),remaining=absorbShields(shot.damage*.55,angle);
-      if(remaining>0)damagePlayer(remaining,shot);
+    if(!playerHit&&!shot.evaded){
+      const point=nearestPlayerHullPoint(shot),range=point?distance(shot,point):Infinity;
+      if(range<=shot.splash){
+        const dx=(point.x-shot.x)/(range||1),dy=(point.y-shot.y)/(range||1);
+        const contacts=shieldContacts(shot,dx,dy,battle.player,range),remaining=absorbShields(shot.damage*.55,contacts.map((hit)=>hit.module));
+        if(remaining>0)damagePlayer(remaining,point);
+      }
     }
   }
   function enemyLayout(heavy,sector=1,loadout='cannon'){
@@ -2672,17 +2694,21 @@
     module.shieldFacing=((Math.round(degrees)%360)+360)%360;persist();renderInspector();
     if(mode==='hangar'||mode==='trade')drawHangar();return true;
   }
-  function drawShieldCoverage(g,module,tile,modules=save.modules){
-    const cells=modules.flatMap(moduleCells),xs=cells.map(([x])=>x),ys=cells.map(([,y])=>y);
-    const width=Math.max(...xs)-Math.min(...xs)+1,height=Math.max(...ys)-Math.min(...ys)+1;
-    const x=(Math.min(...xs)+width/2)*tile,y=(Math.min(...ys)+height/2)*tile;
-    const focused=module.type==='focusShield',angle=shieldDirection(module)*Math.PI/180,span=focused?MODULES[module.type].arc*Math.PI/180:TAU;
-    const radius=(Math.max(38/COMBAT_TILE,Math.hypot(width,height)*.54)+(focused?23:17)/COMBAT_TILE)*tile;
+  function shieldGeometry(module,player=null,tile=COMBAT_TILE){
+    const cells=moduleCells(module),origin={x:cells.reduce((sum,[x])=>sum+x+.5,0)/cells.length,y:cells.reduce((sum,[,y])=>sum+y+.5,0)/cells.length};
+    const point=player?hullPointWorld(origin,player):{x:origin.x*tile,y:origin.y*tile};
+    return {...point,radius:MODULES[module.type].shieldRadius*(player?1:tile/COMBAT_TILE),angle:(player?.angle||0)+shieldDirection(module)*Math.PI/180,span:module.type==='focusShield'?MODULES[module.type].arc*Math.PI/180:TAU};
+  }
+  function shieldContains(field,point){
+    return distance(field,point)<=field.radius+1e-7&&(field.span>=TAU||distance(field,point)<1e-7||Math.abs(angleDifference(field.angle,Math.atan2(point.y-field.y,point.x-field.x)))<=field.span/2+1e-7);
+  }
+  function drawShieldCoverage(g,module,tile){
+    const field=shieldGeometry(module,null,tile),{x,y,radius,angle,span}=field,focused=module.type==='focusShield';
     g.save();g.strokeStyle=focused?'#92f9e9':'#b9a3f7';g.fillStyle=focused?'rgba(146,249,233,.07)':'rgba(185,163,247,.04)';g.lineWidth=1.5;
     g.beginPath();g.moveTo(x,y);g.arc(x,y,radius,angle-span/2,angle+span/2);g.closePath();g.fill();
     g.beginPath();g.arc(x,y,radius,angle-span/2,angle+span/2);g.stroke();
-    if(focused){g.beginPath();g.moveTo(x+Math.cos(angle)*radius*.78,y+Math.sin(angle)*radius*.78);g.lineTo(x+Math.cos(angle)*radius,y+Math.sin(angle)*radius);g.stroke();}
-    g.restore();
+    if(focused){g.beginPath();for(const edge of [angle-span/2,angle+span/2]){g.moveTo(x,y);g.lineTo(x+Math.cos(edge)*radius,y+Math.sin(edge)*radius);}g.stroke();}
+    g.fillStyle=focused?'#92f9e9':'#b9a3f7';g.fillRect(x-2,y-2,4,4);g.restore();
   }
 
   function shieldState(module){
@@ -2694,25 +2720,47 @@
   function shieldCovers(module,player,angle){
     return module.type==='shield'||Math.abs(angleDifference(player.angle+shieldDirection(module)*Math.PI/180,angle))<=MODULES[module.type].arc*Math.PI/360;
   }
-  function shieldInterception(shot,dx,dy,player,limit){
-    let best=null;
-    for(const module of activeModules(...SHIELD_TYPES)){
-      if(shieldState(module).charge<=1e-7)continue;
-      const entry=rayCircle(shot,dx,dy,player,player.r+(module.type==='focusShield'?23:17));
-      if(entry>limit||entry>=best?.distance)continue;
-      const angle=Math.atan2(shot.y+dy*entry-player.y,shot.x+dx*entry-player.x);
-      if(shieldCovers(module,player,angle))best={distance:entry,angle};
+  function rayShield(origin,dx,dy,field,limit){
+    if(shieldContains(field,origin))return 0;
+    const ox=origin.x-field.x,oy=origin.y-field.y,b=ox*dx+oy*dy,c=ox*ox+oy*oy-field.radius*field.radius,discriminant=b*b-c;
+    let nearest=Infinity;
+    if(discriminant>=0)for(const entry of [-b-Math.sqrt(discriminant),-b+Math.sqrt(discriminant)]){
+      if(entry>=0&&entry<=limit&&shieldContains(field,{x:origin.x+dx*entry,y:origin.y+dy*entry}))nearest=Math.min(nearest,entry);
     }
-    return best;
+    if(field.span<TAU)for(const angle of [field.angle-field.span/2,field.angle+field.span/2]){
+      const vx=Math.cos(angle)*field.radius,vy=Math.sin(angle)*field.radius,cross=dx*vy-dy*vx;
+      if(Math.abs(cross)<1e-8)continue;
+      const entry=(-ox*vy+oy*vx)/cross,along=(-ox*dy+oy*dx)/cross;
+      if(entry>=0&&entry<=limit&&along>=0&&along<=1)nearest=Math.min(nearest,entry);
+    }
+    return nearest;
   }
-  function absorbShields(amount,angle){
-    for(const module of activeModules(...SHIELD_TYPES).sort((a,b)=>Number(a.type==='shield')-Number(b.type==='shield'))){
-      const state=shieldState(module);
-      if(amount<=0||state.charge<=0||!shieldCovers(module,battle.player,angle))continue;
-      const absorbed=Math.min(amount,state.charge);state.charge-=absorbed;amount-=absorbed;
-      state.delay=1.7;state.flash=.22;
+  function shieldContacts(shot,dx,dy,player,limit){
+    return activeModules(...SHIELD_TYPES).filter((module)=>shieldState(module).charge>1e-7).map((module)=>{
+      const field=shieldGeometry(module,player),entry=rayShield(shot,dx,dy,field,limit);
+      return {distance:entry,module,point:{x:shot.x+dx*entry,y:shot.y+dy*entry}};
+    }).filter((hit)=>Number.isFinite(hit.distance)&&hit.distance<=limit).sort((a,b)=>a.distance-b.distance||a.module.id-b.module.id);
+  }
+  function shieldInterception(shot,dx,dy,player,limit){return shieldContacts(shot,dx,dy,player,limit)[0]||null;}
+  function absorbShields(amount,modules){
+    for(const module of modules||[]){
+      if(!save.modules.includes(module)||module.hp<=0||!SHIELD_TYPES.includes(module.type))continue;
+      const state=shieldState(module);if(amount<=0||state.charge<=0)continue;
+      const absorbed=Math.min(amount,state.charge);state.charge-=absorbed;amount-=absorbed;state.delay=1.7;state.flash=.22;
     }
     return amount;
+  }
+  function playerHullContact(origin,dx,dy,player,limit=Infinity){
+    const entry=hullRay(worldToHull(origin,player),Math.atan2(dy,dx)-player.angle,save.modules.filter((module)=>module.hp>0).flatMap(moduleCells),Infinity)*COMBAT_TILE;
+    return entry<=limit?entry:Infinity;
+  }
+  function nearestPlayerHullPoint(point){
+    const local=worldToHull(point,battle.player);let nearest=null,range=Infinity;
+    for(const module of save.modules.filter((part)=>part.hp>0))for(const [x,y] of moduleCells(module)){
+      const candidate={x:clamp(local.x,x+1e-5,x+1-1e-5),y:clamp(local.y,y+1e-5,y+1-1e-5)},d=distance(local,candidate);
+      if(d<range){range=d;nearest=candidate;}
+    }
+    return nearest?hullPointWorld(nearest,battle.player):null;
   }
 
   function updateShields(dt){
@@ -2832,49 +2880,65 @@
       }
       const dx=shot.vx/speed,dy=shot.vy/speed;
       const travel=Math.min(speed*step,shot.remaining,shot.launchRemaining>0?shot.launchRemaining:Infinity);
-      if(shot.owner==='enemy'&&!shot.evasionChecked&&rayCircle(shot,dx,dy,p,p.r+25)<=travel){
+      if(shot.owner==='enemy'&&!shot.evasionChecked&&(rayCircle(shot,dx,dy,p,p.r+25)<=travel||playerHullContact(shot,dx,dy,p)<=travel||shieldInterception(shot,dx,dy,p,travel))){
         shot.evasionChecked=true;shot.evaded=Math.random()<evasionChance();
         if(shot.evaded&&shot.guidance){shot.guidance=0;shot.remaining=Math.min(shot.remaining,600);}
         if(shot.evaded)(b.effects??=[]).push({x:p.x,y:p.y-p.r-20,text:'MISS',color:'#9ce5df',time:.6,duration:.6});
       }
-      let stop=travel,hit=false,target=null,hitRock=null,hitRoom=null,hitDrone=null,shielded=false,shieldedEnemy=false,shieldAngle=0;
-      if(shot.owner==='player'&&!shot.hullPass){
-        const blocked=hullRay(worldToHull(shot,p),Math.atan2(dy,dx)-p.angle,save.modules.flatMap(moduleCells),travel/COMBAT_TILE)*COMBAT_TILE;
-        if(blocked<travel-1e-7){stop=blocked;hit=true;}
-      }
-      for(const rock of b.asteroids){
-        const entry=rayCircle(shot,dx,dy,rock,rock.r*.87);
-        if(entry<=stop){stop=entry;hit=true;hitRock=rock;}
-      }
-      const targets=shot.owner==='player'?b.enemies.filter((enemy)=>enemyAlive(enemy)&&!shot.hitIds.has(enemy)):(shot.evaded?[]:[p]);
-      for(const candidate of targets){
-        const barrier=shot.owner==='player'?enemyShieldInterception(candidate,shot,dx,dy,stop):null;
-        const contact=shot.owner==='player'?(barrier||rayEnemyRoom(shot,dx,dy,candidate,stop,shot.hitRooms)):{distance:rayCircle(shot,dx,dy,candidate,candidate.r*.82),room:null};
-        const entry=contact.distance;
-        if(entry<stop||(!hit&&entry<=stop)){stop=entry;hit=true;target=candidate;hitRock=null;hitRoom=contact.room;shieldedEnemy=!!barrier;}
-      }
-      if(shot.owner==='enemy'&&!shot.evaded){
-        const shield=shieldInterception(shot,dx,dy,p,stop);
-        if(shield&&(shield.distance<stop||(!hit&&shield.distance<=stop))){
-          stop=shield.distance;hit=true;target=p;hitRock=null;shielded=true;shieldAngle=shield.angle;
+      let remainingTravel=travel;shot.life-=step;
+      // A shot that collapses one local field continues along its real path,
+      // meeting any other field or hull room in the same simulation step.
+      for(let collision=0;collision<=save.modules.length+1;collision++){
+        let stop=remainingTravel,hit=false,target=null,hitRock=null,hitRoom=null,hitDrone=null,hitShield=null,shieldedEnemy=false;
+        if(shot.owner==='player'&&!shot.hullPass){
+          const blocked=hullRay(worldToHull(shot,p),Math.atan2(dy,dx)-p.angle,save.modules.flatMap(moduleCells),remainingTravel/COMBAT_TILE)*COMBAT_TILE;
+          if(blocked<remainingTravel-1e-7){stop=blocked;hit=true;}
         }
-      }
-      if(shot.owner==='enemy'&&!shot.evaded)for(const drone of b.drones||[])if(drone.hp>0&&['combat','beam','defense'].includes(drone.type)&&['launching','active'].includes(drone.phase)){const entry=rayCircle(shot,dx,dy,drone,9);if(entry<stop){stop=entry;hit=true;target=null;hitRock=null;shielded=false;hitDrone=drone;}}
-      shot.x+=dx*stop;shot.y+=dy*stop;shot.remaining-=stop;shot.life-=step;shot.muzzleClearance=Math.max(0,(shot.muzzleClearance||0)-stop);shot.launchRemaining=Math.max(0,(shot.launchRemaining||0)-stop);
-      if(hitDrone){hitDrone.hp=Math.max(0,hitDrone.hp-shot.damage);}
-      else if(target&&shot.owner==='player'){
-        const penetrated=weaponImpact(shot,target,null,hitRoom);
-        if(hitRoom)shot.hitRooms.add(hitRoom);else shot.hitIds.add(target);
-        if(penetrated&&shot.pierce>0&&!shieldedEnemy){
-          shot.pierce--;hit=false;
-          (b.effects??=[]).push({x:shot.x,y:shot.y,r:14,color:shot.color||'#d5e6f2',time:.18,duration:.18});
+        for(const rock of b.asteroids){
+          const entry=rayCircle(shot,dx,dy,rock,rock.r*.87);
+          if(entry<=stop){stop=entry;hit=true;hitRock=rock;}
         }
-      }else if(target){const remaining=shielded?absorbShields(shot.damage,shieldAngle):shot.damage;if(remaining>0)damagePlayer(remaining,shot);if(!battle)return;}
-      else if(hit&&shot.owner==='player')weaponImpact(shot,null,hitRock);
-      else if(hitRock)damageAsteroid(hitRock,shot.damage);
-      if(hit&&shot.owner==='enemy'&&shot.splash)enemyMissileImpact(shot,!!target||!!hitDrone,hitRock);
-      if(!battle)return;
-      if(hit||shot.remaining<=1e-7||(!shot.guidance&&(shot.x<0||shot.x>b.world.w||shot.y<0||shot.y>b.world.h)))b.projectiles.splice(i,1);
+        const targets=shot.owner==='player'?b.enemies.filter((enemy)=>enemyAlive(enemy)&&!shot.hitIds.has(enemy)):(shot.evaded?[]:[p]);
+        for(const candidate of targets){
+          const barrier=shot.owner==='player'?enemyShieldInterception(candidate,shot,dx,dy,stop):null;
+          const contact=shot.owner==='player'?(barrier||rayEnemyRoom(shot,dx,dy,candidate,stop,shot.hitRooms)):{distance:playerHullContact(shot,dx,dy,candidate),room:null};
+          const entry=contact.distance;
+          if(entry<stop||(!hit&&entry<=stop)){stop=entry;hit=true;target=candidate;hitRock=null;hitRoom=contact.room;shieldedEnemy=!!barrier;}
+        }
+        if(shot.owner==='enemy'&&!shot.evaded){
+          const shield=shieldInterception(shot,dx,dy,p,stop);
+          if(shield&&shield.distance<=stop+1e-7){
+            stop=shield.distance;hit=true;target=p;hitRock=null;hitShield=shield.module;
+          }
+        }
+        if(shot.owner==='enemy'&&!shot.evaded)for(const drone of b.drones||[])if(drone.hp>0&&['combat','beam','defense'].includes(drone.type)&&['launching','active'].includes(drone.phase)){const entry=rayCircle(shot,dx,dy,drone,9);if(entry<stop){stop=entry;hit=true;target=null;hitRock=null;hitShield=null;hitDrone=drone;}}
+        shot.x+=dx*stop;shot.y+=dy*stop;shot.remaining-=stop;shot.muzzleClearance=Math.max(0,(shot.muzzleClearance||0)-stop);shot.launchRemaining=Math.max(0,(shot.launchRemaining||0)-stop);
+        const impactDamage=shot.damage;
+        if(hitDrone){hitDrone.hp=Math.max(0,hitDrone.hp-shot.damage);}
+        else if(target&&shot.owner==='player'){
+          const penetrated=weaponImpact(shot,target,null,hitRoom);
+          if(hitRoom)shot.hitRooms.add(hitRoom);else shot.hitIds.add(target);
+          if(penetrated&&shot.pierce>0&&!shieldedEnemy){
+            shot.pierce--;hit=false;
+            (b.effects??=[]).push({x:shot.x,y:shot.y,r:14,color:shot.color||'#d5e6f2',time:.18,duration:.18});
+          }
+        }else if(target){
+          if(hitShield){
+            shot.damage=absorbShields(shot.damage,[hitShield]);
+            if(shot.damage>1e-7){
+              hit=false;target=null;remainingTravel=Math.max(0,remainingTravel-stop);
+              if(remainingTravel>1e-7)continue;
+            }
+          }else damagePlayer(shot.damage,{x:shot.x+dx*1e-5,y:shot.y+dy*1e-5});
+          if(!battle)return;
+        }
+        else if(hit&&shot.owner==='player')weaponImpact(shot,null,hitRock);
+        else if(hitRock)damageAsteroid(hitRock,shot.damage);
+        if(hit&&shot.owner==='enemy'&&shot.splash)enemyMissileImpact(hitShield?{...shot,damage:impactDamage}:shot,!!target||!!hitDrone,hitRock);
+        if(!battle)return;
+        if(hit||shot.remaining<=1e-7||(!shot.guidance&&(shot.x<0||shot.x>b.world.w||shot.y<0||shot.y>b.world.h)))b.projectiles.splice(i,1);
+        break;
+      }
     }
     if(b.enemies.every((enemy)=>!enemyAlive(enemy))){finishBattle(true);return;}
     if(time-lastHudRefresh>280){lastHudRefresh=time;renderHud();renderInspector();refreshCrewStatus();}
@@ -2941,9 +3005,11 @@
   function drawShields(player){
     for(const module of activeModules(...SHIELD_TYPES)){
       const state=shieldState(module),stats=shieldStats(module);if(state.charge<=0)continue;
-      const focused=module.type==='focusShield',center=player.angle+shieldDirection(module)*Math.PI/180,span=focused?MODULES[module.type].arc*Math.PI/180:TAU;
+      const focused=module.type==='focusShield',field=shieldGeometry(module,player),center=field.angle,span=field.span;
       ctx.save();ctx.globalAlpha=Math.min(1,.15+.45*state.charge/stats.capacity+(state.flash>0?.25:0));ctx.strokeStyle=focused?'#92f9e9':'#b9a3f7';ctx.lineWidth=state.flash>0?3:2;
-      ctx.beginPath();ctx.arc(player.x,player.y,player.r+17+(focused?6:0),center-span/2,center+span/2);ctx.stroke();ctx.restore();
+      ctx.beginPath();ctx.arc(field.x,field.y,field.radius,center-span/2,center+span/2);ctx.stroke();
+      if(focused){ctx.globalAlpha*=.45;ctx.beginPath();for(const edge of [center-span/2,center+span/2]){ctx.moveTo(field.x,field.y);ctx.lineTo(field.x+Math.cos(edge)*field.radius,field.y+Math.sin(edge)*field.radius);}ctx.stroke();}
+      ctx.restore();
     }
   }
 

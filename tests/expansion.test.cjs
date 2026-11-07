@@ -137,11 +137,11 @@ test('crew engine bonuses apply at the console and powered engines require a pil
 test('shields absorb exact damage from a strength pool and pass excess damage through',()=>{
   const g=game(),save=g.newSave();save.modules=[core(0,0),{id:2,type:'shield',x:2,y:0,rotation:0,level:2,hp:110}];const b=battle(g,save),shield=save.modules[1];
   assert.equal(g.shieldStats(shield).capacity,135);assert.equal(g.shieldState(shield).charge,135);
-  assert.equal(g.absorbShields(100,0),0);assert.equal(g.shieldState(shield).charge,35);
-  assert.equal(g.absorbShields(50,0),15);assert.equal(g.shieldState(shield).charge,0);
+  assert.equal(g.absorbShields(100,[shield]),0);assert.equal(g.shieldState(shield).charge,35);
+  assert.equal(g.absorbShields(50,[shield]),15);assert.equal(g.shieldState(shield).charge,0);
   assert.equal(g.shieldInterception({x:700,y:500},-1,0,b.player,300),null);
   g.updateShields(1.7);assert.equal(g.shieldState(shield).charge,0);g.updateShields(.1);near(g.shieldState(shield).charge,1);
-  g.shieldState(shield).charge=.25;assert.ok(g.shieldInterception({x:700,y:500},-1,0,b.player,300));near(g.absorbShields(1,0),.75);
+  g.shieldState(shield).charge=.25;assert.ok(g.shieldInterception({x:700,y:500},-1,0,b.player,300));near(g.absorbShields(1,[shield]),.75);
   g.updateShields(100);assert.equal(g.shieldState(shield).charge,135);
   const recharge=g.shieldStats(shield).recharge;Object.assign(save.crew[0],{task:'shield',...g.moduleStation(shield)});assert.ok(g.shieldStats(shield).recharge>recharge);
   for(let i=0;i<4;i++)save.modules.push({id:10+i,type:'engine',x:4+i,y:0,rotation:0,level:1,hp:80});

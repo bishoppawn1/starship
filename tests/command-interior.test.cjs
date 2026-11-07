@@ -13,7 +13,7 @@ function game(){
     localStorage:{getItem:(k)=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},
     document:{getElementById:(id)=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,querySelectorAll:()=>[]}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
-    globalThis.game={MODULES,STARTER_SHIPS,normalizeSystems,coreOutput,totalPower,upgradeCorePower,renderSystems,renderCrew,refreshCrewStatus,hurtCrew,selectCrew,stationConsole,drawStation,shieldDirection,setShieldDirection,shieldCovers,shieldInterception,absorbShields,shieldState,drawShieldCoverage,drawShields,showStarterPicker,startNewGame,newSave,loadSave,persist,moduleCells,moduleStation,moduleGeometry,canPlace,canPlaceFootprint,moduleClearance,droneBayDoor,droneBayClear,
+    globalThis.game={MODULES,STARTER_SHIPS,normalizeSystems,coreOutput,totalPower,upgradeCorePower,renderSystems,renderCrew,refreshCrewStatus,hurtCrew,selectCrew,stationConsole,drawStation,shieldGeometry,playerHullContact,shieldDirection,setShieldDirection,shieldCovers,shieldInterception,absorbShields,shieldState,drawShieldCoverage,drawShields,showStarterPicker,startNewGame,newSave,loadSave,persist,moduleCells,moduleStation,moduleGeometry,canPlace,canPlaceFootprint,moduleClearance,droneBayDoor,droneBayClear,
       updateDroneAssembly,updateDrones,updateCrew,recoverDrones,droneBayCapacity,droneCount,assemblyTime,setDroneDesign,normalizeDrones,updateBoarding,enemyLayout,fireProjectile,
       weaponGeometry,weaponWorld,weaponAim,turnWeapon,fireWeapon,updateBattle,drawExteriorHardware,renderOperations,renderInspector,openTrader,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},select(id){selectedModuleId=id;},setMode(value){mode=value;},
@@ -68,9 +68,10 @@ test('focused shield direction is independent of the room rotation and preserves
 
 test('the shield intercepts and absorbs shots only in the direction selected during combat',()=>{
   const g=game(),save=setup(g),shield=room(80,'focusShield',0,0);save.modules=[save.modules[0],shield];const b=battle(g);g.setShieldDirection(80,180);
-  assert.ok(g.shieldInterception({x:200,y:500},1,0,b.player,600));assert.equal(g.shieldInterception({x:800,y:500},-1,0,b.player,600),null);
-  assert.equal(g.absorbShields(30,Math.PI),0);near(g.shieldState(shield).charge,130);assert.equal(g.absorbShields(30,0),30);near(g.shieldState(shield).charge,130);
-  g.setShieldDirection(80,0);assert.ok(g.shieldInterception({x:800,y:500},-1,0,b.player,600));near(g.shieldState(shield).charge,130);
+  const field=g.shieldGeometry(shield,b.player),left={x:field.x-300,y:field.y},right={x:field.x+300,y:field.y};
+  assert.ok(g.shieldInterception(left,1,0,b.player,300));assert.equal(g.shieldInterception(right,-1,0,b.player,g.playerHullContact(right,-1,0,b.player)),null);
+  assert.equal(g.absorbShields(30,[shield]),0);near(g.shieldState(shield).charge,130);assert.equal(g.absorbShields(30,[]),30);near(g.shieldState(shield).charge,130);
+  g.setShieldDirection(80,0);assert.ok(g.shieldInterception(right,-1,0,b.player,300));near(g.shieldState(shield).charge,130);
 });
 
 test('the shield inspector offers immediate aiming without a trader or placement preview',()=>{

@@ -12,7 +12,7 @@ function game(){
     document:{createElement:el,getElementById:(id)=>{if(!elements.has(id))elements.set(id,el());return elements.get(id);}}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
     globalThis.game={MODULES,WEAPON_TYPES,newSave,persist,loadSave,moduleGeometry,moduleCells,moduleStation,weaponGeometry,weaponWorld,
-      moduleClearance,weaponRange,weaponCanTarget,weaponHasEscape,hullRay,legacyWeaponLayouts,placementPreview,canPlace,
+      connectedHull,moduleClearance,weaponRange,weaponCanTarget,weaponHasEscape,hullRay,legacyWeaponLayouts,placementPreview,canPlace,
       openTrader,buyTraderItem,onGridClick,beginModuleMove,flipBuild,rotateBuild,setMode,renderInspector,drawWeaponArc,drawExteriorHardware,
       enemyLayout,enemyAlive,hurtEnemy,enemySystemEfficiency,startBattle,fireWeapon,updateBattle,
       setSave(value){save=value;},getSave(){return save;},select(id){selectedModuleId=id;},hover(x,y){hoverCell={x,y};},
@@ -29,8 +29,11 @@ function setup(g,type,rest={}){
   return {save,weapon,b};
 }
 const enemy=(x,y)=>({x,y,angle:0,r:18,hp:10000,maxHp:10000,speed:0,path:[],pathTimer:1000,cooldown:1000,phase:0});
-function findPlacement(g,type,rotation=0){
-  for(let y=-8;y<16;y++)for(let x=-8;x<16;x++)if(g.canPlace(type,x,y,rotation))return{x,y};
+function findPlacement(g,type,rotation=0,connected=false){
+  for(let y=-8;y<16;y++)for(let x=-8;x<16;x++)if(g.canPlace(type,x,y,rotation)){
+    g.hover(x,y);const preview=g.placementPreview();
+    if(!connected||g.connectedHull([...g.getSave().modules.filter(m=>m.id!==preview.module.id),preview.module]))return{x,y};
+  }
   assert.fail(`no valid ${type} placement`);
 }
 
@@ -66,8 +69,8 @@ test('flipping installed rooms confirms through a valid move, keeps upgrades and
   const g=game(),save=g.newSave();save.modules=[room('core',1,4,4),room('weapon',2,6,4,{hp:41,level:2,range:175})];
   const weapon=save.modules[1];Object.assign(save.crew[0],{...g.moduleStation(weapon),task:'gun'});g.setSave(save);g.openTrader({type:'trader',stock:[]});g.select(2);
   const original=JSON.stringify(weapon),metal=save.metal;assert.equal(g.beginModuleMove(),true);assert.equal(g.flipBuild(),true);assert.equal(JSON.stringify(weapon),original);
-  g.hover(1000,1000);g.onGridClick(1000,1000);assert.equal(JSON.stringify(weapon),original,'invalid flip mutated the installed room');
-  const spot=findPlacement(g,'weapon');g.onGridClick(spot.x,spot.y);
+  g.hover(1000,1000);assert.equal(g.placementPreview().valid,true);assert.equal(JSON.stringify(weapon),original,'unconfirmed detached flip mutated the installed room');
+  const spot=findPlacement(g,'weapon',0,true);g.onGridClick(spot.x,spot.y);
   assert.equal(weapon.flipped,true);assert.equal(weapon.hp,41);assert.equal(weapon.level,2);assert.equal(weapon.range,175);assert.equal(save.metal,metal);
   near(save.crew[0].x,g.moduleStation(weapon).x);near(save.crew[0].y,g.moduleStation(weapon).y);
   const confirmed=JSON.stringify(weapon);g.beginModuleMove();g.flipBuild();g.setMode('hangar');assert.equal(JSON.stringify(weapon),confirmed);assert.equal(g.flipBuild(),false);
