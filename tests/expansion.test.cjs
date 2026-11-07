@@ -98,8 +98,8 @@ test('fixed combat holds both ships in view, turns the player in place, and lets
 
 test('trader draws can repeat, aggregate quantities, omit other types, and never restock on revisit',()=>{
   const g=game();g.math.random=()=>0;const stock=g.traderStock();
-  assert.equal(stock.length,3);assert.equal(stock[0].qty,4);
-  for(const type of ['droneControl','droneAssembly'])assert.equal(stock.find((offer)=>offer.type===type).qty,1);
+  assert.equal(stock.length,1);assert.equal(stock[0].qty,4);
+  for(const type of ['droneControl','droneAssembly'])assert.equal(stock.some((offer)=>offer.type===type),false);
   const save=g.newSave();save.metal=1000;g.setSave(save);const node={type:'trader',stockVersion:4,stock};g.openTrader(node);
   assert.equal(g.buyTraderItem(stock[0].type),true);assert.equal(stock[0].qty,3);
   const before=JSON.stringify(node);g.openTrader(node);assert.equal(JSON.stringify(node),before);
@@ -231,11 +231,11 @@ test('stacked generators raise equal system performance and lose output only whe
   g.persist();g.setSave(g.loadSave());assert.equal(g.totalPower(),14);
 });
 
-test('older traders keep sold-out stock and gain only missing drone essentials',()=>{
+test('older traders keep sold-out stock without adding guaranteed drone offers',()=>{
   const g=game(),node={type:'trader',stockVersion:4,stock:[{type:'weapon',qty:0,price:51},{type:'shield',qty:0,price:53}]};
   g.upgradeTraderStock(node);assert.ok(node.stockVersion>=9);
   assert.deepEqual(node.stock[0],{type:'weapon',qty:0,price:51});assert.equal(node.stock[1].qty,0);
-  assert.equal(node.stock.length,4);
+  assert.equal(node.stock.length,2);
   const before=JSON.stringify(node);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node),before);
 });
 
@@ -250,13 +250,12 @@ test('a projectile stronger than full overlapping shields carries only the exces
 });
 
 
-test('saved shops add missing drone essentials once and never restock a sold drone offer',()=>{
+test('saved shops preserve their drawn drone offers without adding or replenishing them',()=>{
   const g=game(),save=g.newSave();save.metal=500;g.setSave(save);
   const node=save.map.nodes.find((node)=>node.type==='trader');node.stockVersion=9;
-  node.stock=[{type:'weapon',qty:0,price:47},{type:'droneControl',qty:0,price:61}];g.openTrader(node);
+  node.stock=[{type:'weapon',qty:0,price:47},{type:'droneControl',qty:0,price:61},{type:'droneAssembly',qty:1,price:50}];g.openTrader(node);
   assert.equal(node.stock.length,3);assert.equal(node.stockVersion,10);
   assert.equal(node.stock[0].qty,0);assert.equal(node.stock[0].price,47);assert.equal(node.stock[1].qty,0);assert.equal(node.stock[1].price,61);
-  assert.equal(node.stock.find((offer)=>offer.type==='droneAssembly').qty,1);
   assert.equal(g.buyTraderItem('droneAssembly'),true);assert.equal(g.buyTraderItem('droneAssembly'),false);
   const before=JSON.stringify(node.stock);g.openTrader(node);assert.equal(JSON.stringify(node.stock),before);
   g.persist();const loaded=g.loadSave();g.setSave(loaded);const market=loaded.map.nodes.find((item)=>item.id===node.id);g.openTrader(market);
@@ -265,7 +264,7 @@ test('saved shops add missing drone essentials once and never restock a sold dro
 
 test('the drones shop filter shows the bay and assembly with purchases and no unrelated rooms',()=>{
   const g=game(),save=g.newSave();save.metal=500;g.setSave(save);
-  const node={type:'trader',stock:[{type:'weapon',qty:1,price:45}]};g.openTrader(node);g.filter('drones');
+  const node={type:'trader',stock:[{type:'weapon',qty:1,price:45},{type:'droneControl',qty:1,price:65},{type:'droneAssembly',qty:1,price:50}]};g.openTrader(node);g.filter('drones');
   const catalog=g.elements.get('catalog').innerHTML;
   assert.match(catalog,/DRONE BAY/);assert.match(catalog,/DRONE ASSEMBLY/);
   assert.match(catalog,/No drone storage limit/);assert.doesNotMatch(catalog,/Two drone slots/);

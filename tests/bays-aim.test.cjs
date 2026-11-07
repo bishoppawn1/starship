@@ -17,7 +17,7 @@ function game(){
       updateDroneAssembly,updateDrones,updateCrew,recoverDrones,droneBayCapacity,droneCount,assemblyTime,setDroneDesign,toggleDroneProduction,normalizeDrones,updateBoarding,enemyLayout,fireProjectile,
       weaponGeometry,weaponWorld,weaponAim,turnWeapon,fireWeapon,updateBattle,drawExteriorHardware,renderOperations,renderInspector,openTrader,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},select(id){selectedModuleId=id;},setMode(value){mode=value;},
-      stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;}};
+      focus(value){document.activeElement=value;},stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;}};
   })();`);
   vm.runInNewContext(source,sandbox);return {...sandbox.game,elements,math,draws};
 }
@@ -104,9 +104,9 @@ test('surviving drones and design settings persist while obsolete parts and stor
   g.setSave(loaded);g.openTrader(loaded.map.nodes.find((node)=>node.type==='trader'));g.renderOperations();const text=g.elements.get('dronePanel').innerHTML;assert.ok(!text.includes('DEPLOY'));assert.ok(!text.includes('DRONE PARTS'));
 });
 
-test('changing an assembly design keeps earlier drones and combat locks the design',()=>{
+test('changing an assembly design keeps earlier drones and works in combat',()=>{
   const g=game(),save=setup(g);g.updateDrones(4);assert.equal(g.setDroneDesign(3,'repair'),true);assert.equal(save.drones.length,1);assert.equal(save.modules[2].droneType,'repair');
-  g.updateDrones(4);assert.deepEqual(Array.from(save.drones,(drone)=>drone.type),['combat','repair']);battle(g);assert.equal(g.setDroneDesign(3,'combat'),false);
+  g.updateDrones(4);assert.deepEqual(Array.from(save.drones,(drone)=>drone.type),['combat','repair']);battle(g);assert.equal(g.setDroneDesign(3,'combat'),true);g.updateDrones(4);assert.equal(save.drones.at(-1).type,'combat');
 });
 
 test('automatically launched combat and defense drones keep their real combat effects',()=>{
@@ -138,4 +138,26 @@ test('turret aiming follows mirrored and rotated mounts and tracks during reload
     const {gun,b}=gunSetup(g,rotation,flipped);gun.cooldown=10;g.updateBattle(.3,0);near(gun.aimOffset,-35*Math.PI/180);assert.equal(b.ammo,100);
     const mount=g.weaponWorld(gun,b.player);b.enemies[0].x=mount.x+Math.cos(mount.direction)*200;b.enemies[0].y=mount.y+Math.sin(mount.direction)*200;g.updateBattle(.3,0);near(gun.aimOffset,0);
   }
+});
+
+
+test('both design controls survive routine refreshes while focused, and changing a design refreshes both',()=>{
+  const g=game(),save=setup(g);g.select(3);g.renderInspector();g.renderOperations();
+  const inspector=g.elements.get('moduleInspector'),panel=g.elements.get('dronePanel');
+  g.focus({id:'inspectorDroneDesign',dataset:{assembly:'3'}});inspector.innerHTML='editing inspector';g.renderInspector();assert.equal(inspector.innerHTML,'editing inspector');
+  assert.equal(g.setDroneDesign(3,'beam'),true);assert.equal(inspector.innerHTML,'editing inspector');assert.match(g.elements.get('inspectorDroneBuildStatus').textContent,/NEXT: BEAM/);assert.match(panel.innerHTML,/<option value="beam" selected>/);
+  panel.contains=()=>true;g.focus({dataset:{droneDesign:'3'}});panel.innerHTML='editing panel';g.renderOperations();assert.equal(panel.innerHTML,'editing panel');
+  assert.equal(g.setDroneDesign(3,'defense'),true);assert.equal(panel.innerHTML,'editing panel');assert.match(inspector.innerHTML,/NEXT: DEFENSE/);
+  g.focus(null);g.select(1);g.renderInspector();assert.doesNotMatch(inspector.innerHTML,/inspectorDroneDesign/);
+});
+
+test('changing designs resets only unfinished progress, builds the new type, and survives saving',()=>{
+  const g=game(),save=setup(g);g.updateDrones(5.5);const old=save.drones[0],assembly=save.modules[2];near(assembly.buildProgress,1.5);
+  for(const type of ['beam','defense','repair','boarding','combat']){
+    assert.equal(g.setDroneDesign(3,type),true);near(assembly.buildProgress,0);g.updateDrones(4);assert.equal(save.drones.at(-1).type,type);assert.equal(save.drones[0],old);
+  }
+  g.updateDrones(1);g.setDroneDesign(3,'beam');g.updateDrones(1.5);g.persist();const loaded=g.loadSave();assert.equal(loaded.modules[2].droneType,'beam');near(loaded.modules[2].buildProgress,1.5);
+  g.setSave(loaded);g.updateDrones(2.5);assert.equal(loaded.drones.at(-1).type,'beam');
+  const count=loaded.drones.length;loaded.modules[2].buildPaused=true;g.setDroneDesign(3,'repair');g.updateDrones(10);assert.equal(loaded.drones.length,count);assert.equal(loaded.modules[2].buildPaused,true);
+  assert.equal(g.setDroneDesign(3,'invalid'),false);
 });

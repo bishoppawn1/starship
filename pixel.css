@@ -199,3 +199,5 @@
 .grid-cell.moving-source { outline:1px dashed var(--gold); outline-offset:-3px; }
 
 .shield-aim-controls{display:flex;gap:8px;margin:8px 0}.shield-aim-controls button{flex:1;background:#183037;border:1px solid #467d7a;color:#b8f3df;padding:7px;font-size:10px}
+
+.combat-targets{display:flex;gap:8px;justify-content:flex-end;margin:10px 0 0 55%}.combat-targets button{flex:1;min-width:0;text-align:left;background:#182333;border:1px solid #755566;color:#ebc0ae;padding:9px 11px}.combat-targets button[aria-pressed="true"]{border-color:#e5bd78;box-shadow:inset 3px 0 #e5bd78}.combat-targets span,.combat-targets strong,.combat-targets small{display:block}.combat-targets span{font-size:8px;letter-spacing:.12em;color:#91a4b8}.combat-targets strong{font-size:10px;margin:4px 0}.combat-targets small{font-size:8px;color:#d8bc82}

@@ -11,11 +11,11 @@ function game(){
   const math=Object.create(Math),sandbox={Math:math,performance:{now:()=>0},innerWidth:1200,setTimeout:()=>0,clearTimeout(){},window:{devicePixelRatio:1},
     localStorage:{getItem:()=>null,setItem(){}},document:{createElement:el,getElementById:(id)=>{if(!elements.has(id))elements.set(id,el());return elements.get(id);}}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
-    globalThis.game={MODULES,ENEMY_LOADOUTS,newSave,enemyLayout,startBattle,enemyAlive,enemyWeaponMount,enemyWeaponStats,fireEnemyWeapons,
+    globalThis.game={MODULES,ENEMY_LOADOUTS,newSave,enemyLayout,startBattle,enemyAlive,enemyWeaponMount,enemyWeaponStats,fireEnemyWeapons,airborneDrone,enemyFlakTarget,enemyFlakImpact,
       enemyShieldState,enemyShieldStrength,absorbEnemyShields,updateEnemyShields,enemyShieldInterception,weaponImpact,fireProjectile,updateBattle,
       hurtEnemy,enemyPath,enemySprite,drawEnemy,evasionChance,updateDrones,shieldState,moduleStation,enemyTacticalRange,enemyTacticalGoal,clearSegment,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
-      stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;},setEvasion(value){evasionChance=()=>value;}};
+      stubFlight(){navigatePlayer=()=>{};crewAtStation=()=>0;},setEvasion(value){evasionChance=()=>value;},freezeDrones(){updateDrones=()=>{};}};
   })();`);
   vm.runInNewContext(source,sandbox);return {...sandbox.game,draws,math};
 }
@@ -60,8 +60,8 @@ test('all enemy loadouts have connected shield rooms and distinct usable weapon 
 
 test('encounters draw cannon, laser, missile and later mixed variants, with distinct rescue skiffs',()=>{
   const g=game(),save=g.newSave();g.setSave(save);const seen=new Set();save.sector=3;
-  for(const roll of [0,.3,.6,.9]){g.math.random=()=>roll;g.startBattle('pirate');const enemy=g.getBattle().enemies[0];seen.add(enemy.loadout);assert.ok(enemy.name.includes(g.ENEMY_LOADOUTS[enemy.loadout].name));assert.equal(enemy.crew.length,2);assert.equal(enemy.ammo,30);assert.ok(g.enemyShieldStrength(enemy)>100);}
-  assert.equal(seen.size,4);save.sector=1;g.startBattle('rescue');const b=g.getBattle();assert.equal(b.enemies.length,2);assert.notEqual(b.enemies[0].loadout,b.enemies[1].loadout);assert.equal(g.enemyShieldStrength(b.enemies[0]),60);
+  for(const roll of [0,.21,.41,.61,.81]){g.math.random=()=>roll;g.startBattle('pirate');const enemy=g.getBattle().enemies[0];seen.add(enemy.loadout);assert.ok(enemy.name.includes(g.ENEMY_LOADOUTS[enemy.loadout].name));assert.equal(enemy.crew.length,2);assert.equal(enemy.ammo,30);assert.ok(g.enemyShieldStrength(enemy)>100);}
+  assert.equal(seen.size,5);save.sector=1;g.startBattle('rescue');const b=g.getBattle();assert.equal(b.enemies.length,2);assert.notEqual(b.enemies[0].loadout,b.enemies[1].loadout);assert.equal(g.enemyShieldStrength(b.enemies[0]),60);
 });
 
 test('enemy shield interception protects actual rooms and crew and passes only excess damage',()=>{
@@ -149,4 +149,51 @@ test('a projectile stronger than an entire enemy shield applies the exact excess
   const g=game(),{b,enemy,shield}=setup(g),before=enemy.hp;shield.shieldDelay=100;
   fire(g,enemy,140);g.updateBattle(.5,0);
   assert.equal(shield.charge,0);near(enemy.hp,before-40);assert.equal(b.projectiles.length,0);
+});
+
+
+test('enemy flak escorts carry a separate visible anti-drone battery and only acquire airborne drones',()=>{
+  const g=game(),{b,enemy}=setup(g,'flak'),rooms=enemy.modules.filter(room=>room.type==='weapon'),flak=rooms.find(room=>room.antiDrone),mount=g.enemyWeaponMount(enemy,flak);
+  assert.equal(rooms.length,2);assert.equal(flak.weaponType,'flak');const stats=g.enemyWeaponStats(flak);assert.equal(stats.arc,360);
+  flak.cooldown=0;g.fireEnemyWeapons(enemy,.5);assert.equal(b.projectiles.length,0);assert.equal(enemy.ammo,22);
+  b.drones=['stored','carried','ready','boarding'].map((phase,i)=>({id:i,hp:60,type:'combat',phase,x:mount.x-100,y:mount.y}));
+  b.drones.push({id:10,hp:60,type:'repair',phase:'active',x:mount.x-100,y:mount.y},{id:11,hp:0,type:'combat',phase:'active',x:mount.x-100,y:mount.y});
+  assert.equal(g.enemyFlakTarget(enemy,mount,360),null);
+  const drone={id:12,hp:60,type:'boarding',phase:'outbound',x:mount.x-130,y:mount.y};b.drones.push(drone);
+  assert.equal(g.enemyFlakTarget(enemy,mount,360),drone);g.fireEnemyWeapons(enemy,1);
+  assert.equal(b.projectiles.length,1);assert.equal(b.projectiles[0].antiDrone,true);assert.equal(b.projectiles[0].family,'flak');assert.equal(enemy.ammo,21);
+  assert.equal(b.projectiles[0].remaining,360);assert.ok(Math.abs(b.projectiles[0].vy)<1e-6);
+  b.projectiles=[];flak.cooldown=0;drone.x=mount.x-400;g.fireEnemyWeapons(enemy,1);assert.equal(b.projectiles.length,0);
+  drone.x=mount.x-130;flak.hp=0;g.fireEnemyWeapons(enemy,1);assert.equal(b.projectiles.length,0);
+});
+
+test('anti-drone flak detonates along its swept path, damages clustered drones, and never hits docked drones or the ship',()=>{
+  const g=game(),{save,b,enemy}=setup(g,'flak'),flak=enemy.modules.find(room=>room.antiDrone),mount=g.enemyWeaponMount(enemy,flak),stats=g.enemyWeaponStats(flak);
+  const first={id:1,hp:60,type:'combat',phase:'active',x:mount.x-130,y:mount.y},nearby={id:2,hp:60,type:'beam',phase:'active',x:mount.x-130,y:mount.y+10};
+  const stored={id:3,hp:60,type:'combat',phase:'stored',x:first.x,y:first.y};b.drones=[first,nearby,stored];g.freezeDrones();
+  flak.cooldown=0;g.fireEnemyWeapons(enemy,1);const hp=save.modules[0].hp;g.updateBattle(.3,0);
+  assert.equal(first.hp,60-stats.damage);assert.equal(nearby.hp,60-stats.damage);assert.equal(stored.hp,60);assert.equal(save.modules[0].hp,hp);
+  assert.equal(b.projectiles.length,0);assert.ok(b.effects.some(effect=>effect.r===60));
+  const dead={...first,id:4,hp:5};b.drones=[dead];flak.cooldown=0;g.fireEnemyWeapons(enemy,1);g.updateBattle(.3,0);assert.equal(dead.hp,0);
+});
+
+test('flak needs ammunition and alignment, tracks moving drones, and respects disabled and ionized systems',()=>{
+  const g=game(),{b,enemy}=setup(g,'flak'),flak=enemy.modules.find(room=>room.antiDrone),mount=g.enemyWeaponMount(enemy,flak);
+  const drone={id:1,hp:60,type:'combat',phase:'active',x:mount.x-150,y:mount.y-90};b.drones=[drone];flak.cooldown=0;
+  g.fireEnemyWeapons(enemy,.01);assert.equal(b.projectiles.length,0);g.fireEnemyWeapons(enemy,1);assert.equal(b.projectiles.length,1);
+  drone.y+=10;g.fireEnemyWeapons(enemy,.1);assert.equal(flak.droneTrack.y,drone.y);assert.ok(flak.aimOffset>0);
+  b.projectiles=[];enemy.ammo=0;flak.cooldown=0;g.fireEnemyWeapons(enemy,1);assert.equal(b.projectiles.length,0);
+  enemy.ammo=10;flak.cooldown=10;flak.ionTime=3;flak.ionFactor=.5;g.fireEnemyWeapons(enemy,1);near(flak.cooldown,9.5);
+  flak.cooldown=0;enemy.modules.find(room=>room.type==='core').hp=0;g.fireEnemyWeapons(enemy,1);assert.equal(b.projectiles.length,0);
+});
+
+test('a live flak escort tracks and shoots down an orbiting drone through the full combat simulation',()=>{
+  const g=game(),save=g.newSave('drones');save.sector=2;g.setSave(save);g.stubFlight();g.startBattle('pirate');const b=g.getBattle(),enemy=b.enemies[0];
+  Object.assign(enemy,g.enemyLayout(true,2,'flak'));enemy.hp=enemy.maxHp=enemy.modules.reduce((sum,room)=>sum+room.hp,0);enemy.ammo=100;
+  for(const room of enemy.modules)if(room.type==='weapon')room.cooldown=room.antiDrone?0:1000;
+  for(const room of save.modules){if(room.type==='droneAssembly')room.buildPaused=true;if(room.type==='laser')room.cooldown=1000;}
+  save.crew.forEach(person=>person.task='idle');save.drones=save.drones.filter(drone=>drone.id===1);const drone=save.drones[0];
+  Object.assign(drone,{type:'combat',phase:'active',x:enemy.x-170,y:enemy.y-50,cooldown:1000});
+  const start={x:drone.x,y:drone.y};for(let i=0;i<1750&&drone.hp>0;i++)g.updateBattle(.02,0);
+  assert.equal(drone.hp,0);assert.ok(enemy.ammo<100);assert.ok(Math.hypot(drone.x-start.x,drone.y-start.y)>10);
 });
