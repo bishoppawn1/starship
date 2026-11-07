@@ -1619,6 +1619,17 @@
   }
   function renderOperations(){
     renderCrewOrders();const panel=$('dronePanel');if(!panel)return;
+    const mapStatus=$('mapDroneStatus');
+    if(mapStatus){
+      const assemblies=save.modules.filter((module)=>module.type==='droneAssembly');
+      mapStatus.hidden=!assemblies.length;
+      if(assemblies.length){
+        const loaded=(save.drones||[]).filter((drone)=>drone.phase==='ready'||drone.phase==='active').length;
+        const waiting=(save.drones||[]).filter((drone)=>drone.phase==='stored'||drone.phase==='carried').length;
+        const producing=assemblies.filter((assembly)=>assembly.hp>0&&!assembly.buildPaused&&systemPower(assembly)>0).length;
+        mapStatus.textContent=`DRONES ${loaded} LOADED · ${waiting} WAITING · ${producing}/${assemblies.length} ASSEMBLIES PRODUCING`;
+      }
+    }
     const bays=save.modules.filter((module)=>module.type==='droneControl'),assemblies=save.modules.filter((module)=>module.type==='droneAssembly'),drones=save.drones||[];
     panel.innerHTML=`<strong>${bays.length} BAYS · ${assemblies.length} ASSEMBLIES · ${drones.filter((drone)=>drone.hp>0).length} DRONES</strong><p class="muted small">Assemblies build continuously, including while exploring. Assign Deliver drones or Deliver ammo / drones to carry them to a clear bay. Bays have no drone limit; loaded drones launch automatically in combat. Pause an assembly when you have enough.</p>${bays.map((bay)=>`<div class="drone-row">BAY (${bay.x}, ${bay.y}) · ${bay.hp<=0?'OFFLINE':!droneBayClear(bay)?'BLOCKED LAUNCH LANE':`${droneCount(bay)} DRONES · NO SLOT LIMIT · CLEAR EXIT`}</div>`).join('')}${assemblies.map((assembly)=>{
       const built=drones.filter((drone)=>drone.assembly===assembly.id&&drone.hp>0),stored=built.filter((drone)=>drone.phase==='stored').length,loaded=built.filter((drone)=>drone.phase==='ready').length,type=DRONE_PROGRAMS[assembly.droneType]?assembly.droneType:'combat';
@@ -3159,7 +3170,8 @@
   function frame(time){
     const dt=clamp((time-lastFrame)/1000||0,0,.05);lastFrame=time;
     if(screen==='playing'){
-      if(!eventOpen){updateAmmoProduction(dt);updateCrew(dt);if(mode!=='combat')updateDrones(dt);}
+      if(!eventOpen)updateAmmoProduction(dt);
+      if(!eventOpen||mode==='map'){updateCrew(dt);if(mode!=='combat')updateDrones(dt);}
       if(mode==='combat'&&battle){updateBattle(dt,time);drawArena(time);}
       if(mode==='hangar'||mode==='trade')drawHangar();
       if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();renderAmmo();const selected=selectedModule();if(selected&&MODULES[selected.type].ammoType){const detail=$('magazineDetail');if(detail)detail.textContent=`${MODULES[selected.type].ammoType.toUpperCase()} MAGAZINE ${magazineCount(selected)} / ${MODULES[selected.type].magazine}${magazineCount(selected)<MODULES[selected.type].ammo?' · EMPTY · NEEDS LOADER':''}`;}if(mode!=='combat'){renderSystems();renderOperations();}}

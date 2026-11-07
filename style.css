@@ -4,6 +4,7 @@
 .inspector-sub{display:flex;justify-content:space-between;align-items:start;gap:8px}
 .inspector-sub span{float:none!important;white-space:nowrap}
 @media(max-width:720px){.left-panel{order:1}.stage-panel{order:2}.right-panel{order:3}}
+.map-drone-status{margin-top:10px;padding:9px 12px;border:1px solid #365269;background:#10283a;color:var(--cyan);font-size:10px;font-weight:800;letter-spacing:.08em}
 
 /* Starting ship lineup and the visible ammunition supply chain. */
 .starter-picker{padding:24px 32px 32px;border-top:1px solid var(--line)}
