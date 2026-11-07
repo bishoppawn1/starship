@@ -24,7 +24,7 @@ function game(){
 const part=(g,id,type,x,y,extra={})=>({id,type,x,y,rotation:0,hp:g.MODULES[type].hp,level:1,...extra});
 function setup(g,task='drone',type='combat'){
   const save=g.newSave();save.modules=[part(g,1,'core',0,0),part(g,2,'droneAssembly',0,2,{droneType:type}),part(g,3,'droneControl',5,1),part(g,4,'armor',2,1,{footprint:{shape:[[0,0],[1,0],[2,0]],station:null}})];
-  save.crew=[{id:'porter',name:'PORTER',task,hp:100,x:.5,y:.5}];g.setSave(save);g.setMode('hangar');g.setBattle(null);g.updateDrones(15);return save;
+  save.crew=[{id:'porter',name:'PORTER',task,hp:100,x:.5,y:.5}];g.setSave(save);g.setMode('hangar');g.setBattle(null);g.updateDrones(4);save.modules[1].buildPaused=true;return save;
 }
 function tick(g,seconds){for(let i=0;i<Math.ceil(seconds/.05);i++){g.updateCrew(.05);g.updateDrones(.05);}}
 function pickup(g){for(let i=0;i<200&&g.getSave().crew[0].droneCargo===undefined;i++)tick(g,.05);assert.ok(g.getSave().crew[0].droneCargo!==undefined);}
@@ -44,11 +44,13 @@ test('crew walk to the assembly, visibly carry its exact drone, and load it at t
   battle(g);g.updateDrones(.1);assert.equal(drone.phase,'launching');
 });
 
-test('multiple loaders cannot claim the same drone or overfill a bay',()=>{
+test('multiple loaders claim distinct drones and can load more than two into one bay',()=>{
   const g=game(),save=setup(g);save.crew.push({id:'other',task:'drone',hp:100,x:.5,y:.5});g.updateCrew(0);
   assert.equal(save.crew.filter((person)=>person.droneJob).length,1);
-  save.modules.push(part(g,5,'droneAssembly',0,4),part(g,6,'droneAssembly',2,3));g.updateDrones(30);tick(g,20);
-  assert.equal(g.droneCount(save.modules[2]),2);assert.equal(save.drones.filter((drone)=>drone.phase==='ready').length,2);assert.equal(save.drones.filter((drone)=>drone.phase==='stored'&&!drone.carrier).length,1);
+  save.modules.push(part(g,5,'droneAssembly',0,4),part(g,6,'droneAssembly',2,3));g.updateDrones(4);
+  for(const assembly of save.modules.filter((module)=>module.type==='droneAssembly'))assembly.buildPaused=true;
+  tick(g,25);
+  assert.equal(g.droneCount(save.modules[2]),3);assert.equal(save.drones.filter((drone)=>drone.phase==='ready').length,3);
 });
 
 test('a disconnected assembly or bay leaves its drone waiting for a physical route',()=>{
