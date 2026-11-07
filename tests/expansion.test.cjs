@@ -247,6 +247,7 @@ test('the drones shop filter shows the bay and assembly with purchases and no un
   const node={type:'trader',stock:[{type:'weapon',qty:1,price:45}]};g.openTrader(node);g.filter('drones');
   const catalog=g.elements.get('catalog').innerHTML;
   assert.match(catalog,/DRONE BAY/);assert.match(catalog,/DRONE ASSEMBLY/);
+  assert.match(catalog,/No drone storage limit/);assert.doesNotMatch(catalog,/Two drone slots/);
   assert.match(catalog,/data-buy="droneControl"/);assert.match(catalog,/data-buy="droneAssembly"/);
   assert.doesNotMatch(catalog,/PULSE CANNON|CREW|POWER GENERATOR/);
   assert.equal(g.buyTraderItem('droneControl'),true);g.filter('drones');
