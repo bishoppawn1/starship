@@ -2340,7 +2340,6 @@
         if(error>.18)p.travel.turning=true;
         if(error<.025&&Math.abs(p.omega)<.025)p.travel.turning=false;
         if(p.travel.turning){desiredX=-p.vx*2.4;desiredY=-p.vy*2.4;}
-
       }
     }
     if(p.arrival){desiredX=0;desiredY=0;heading=p.targetAngle;}
