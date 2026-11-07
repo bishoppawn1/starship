@@ -26,3 +26,4 @@
 .weapon-range select{max-width:100%;background:#152533;color:var(--text);border:1px solid #436473;padding:7px;font-size:10px}
 .inspector-sub span:first-child{white-space:normal}
 @media(max-width:720px){.starter-lineup{grid-template-columns:1fr}.starter-picker{padding:20px}.starter-card canvas{height:160px}.starter-heading{align-items:start}.starter-heading h2{font-size:14px}}
+.event-card{max-height:min(90vh,760px);overflow-y:auto}.event-effects{display:grid;gap:5px;margin:0 0 18px;padding:11px;background:#0b1c2c;border-left:3px solid var(--gold)}.event-effects div{color:#e9d7ae;font-size:11px;line-height:1.4}.event-effects div:before{content:'› ';color:var(--gold)}

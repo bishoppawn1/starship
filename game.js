@@ -125,6 +125,7 @@
     anomaly: { name: 'ANOMALY', icon: '◈' }, derelict: { name: 'DERELICT', icon: '▣' },
     outpost: { name: 'OUTPOST', icon: '⌂' }, relay: { name: 'RELAY', icon: '⌁' },
     minefield: { name: 'MINEFIELD', icon: '◌' }, lifeboat: { name: 'LIFEBOAT', icon: '♡' },
+    clinic: { name: 'CLINIC', icon: '✚' }, workshop: { name: 'WORKSHOP', icon: '⚙' }, courier: { name: 'COURIER', icon: '▤' },
     exit: { name: 'NEXT SECTOR', icon: '➜' }
   };
 
@@ -171,7 +172,9 @@
   }
 
   function makeMap(base) {
-    const pool=['pirate','rescue','salvage','anomaly','derelict','relay','minefield','lifeboat','pirate','rescue'];
+    const extras=['salvage','anomaly','derelict','relay','minefield','clinic','workshop','courier'];
+    for(let i=extras.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[extras[i],extras[j]]=[extras[j],extras[i]];}
+    const pool=['pirate','rescue','lifeboat',...extras.slice(0,7)];
     for(let i=pool.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[pool[i],pool[j]]=[pool[j],pool[i]];}
     const usedVariants={},variantOffsets={};
     const nodes=[{id:'0-1',col:0,row:1,mapX:80,mapY:300,type:'start',links:[]}];
@@ -379,7 +382,7 @@
   function newSave(starterId='wayfarer') {
     if(!STARTER_SHIPS.some((ship)=>ship.id===starterId))starterId='wayfarer';
     const modules=starterModules(starterId);
-    const data={metal:90,sector:1,wins:0,nextId:modules.length+1,starterId,starterLayoutVersion:2,weaponFootprintsVersion:2,inventory:{ion:1},passengers:0,
+    const data={metal:90,sector:1,wins:0,nextId:modules.length+1,starterId,starterLayoutVersion:2,weaponFootprintsVersion:2,inventory:{ion:1},passengers:0,courierCargo:0,
       modules,crew:starterCrew(starterId),map:makeMap(1)};
     data.drones=[];
     if(starterId==='drones'){
@@ -407,6 +410,7 @@
       if(!data.inventory||typeof data.inventory!=='object')data.inventory={};
       retireAmmoHolds(data);
       if(!Number.isFinite(data.passengers))data.passengers=0;
+      if(!Number.isFinite(data.courierCargo))data.courierCargo=0;
       if(!Number.isFinite(data.ammoCrates))data.ammoCrates=0;
       for (const template of CREW) {
         let person = data.crew.find((member) => member.id === template.id);
@@ -445,7 +449,7 @@
   const COMBAT_ZOOMS=[1,1.25,1.5,1.75,2,2.5];
   let combatZoomIndex=0;
   let tradeNode=null, marketFilter='all';
-  let buildRotation = 0, buildWeaponFacing = 0, buildFlipped = false, hoverCell = null, battle = null, eventOpen = false, pendingNodeId = null;
+  let buildRotation = 0, buildWeaponFacing = 0, buildFlipped = false, hoverCell = null, battle = null, eventOpen = false, pendingNodeId = null, eventSnapshot = null;
   let toastTimer = null, lastFrame = performance.now(), lastHudRefresh = 0;
   const logEntries = [], gridButtons = [], crewRoutes = {};
   const canvas = $('combatCanvas'), ctx = canvas.getContext('2d');
@@ -1815,15 +1819,42 @@
     save.sector++;save.map=makeMap(save.sector);pendingNodeId=null;persist();
     log(`Entered sector ${String(save.sector).padStart(2,'0')}.`);toast(`Sector ${String(save.sector).padStart(2,'0')} charted`);openMap();renderAll();
   }
-  function showEvent({type,icon,title,body,choices}){
+  function captureEventState(){
+    return {metal:save.metal,ammunition:{...save.ammunition},inventory:{...save.inventory},passengers:save.passengers,courierCargo:save.courierCargo||0,
+      reactorLevel:save.reactorLevel||1,crew:save.crew.map((person)=>({id:person.id,name:person.name,hp:person.hp})),
+      modules:save.modules.map((module)=>({id:module.id,type:module.type,hp:module.hp,level:module.level})),
+      routes:save.map.nodes.reduce((sum,node)=>sum+node.links.length,0)/2};
+  }
+  function eventChanges(before){
+    if(!before)return [];
+    const changes=[],delta=(now,old,label)=>{if(now!==old)changes.push(`${label}: ${now>old?'+':''}${now-old}`);};
+    delta(save.metal,before.metal,'Metal');
+    for(const type of ['heavy','missile'])delta(save.ammunition[type]||0,before.ammunition[type]||0,`${type[0].toUpperCase()+type.slice(1)} rounds`);
+    delta(save.passengers,before.passengers,'Passengers');delta(save.courierCargo||0,before.courierCargo,'Courier cargo');
+    if((save.reactorLevel||1)!==before.reactorLevel)changes.push(`Reactor level: ${before.reactorLevel} → ${save.reactorLevel}`);
+    for(const [type,count] of Object.entries(save.inventory))if(count!==(before.inventory[type]||0))changes.push(`${MODULES[type]?.name||type} in hold: ${count>(before.inventory[type]||0)?'+':''}${count-(before.inventory[type]||0)}`);
+    for(const person of save.crew){const previous=before.crew.find((crew)=>crew.id===person.id);if(!previous)changes.push(`${person.name} joined your crew`);else if(Math.round(person.hp||0)!==Math.round(previous.hp||0))changes.push(`${person.name}: ${Math.round(previous.hp||0)} → ${Math.round(person.hp||0)} health`);}
+    for(const module of save.modules){const previous=before.modules.find((room)=>room.id===module.id);if(!previous)continue;
+      if(module.level!==previous.level)changes.push(`${MODULES[module.type].name}: level ${previous.level} → ${module.level}`);
+      if(Math.round(module.hp)!==Math.round(previous.hp))changes.push(`${MODULES[module.type].name}: ${Math.round(previous.hp)} → ${Math.round(module.hp)} hull`);
+    }
+    const routes=save.map.nodes.reduce((sum,node)=>sum+node.links.length,0)/2;if(routes>before.routes)changes.push(`${routes-before.routes} new chart route${routes-before.routes===1?'':'s'}`);
+    return changes.length?changes:['No ship resources changed'];
+  }
+  function showEvent({type,icon,title,body,choices,effects=[],result=false}){
+    if(!result)eventSnapshot=captureEventState();
     eventOpen=true;$('eventType').textContent=type;$('eventVisual').innerHTML=`<span>${icon}</span>`;
     $('eventTitle').textContent=title;$('eventBody').textContent=body;$('eventChoices').replaceChildren();
+    const effectList=$('eventEffects');effectList.replaceChildren();effectList.hidden=!effects.length;
+    for(const effect of effects){const row=document.createElement('div');row.textContent=effect;effectList.append(row);}
     for(const choice of choices){const button=document.createElement('button');button.type='button';button.textContent=choice.label;button.disabled=!!choice.disabled;button.addEventListener('click',choice.action);$('eventChoices').append(button);}
     $('eventOverlay').hidden=false;renderHud();
   }
   function hideEvent(){eventOpen=false;$('eventOverlay').hidden=true;renderHud();}
   function concludeEvent(title,body,icon='✦'){
-    advanceRoute();hideEvent();openMap();log(`${title}: ${body}`);persist();renderAll();toast(`${icon} ${title}`);
+    const before=eventSnapshot;
+    advanceRoute();log(`${title}: ${body}`);persist();renderAll();
+    showEvent({type:'ENCOUNTER RESULT',icon,title,body,effects:eventChanges(before),result:true,choices:[{label:'CONTINUE →',action:()=>{eventSnapshot=null;hideEvent();openMap();renderAll();}}]});
   }
   function damageRandomModule(amount,localShields=false){
     const live=save.modules.filter((module)=>module.hp>0),target=live[Math.floor(Math.random()*live.length)];
@@ -1860,6 +1891,10 @@
   }
   function openOutpost(node){
     const choices=[];
+    if(save.courierCargo>0)choices.push({label:`DELIVER ${save.courierCargo} SEALED PACKAGE${save.courierCargo===1?'':'S'}`,action:()=>{
+      const count=save.courierCargo,reward=count*32;save.courierCargo=0;save.metal+=reward;
+      concludeEvent('COURIER DELIVERY COMPLETE',`The outpost signs for ${count} sealed package${count===1?'':'s'} and pays ${reward} metal for the completed route.`,'▤');
+    }});
     if(save.passengers>0)choices.push({label:`DELIVER ${save.passengers} SURVIVOR${save.passengers===1?'':'S'}`,action:()=>{
       const count=save.passengers,reward=count*20;save.passengers=0;save.metal+=reward;
       concludeEvent('SURVIVORS DELIVERED',`${count} survivors brought safely to the outpost; ${reward} metal paid for the rescue.`,'⌂');
@@ -1867,9 +1902,9 @@
     choices.push({label:'DOCK FOR REPAIRS · ◆ 12',disabled:save.metal<12||hullRatio()>=.999,action:()=>{
       save.metal-=12;repairAll(40);concludeEvent('HULL PATCHED','Outpost crew repaired damaged rooms for 12 metal.','⌂');
     }});
-    choices.push({label:'LEAVE OUTPOST →',action:()=>{hideEvent();openMap();}});
+    choices.push({label:'LEAVE OUTPOST →',action:()=>concludeEvent('OUTPOST DEPARTED','You leave the station and return to the sector chart.','⌂')});
     showEvent({type:'CIVILIAN SIGNAL // OUTPOST',icon:'⌂',title:'FRINGE OUTPOST',
-      body:save.passengers?`The station has room for ${save.passengers} survivors aboard your ship. Its technicians also offer hull repairs.`:'The technicians can repair damaged rooms here. Return any time you need their help.',choices});
+      body:`The station accepts survivors and sealed courier packages. Its technicians also offer hull repairs.${save.passengers?` ${save.passengers} survivor${save.passengers===1?'':'s'} await transfer.`:''}${save.courierCargo?` ${save.courierCargo} package${save.courierCargo===1?'':'s'} await delivery.`:''}`,choices});
   }
   function chartShortcut(node){
     const candidates=save.map.nodes.filter((target)=>target.id!==node.id&&!node.links.includes(target.id)&&Math.hypot(target.mapX-node.mapX,target.mapY-node.mapY)>260);
@@ -1997,6 +2032,57 @@
       if(variant===2)eventScene(node,'DEACTIVATED TORPEDO NET','A line of failed torpedoes hangs in the current. Their propellant is gone, but the warheads can supply your guns.',[
         {label:'RECOVER WARHEADS',action:()=>{recoverAmmoCrate();log('Torpedo net yielded one ammo crate.');concludeEvent('WARHEADS SECURED','8 heavy rounds and 4 missile rounds added to your stores.','◌');}},
         {label:'RECYCLE CASINGS',action:()=>{save.metal+=13;log('13 metal recycled from torpedo casings.');concludeEvent('CASINGS RECYCLED','The crew strips the empty housings for alloy.','◌');}}
+      ]);
+      return;
+    }
+    if(node.type==='clinic'){
+      const injured=save.crew.filter((person)=>person.hp>0&&person.hp<100);
+      if(variant===0)eventScene(node,'QUARANTINE SLOOP','A lone medic has sealed herself inside a quarantine sloop. Her patients have recovered, but she needs a clean airlock and medical supplies to leave.',[
+        {label:'PREPARE A CLEAN TRANSFER · ◆ 8',disabled:save.metal<8,action:()=>{save.metal-=8;const name=awardCrew('SERA','#a5d9c1');concludeEvent('MEDIC ABOARD',`${name} joins the crew after the transfer. Eight metal was spent on filters and sterile tubing.`,'✚');}},
+        {label:'RELAY HER POSITION',action:()=>concludeEvent('SLOOP REPORTED','You send the outpost a secure quarantine channel and leave the medic aboard her ship.','✚')}
+      ]);
+      if(variant===1)eventScene(node,'CRYO WARD','A hospital ward drifts with two intact pods: one holds a sleeping engineer, the other contains a sealed cold projector. The emergency generator will support only one opening.',[
+        {label:'WAKE THE ENGINEER',action:()=>{const name=awardCrew('IVO','#9dcce5');concludeEvent('ENGINEER AWAKENED',`${name} wakes safely and joins your crew. The ward's remaining pod powers down.`,'✚');}},
+        {label:'RECOVER THE PROJECTOR',action:()=>{awardWeapon('cryo');concludeEvent('CRYO PROJECTOR SECURED','A working Cryo Projector is stored in your hold for installation at a trader. The sleeping patient remains in stasis.','✚');}}
+      ]);
+      if(variant===2)eventScene(node,'AUTOMATED TRIAGE','An empty clinic still has a powered surgical suite and a rack of hull repair microbots. Its remaining charge can support one treatment.',[
+        {label:'TREAT INJURED CREW',disabled:!injured.length,action:()=>{for(const person of injured)person.hp=100;concludeEvent('CREW TREATED',`${injured.map((person)=>person.name).join(', ')} ${injured.length===1?'has':'have'} recovered to full health.`,'✚');}},
+        {label:'DEPLOY REPAIR MICROBOTS',disabled:hullRatio()>=.999,action:()=>{repairAll(38);concludeEvent('HULL REPAIRED','The clinic microbots repair up to 38 hull damage across your rooms.','✚');}},
+        {label:'LEAVE THE CLINIC',action:()=>concludeEvent('CLINIC LEFT INTACT','The crew preserves the clinic for the next traveler.','✚')}
+      ]);
+      return;
+    }
+    if(node.type==='workshop'){
+      const engine=save.modules.find((room)=>ENGINE_TYPES.includes(room.type)&&room.hp>0&&room.level<3);
+      const shield=save.modules.find((room)=>SHIELD_TYPES.includes(room.type)&&room.hp>0&&room.level<3);
+      if(variant===0)eventScene(node,'ENGINE TEST STAND','A forgotten engine test stand still has calibrated thrust injectors. Its automated fitter can tune one installed engine, though the old rig may stress its housing.',[
+        {label:'TUNE AN ENGINE · ◆ 12',disabled:save.metal<12||!engine,action:()=>{save.metal-=12;engine.level++;engine.hp=Math.max(1,engine.hp-8);concludeEvent('ENGINE TUNED',`Your ${MODULES[engine.type].name.toLowerCase()} reaches level ${engine.level}. The stand's clamp scrapes eight hull from that room.`,'⚙');}},
+        {label:'DISMANTLE THE TEST STAND',action:()=>{save.metal+=11;concludeEvent('TEST STAND SALVAGED','The crew takes 11 metal of calibrated fittings instead of running the machine.','⚙');}}
+      ]);
+      if(variant===1)eventScene(node,'SHIELD FOUNDRY','An unmanned foundry can weave a stronger shield lattice. Its emergency welders could instead patch your most damaged rooms.',[
+        {label:'WEAVE A SHIELD LATTICE · ◆ 15',disabled:save.metal<15||!shield,action:()=>{save.metal-=15;shield.level++;concludeEvent('SHIELD UPGRADED',`Your ${MODULES[shield.type].name.toLowerCase()} reaches level ${shield.level}, increasing its field capacity.`,'⚙');}},
+        {label:'USE EMERGENCY WELDERS',disabled:hullRatio()>=.999,action:()=>{repairAll(35);concludeEvent('FIELD REPAIRS COMPLETE','The foundry welders restore up to 35 hull across damaged rooms.','⚙');}},
+        {label:'LEAVE THE FOUNDRY',action:()=>concludeEvent('FOUNDRY BYPASSED','The foundry remains powered for another ship.','⚙')}
+      ]);
+      if(variant===2)eventScene(node,'SOLAR CHARGING RING','A station-sized charging ring offers a one-use reactor calibration. Salvage crews have also left intact hull patches on its outer walkway.',[
+        {label:'CALIBRATE REACTOR · ◆ 24',disabled:save.metal<24,action:()=>{save.metal-=24;save.reactorLevel=(save.reactorLevel||1)+1;concludeEvent('REACTOR CALIBRATED',`The reactor reaches level ${save.reactorLevel}, adding two shared power units. Calibration consumed 24 metal.`,'⚙');}},
+        {label:'COLLECT PATCHES',disabled:hullRatio()>=.999,action:()=>{repairAll(25);concludeEvent('HULL PATCHED','The outer walkway supplies enough patches to restore up to 25 hull.','⚙');}},
+        {label:'CONTINUE PAST THE RING',action:()=>concludeEvent('RING LEFT BEHIND','Your ship passes the charging ring without using it.','⚙')}
+      ]);
+      return;
+    }
+    if(node.type==='courier'){
+      if(variant===0)eventScene(node,'MISROUTED MEDICAL PACKAGE','A sealed medicine case has drifted off its delivery drone. The address points to the sector outpost; the seal warns that opening it voids the delivery.',[
+        {label:'CARRY IT TO THE OUTPOST',action:()=>{save.courierCargo=(save.courierCargo||0)+1;concludeEvent('PACKAGE ABOARD','One sealed package is aboard for delivery at this sector’s outpost. It has no immediate payment.','▤');}},
+        {label:'OPEN IT FOR YOUR CREW',disabled:!save.crew.some((person)=>person.hp>0&&person.hp<100),action:()=>{for(const person of save.crew)if(person.hp>0)person.hp=Math.min(100,person.hp+35);concludeEvent('MEDICINE USED','The case seal is broken and living crew recover up to 35 health. It can no longer be delivered.','▤');}}
+      ]);
+      if(variant===1)eventScene(node,'CLASSIFIED DISPATCH','A dispatch capsule offers a sealed contract to the outpost. Its unencrypted navigation header also hints at an uncharted passage.',[
+        {label:'TAKE THE SEALED CONTRACT',action:()=>{save.courierCargo=(save.courierCargo||0)+1;concludeEvent('CONTRACT ACCEPTED','One sealed dispatch is aboard for the outpost. Payment comes only after delivery.','▤');}},
+        {label:'CHART THE HEADER',action:()=>{const target=chartShortcut(node);concludeEvent('PASSAGE CHARTED',target?`A two-way route to beacon ${beaconNumber(target)} appears on the sector chart.`:'The header describes only routes you already know.','▤');}}
+      ]);
+      if(variant===2)eventScene(node,'LATE MAIL SKIFF','A mail skiff cannot reach the outpost before its coolant fails. Its pilot offers the sealed parcels to any ship willing to finish the route.',[
+        {label:'TAKE THE MAIL RUN',action:()=>{save.courierCargo=(save.courierCargo||0)+2;concludeEvent('MAIL TRANSFERRED','Two sealed packages are aboard for outpost delivery. The skiff pilot can shut down the failing coolant loop.','▤');}},
+        {label:'TRADE FOR SPARE MUNITIONS · ◆ 6',disabled:save.metal<6,action:()=>{save.metal-=6;recoverAmmoCrate();concludeEvent('MUNITIONS TRADED','You pay six metal for the skiff’s spare munitions: eight heavy rounds and four missile rounds. The pilot keeps the mail.','▤');}}
       ]);
       return;
     }

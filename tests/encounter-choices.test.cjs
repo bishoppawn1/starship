@@ -25,7 +25,7 @@ function encounter(type,variant=0){
 }
 
 test('all encounter variants describe choices without quantified reward or damage spoilers',()=>{
-  for(const type of ['pirate','rescue','salvage','anomaly','derelict','relay','minefield','lifeboat'])for(let variant=0;variant<3;variant++){
+  for(const type of ['pirate','rescue','salvage','anomaly','derelict','relay','minefield','lifeboat','clinic','workshop','courier'])for(let variant=0;variant<3;variant++){
     const {g,save,buttons}=encounter(type,variant);
     assert.ok(buttons.length>=2,`${type} ${variant}`);
     for(const button of buttons)assert.doesNotMatch(button.textContent,/\+|\bNET\b|\bGAIN\b|\bHP\b|\bHULL\b|\bCRATE\b/,`${type} ${variant}: ${button.textContent}`);
@@ -34,13 +34,19 @@ test('all encounter variants describe choices without quantified reward or damag
   }
 });
 
-test('salvage results happen only after choosing and are revealed in the captains log',()=>{
+test('choosing an encounter shows its consequences until Continue is clicked',()=>{
   const {g,save,buttons}=encounter('salvage'),before=save.modules.reduce((sum,room)=>sum+room.hp,0);
   assert.equal(buttons[1].textContent,'CUT OPEN THE INNER RACK');assert.equal(save.metal,90);
   buttons[1].listeners.click();
   assert.equal(save.metal,120);assert.equal(save.modules.reduce((sum,room)=>sum+room.hp,0),before-12);
   assert.match(g.elements.get('captainsLog').innerHTML,/30 metal/);assert.match(g.elements.get('captainsLog').innerHTML,/by 12/);
-  assert.equal(g.getMode(),'map');assert.equal(g.getEventOpen(),false);assert.ok(save.map.resolved.includes('event'));
+  assert.equal(g.getEventOpen(),true);assert.equal(g.elements.get('eventType').textContent,'ENCOUNTER RESULT');
+  assert.match(g.elements.get('eventEffects').children.map((row)=>row.textContent).join(' '),/Metal: \+30/);
+  assert.match(g.elements.get('eventEffects').children.map((row)=>row.textContent).join(' '),/hull/);
+  assert.equal(g.elements.get('eventChoices').children[0].textContent,'CONTINUE →');
+  assert.ok(save.map.resolved.includes('event'));
+  g.elements.get('eventChoices').children[0].listeners.click();
+  assert.equal(g.getMode(),'map');assert.equal(g.getEventOpen(),false);
 });
 
 test('upfront costs remain visible and unaffordable actions stay disabled',()=>{
@@ -55,4 +61,23 @@ test('outpost survivor handoff does not advertise its reward before choosing',()
   const button=g.elements.get('eventChoices').children[0];assert.equal(button.textContent,'DELIVER 2 SURVIVORS');
   const before=save.metal;button.listeners.click();assert.equal(save.passengers,0);assert.equal(save.metal,before+40);
   assert.match(g.elements.get('captainsLog').innerHTML,/40 metal paid/);
+});
+
+test('courier packages persist until a later outpost delivery',()=>{
+  const {g,save,buttons}=encounter('courier',2);
+  buttons[0].listeners.click();assert.equal(save.courierCargo,2);
+  assert.match(g.elements.get('eventEffects').children.map((row)=>row.textContent).join(' '),/Courier cargo: \+2/);
+  g.elements.get('eventChoices').children[0].listeners.click();
+  const before=save.metal;g.openOutpost({type:'outpost'});
+  assert.match(g.elements.get('eventChoices').children[0].textContent,/DELIVER 2 SEALED PACKAGES/);
+  g.elements.get('eventChoices').children[0].listeners.click();
+  assert.equal(save.courierCargo,0);assert.equal(save.metal,before+64);
+  assert.match(g.elements.get('eventEffects').children.map((row)=>row.textContent).join(' '),/Metal: \+64/);
+});
+
+test('workshop choices upgrade real installed systems and state the cost in the result',()=>{
+  const {g,save,buttons}=encounter('workshop',2),before=save.reactorLevel;
+  buttons[0].listeners.click();
+  assert.equal(save.reactorLevel,before+1);assert.equal(save.metal,66);
+  assert.match(g.elements.get('eventEffects').children.map((row)=>row.textContent).join(' '),/Reactor level: 1 → 2/);
 });

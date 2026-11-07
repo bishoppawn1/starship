@@ -134,10 +134,10 @@ test('every starting ship has a connected hull, clear mounts, a powered shield a
   }
 });
 
-test('encounter results resolve the beacon and return directly to the map with no second choice',()=>{
+test('encounter results resolve the beacon and remain visible until Continue',()=>{
   const g=game(),save=g.newSave();g.setSave(save);const id=save.map.nodes.find((node)=>node.id!=='0-1').id;g.setPending(id);
-  g.concludeEvent('SURVIVORS ABOARD','Three survivors rescued.','♡');assert.equal(g.getMode(),'map');assert.equal(g.getEventOpen(),false);assert.equal(save.map.current,id);assert.ok(save.map.resolved.includes(id));
-  assert.equal(g.elements.get('eventOverlay').hidden,true);assert.match(g.elements.get('captainsLog').innerHTML,/Three survivors rescued/);
+  g.concludeEvent('SURVIVORS ABOARD','Three survivors rescued.','♡');assert.equal(g.getEventOpen(),true);assert.equal(save.map.current,id);assert.ok(save.map.resolved.includes(id));
+  assert.equal(g.elements.get('eventOverlay').hidden,false);assert.equal(g.elements.get('eventTitle').textContent,'SURVIVORS ABOARD');assert.match(g.elements.get('captainsLog').innerHTML,/Three survivors rescued/);
 });
 
 test('entering battles and revisiting the map never refills stocks or magazines',()=>{
