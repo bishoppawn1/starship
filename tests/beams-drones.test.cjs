@@ -145,3 +145,36 @@ test('the player hull overlapping part of an orbit does not make an attack drone
   for(let i=0;i<800;i++){g.updateDrones(.02);farthest=Math.max(farthest,drone.x);assert.ok(Math.hypot(drone.x-b.player.x,drone.y-b.player.y)>b.player.r+9);}
   assert.ok(farthest>target.x+100);
 });
+
+test('defense drones prioritize the nearest launched missile over closer cannon and laser shots',()=>{
+  const g=game(),{b,drone}=setup(g,'defense');drone.cooldown=0;
+  const shot=(family,range,extra={})=>{g.fireProjectile('enemy',b.player.x+range,b.player.y,b.player,20,100,500,{family,...extra});return b.projectiles.at(-1);};
+  const cannon=shot('cannon',40),laser=shot('laser',60),farMissile=shot('missile',220),nearMissile=shot('missile',150);
+  g.updateDrones(.01);assert.ok(!b.projectiles.includes(nearMissile));assert.ok(b.projectiles.includes(cannon));assert.ok(b.projectiles.includes(laser));assert.ok(b.projectiles.includes(farMissile));near(drone.cooldown,.8);
+  drone.cooldown=0;g.updateDrones(.01);assert.ok(!b.projectiles.includes(farMissile));assert.ok(b.projectiles.includes(cannon));
+  drone.cooldown=0;g.updateDrones(.01);assert.ok(!b.projectiles.includes(cannon));assert.ok(b.projectiles.includes(laser));
+});
+
+test('queued, evaded, friendly and out-of-range missiles do not displace an eligible incoming shot',()=>{
+  const g=game(),{b,drone}=setup(g,'defense');drone.cooldown=0;
+  const shot=(range,extra={})=>{g.fireProjectile('enemy',b.player.x+range,b.player.y,b.player,20,100,500,{family:'missile',...extra});return b.projectiles.at(-1);};
+  const evaded=shot(25,{evaded:true}),queued=shot(30,{delay:.2}),outside=shot(b.player.r+231),friendly=shot(35,{owner:'player'}),cannon=shot(80,{family:'cannon'});
+  g.updateDrones(.01);assert.ok(!b.projectiles.includes(cannon));assert.ok([evaded,queued,outside,friendly].every((part)=>b.projectiles.includes(part)));
+  drone.cooldown=0;g.updateDrones(.01);assert.equal(b.projectiles.length,4);near(drone.cooldown,0);
+});
+
+test('multiple defense drones shoot distinct missiles in a volley before spending shots on cannon fire',()=>{
+  const g=game(),{save,b,drone}=setup(g,'defense');drone.cooldown=0;save.drones.push({...drone,id:2,cooldown:0});
+  g.fireProjectile('enemy',b.player.x+40,b.player.y,b.player,10,100,500,{family:'cannon'});const cannon=b.projectiles[0];
+  for(const range of [100,150])g.fireProjectile('enemy',b.player.x+range,b.player.y,b.player,20,100,500,{family:'missile'});
+  g.updateDrones(.01);assert.equal(b.projectiles.length,1);assert.equal(b.projectiles[0],cannon);assert.equal(b.effects.length,2);
+  assert.ok(save.drones.every((part)=>part.cooldown===.8));
+});
+
+test('missile priority retains the defense firing cooldown and requires a powered clear bay',()=>{
+  const g=game(),{save,b,drone}=setup(g,'defense');drone.cooldown=.8;
+  g.fireProjectile('enemy',b.player.x+100,b.player.y,b.player,20,100,500,{family:'missile'});const missile=b.projectiles[0];
+  g.updateDrones(.4);assert.ok(b.projectiles.includes(missile));near(drone.cooldown,.4);
+  const bay=save.modules.find((part)=>part.id===drone.bay);bay.hp=0;g.updateDrones(1);assert.ok(b.projectiles.includes(missile));near(drone.cooldown,.4);
+  bay.hp=75;g.updateDrones(.4);assert.ok(!b.projectiles.includes(missile));near(drone.cooldown,.8);
+});
