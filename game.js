@@ -50,7 +50,7 @@
     {id:'siege',name:'Siege Cannon',color:'#bca692',range:600,arc:30,damage:55,reload:5,ammo:4,speed:340,cost:120,fixed:true,length:4,splash:42,family:'cannon',description:'Slow-loading siege shells deliver massive damage.'},
     {id:'disruptor',name:'Disruptor',color:'#b8e87e',range:340,arc:155,damage:5,reload:1.8,ammo:0,speed:520,cost:74,ion:.8,ionDuration:2,systemPulse:80,family:'energy',description:'A broad pulse reduces nearby systems’ efficiency by twenty percent for two seconds.'},
     {id:'tesla',name:'Tesla Coil',color:'#abafff',range:300,arc:150,damage:6,reload:1.8,ammo:0,speed:950,cost:80,chainSystems:3,chainRange:110,chainFalloff:.7,family:'energy',description:'A light electrical hit bounces through up to three more systems on the same ship, weakening with each jump.'},
-    {id:'cryo',name:'Cryo Projector',color:'#a2eaf0',range:260,arc:140,damage:8,reload:.9,ammo:1,speed:300,cost:54,slow:.4,slowDuration:4,family:'plasma',description:'Cold bursts slow pursuers for four seconds.'},
+    {id:'cryo',name:'Cryo Projector',color:'#a2eaf0',range:260,arc:140,damage:8,reload:.9,ammo:1,speed:300,cost:54,slow:.4,slowDuration:4,family:'plasma',description:'Cold bursts slow enemy weapon reloads for four seconds.'},
     {id:'inferno',name:'Inferno Projector',color:'#f39a64',range:230,arc:130,damage:6,reload:1,ammo:1,speed:290,cost:57,burn:5,burnDuration:4,family:'plasma',description:'Incendiary hits burn for five damage per second.'},
     {id:'proton',name:'Proton Lance',color:'#f0df82',range:620,arc:25,damage:24,reload:2.8,ammo:0,speed:950,cost:98,fixed:true,length:4,hullPass:true,family:'energy',description:'A narrow lance passes safely through your own hull sections, stopping at the first enemy ship.'},
     {id:'gauss',name:'Gauss Repeater',color:'#9ac4dd',range:510,arc:55,damage:12,reload:1.6,ammo:2,speed:650,cost:84,fixed:true,length:3,salvo:2,spread:4,pierce:1,family:'rail',description:'Twin magnetic slugs each pierce a second target.'},
@@ -98,8 +98,8 @@
   MODULES.gatling.burstInterval=.09;MODULES.gauss.burstInterval=.12;MODULES.swarm.burstInterval=.1;
   MODULES.gatling.description='Three rounds fire in a timed burst, tracking the target between shots.';
   MODULES.gauss.description='Two magnetic slugs fire in sequence; each can pierce two aligned rooms.';
-  MODULES.missile.description='Automatically launches at enemies anywhere in the arena, clears your hull, then homes and explodes.';
-  MODULES.swarm.description='Four guided rockets launch in sequence, then track enemies anywhere in the arena.';
+  MODULES.missile.description='Launches through a clear hull lane, then homes toward an enemy ship and explodes.';
+  MODULES.swarm.description='Four guided rockets launch in sequence, then track an enemy ship.';
   function copyFootprint(def){return {shape:def.shape.map((cell)=>[...cell]),station:def.station&&[...def.station],mount:def.mount&&[...def.mount],muzzle:def.muzzle&&[...def.muzzle]};}
   function migrateWeaponFootprints(data){
     if(data.weaponFootprintsVersion===2)return;
@@ -801,7 +801,7 @@
     if(d.ion)rules.push(`${d.systemPulse?'Nearby systems':'Struck system'} ${Math.round(d.ion*100)}% for ${d.ionDuration}s`);
     if(d.systemPulse)rules.push(`System pulse radius ${d.systemPulse}`);
     if(d.chainSystems)rules.push(`Up to ${d.chainSystems+1} systems · ${Math.round(d.chainFalloff*100)}% per hop`);
-    if(d.slow)rules.push(`Movement ${Math.round(d.slow*100)}% for ${d.slowDuration}s`);
+    if(d.slow)rules.push(`Enemy reload ${Math.round(d.slow*100)}% for ${d.slowDuration}s`);
     if(d.burn)rules.push(`Burn ${d.burn}/s for ${d.burnDuration}s`);
     if(d.chain)rules.push(`Chain within ${d.chain} · 50% damage`);
     if(d.pierce)rules.push(`Pierces up to ${d.pierce+1} aligned rooms`);
@@ -832,7 +832,7 @@
     $('marketSummary').textContent=`${stock.filter((item)=>item.qty>0).length} PART OFFERS · ${(tradeNode.recruits||[]).filter((person)=>!person.hired).length} CREW FOR HIRE`;
     const partCards=visible.map((type)=>{
       const def=MODULES[type],held=save.inventory[type]||0,item=stock.find((entry)=>entry.type===type);
-      return `<div class="catalog-item ${selectedCatalog===type?'active':''}">${miniShape(type)}<div class="market-description"><strong>${def.name.toUpperCase()}</strong><small>${def.description}</small>${def.thrust?`<small class="weapon-fit">${footprintBadge(type)}</small><small class="weapon-spec">${def.thrust} BASE THRUST · 2 POWER AT FULL OUTPUT</small>`:''}${def.range?`<small class="weapon-fit">${footprintBadge(type)}</small><small class="weapon-spec">${def.damage} DMG × ${def.salvo||1} · ${def.reload}s · ${def.guidance?'UNLIMITED RANGE':`${def.range} RANGE`} · ${def.arc}°${def.guidance?' LAUNCH · AUTO TRACK':''} · ${ammoLabel(def)}</small>`:''}<small class="weapon-rules">${def.range?weaponBehavior(type):''}</small><small>${held} IN HOLD${item?` · ${item.qty} IN STOCK`:''}</small><div class="market-actions">${item?`<button type="button" data-buy="${type}" ${item.qty<1||save.metal<item.price?'disabled':''}>${item.qty?`BUY ◆ ${item.price}`:'SOLD OUT'}</button>`:''}${held?`<button type="button" data-install="${type}" aria-pressed="${selectedCatalog===type}">${selectedCatalog===type?'CANCEL':'INSTALL HELD'}</button>`:''}</div></div></div>`;
+      return `<div class="catalog-item ${selectedCatalog===type?'active':''}">${miniShape(type)}<div class="market-description"><strong>${def.name.toUpperCase()}</strong><small>${def.description}</small>${def.thrust?`<small class="weapon-fit">${footprintBadge(type)}</small><small class="weapon-spec">${def.thrust} BASE THRUST · 2 POWER AT FULL OUTPUT</small>`:''}${def.range?`<small class="weapon-fit">${footprintBadge(type)}</small><small class="weapon-spec">${def.damage} DMG × ${def.salvo||1} · ${def.reload}s · ${def.guidance?'UNLIMITED RANGE':'DUEL REACH'} · ${def.arc}°${def.guidance?' LAUNCH · AUTO TRACK':''} · ${ammoLabel(def)}</small>`:''}<small class="weapon-rules">${def.range?weaponBehavior(type):''}</small><small>${held} IN HOLD${item?` · ${item.qty} IN STOCK`:''}</small><div class="market-actions">${item?`<button type="button" data-buy="${type}" ${item.qty<1||save.metal<item.price?'disabled':''}>${item.qty?`BUY ◆ ${item.price}`:'SOLD OUT'}</button>`:''}${held?`<button type="button" data-install="${type}" aria-pressed="${selectedCatalog===type}">${selectedCatalog===type?'CANCEL':'INSTALL HELD'}</button>`:''}</div></div></div>`;
     }).join('');
     $('catalog').innerHTML=(partCards+recruitCards())||'<p class="muted small">No offers in this category at this trader.</p>';
     $('catalog').querySelectorAll('[data-recruit]').forEach((button)=>button.addEventListener('click',()=>buyRecruit(button.dataset.recruit)));
@@ -904,9 +904,9 @@
     const direction=['RIGHT','DOWN','LEFT','UP'][def.range?weaponFacingQuarter(module):module.rotation];
     const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° LOCAL ARC · AIM ${shieldDirection(module)}°`} · ${module.type==='focusShield'?`${def.shieldRadius} RANGE FROM ROOM · `:''}${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
     const shieldAim=module.type==='focusShield'?`<label class="weapon-range">AIM SHIELD<select id="shieldDirection" aria-label="Shield direction">${[...new Set([0,45,90,135,180,225,270,315,shieldDirection(module)])].sort((a,b)=>a-b).map((degrees)=>`<option value="${degrees}" ${degrees===shieldDirection(module)?'selected':''}>${degrees}°${({0:' · RIGHT',90:' · DOWN',180:' · LEFT',270:' · UP'})[degrees]||''}</option>`).join('')}</select></label><div class="shield-aim-controls"><button data-shield-turn="-15" type="button" aria-label="Aim shield counterclockwise">↶ 15°</button><button data-shield-turn="15" type="button" aria-label="Aim shield clockwise">15° ↷</button></div><p class="muted small">Field starts at this room. Move the room to relocate protection; aim follows the ship. Re-aim at any time.</p>`:'';
-    const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · ${def.guidance?'UNLIMITED RANGE':`RANGE ${weaponRange(module)}`} · ${direction}${module.flipped?' · MIRRORED':''} · ${ammoLabel(def)}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE · ${def.thrust} BASE</div><div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
+    const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · ${def.guidance?'UNLIMITED RANGE':'DUEL REACH'} · ${direction}${module.flipped?' · MIRRORED':''} · ${ammoLabel(def)}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE · ${def.thrust} BASE</div><div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
     const ammoDetail=def.ammoType?`<div id="magazineDetail" class="inspector-detail">${def.ammoType.toUpperCase()} MAGAZINE ${magazineCount(module)} / ${def.magazine}${magazineCount(module)<def.ammo?' · EMPTY · NEEDS LOADER':''}</div>`:module.type==='ammoAssembly'?`<label class="weapon-range">PRODUCE <select id="ammoRecipe"><option value="heavy" ${module.ammoRecipe!=='missile'?'selected':''}>Heavy · 4 rounds / batch</option><option value="missile" ${module.ammoRecipe==='missile'?'selected':''}>Missile · 2 rounds / batch</option></select></label><p class="muted small">Uses energy only. One batch every 4 seconds at full power. Finished rounds stay here until a loader collects them.</p>`:'';
-    const rangeControl=def.range?`<div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div><div class="weapon-rules">${weaponBehavior(module.type)}</div>${!def.guidance?`<label class="weapon-range" for="weaponRange">RANGE LIMIT <input id="weaponRange" type="number" min="30" max="${def.range}" step="1" value="${weaponRange(module)}" ${!['hangar','trade'].includes(mode)?'disabled':''}><span>MAX ${def.range}</span></label>`:''}${mode==='trade'?'<button id="flipWeapon" class="outline-button full-width" type="button">FLIP WEAPON ↔ · FREE</button>':''}${def.mountFacings===2?`<button id="rotateWeapon" class="outline-button full-width" type="button" ${!['hangar','trade'].includes(mode)?'disabled':''}>TURN MOUNT 90° ↻</button>`:''}`:'';
+    const rangeControl=def.range?`<div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div><div class="weapon-rules">${weaponBehavior(module.type)}</div>${mode==='trade'?'<button id="flipWeapon" class="outline-button full-width" type="button">FLIP WEAPON ↔ · FREE</button>':''}${def.mountFacings===2?`<button id="rotateWeapon" class="outline-button full-width" type="button" ${!['hangar','trade'].includes(mode)?'disabled':''}>TURN MOUNT 90° ↻</button>`:''}`:'';
     const droneInfo=module.type==='droneControl'?`<div class="inspector-detail">LAUNCH → ${direction} · ${droneBayClear(module)?'CLEAR TO SPACE':'BLOCKED · MOVE BAY TO EXTERIOR'} · NO DRONE LIMIT</div>`:module.type==='droneAssembly'?`<label class="drone-assembly">DRONE DESIGN<select id="inspectorDroneDesign" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===(module.droneType||'combat')?'selected':''}>${def.name}</option>`).join('')}</select></label><div class="inspector-detail">CONTINUOUS PRODUCTION · ${assemblyTime(module).toFixed(1)}s PER DRONE AT FULL POWER</div>`:'';
     $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}${shieldAim}${ammoDetail}<div class="inspector-detail">${systemDemand(module)?`AUTO POWER ${systemSupply(module).toFixed(2)} · ${Math.round(systemPower(module)*100)}% PERFORMANCE`:module.type==='core'?'PILOT CONSOLE · ROOM UPGRADES ADD HULL ONLY':def.generation?`GENERATOR OUTPUT ${generatorOutput(module)} · SHARED EQUALLY · +1 PER UPGRADE`:'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${droneInfo}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>${module.type==='core'?'REINFORCE ROOM':'UPGRADE'}<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
     if(module.type==='focusShield'){
@@ -919,12 +919,6 @@
     if(module.footprint&&mode==='trade')$('refitFootprint').addEventListener('click',()=>beginModuleMove(true));
     if(mode==='trade')$('moveModule').addEventListener('click',()=>{
       if(movingModuleId===module.id)cancelRoomMove();else beginModuleMove();
-    });
-    if(def.range&&!def.guidance)$('weaponRange').addEventListener('change',(event)=>{
-      if(!['hangar','trade'].includes(mode))return;
-      const value=event.target.valueAsNumber;
-      if(Number.isFinite(value))module.range=Math.round(clamp(value,30,def.range));
-      persist();renderInspector();drawHangar();
     });
     if(def.range&&mode==='trade')$('flipWeapon').addEventListener('click',()=>{beginModuleMove();flipBuild();});
     if(def.mountFacings===2)$('rotateWeapon').addEventListener('click',()=>{
@@ -963,11 +957,17 @@
     $('leftStatus').textContent=mode==='combat'?`ENGAGED // ${battle?.enemies.filter(enemyAlive).length||0} HOSTILES`:mode==='map'?`CHARTED // SECTOR ${String(save.sector).padStart(2,'0')}`:activeModules(...ENGINE_TYPES).length?'DOCKED // SYSTEMS READY':'DOCKED // ENGINE OFFLINE';
     $('footerStatus').textContent=mode==='combat'?'THRUSTERS ACTIVE ONLY ON DEMAND':mode==='map'?'CHOOSE YOUR NEXT JUMP':'A LONG WAY FROM HOME';
     if(battle){
-      const p=battle.player,heading=((Math.round(p.angle*180/Math.PI)%360)+360)%360;
-      const firing=Object.values(p.thrusters).filter((throttle)=>throttle>.08).length;
-      $('flightTelemetry').innerHTML=`HEADING ${heading}°<br>SPEED ${Math.round(Math.hypot(p.vx,p.vy))} · ${firing} THRUSTER${firing===1?'':'S'} FIRING`;
-      $('enemyCountLabel').textContent=`${battle.enemies.filter(enemyAlive).length} HOSTILE${battle.enemies.filter(enemyAlive).length===1?'':'S'}`;
+      renderCombatTelemetry();
     }
+  }
+  function renderCombatTelemetry(){
+    if(!battle)return;
+    const p=battle.player,heading=((Math.round(p.angle*180/Math.PI)%360)+360)%360;
+    const firing=Object.values(p.thrusters).filter((throttle)=>throttle>.08).length;
+    $('flightTelemetry').innerHTML=battle.duel?`FACING ${heading}° · ORDERED ${((Math.round(p.targetAngle*180/Math.PI)%360)+360)%360}°<br>${firing?`${firing} THRUSTER${firing===1?'':'S'} TURNING`:'HOLDING POSITION'} · WEAPONS AUTO`:`HEADING ${heading}°<br>SPEED ${Math.round(Math.hypot(p.vx,p.vy))} · ${firing} THRUSTER${firing===1?'':'S'} FIRING`;
+    const hostileCount=battle.enemies.filter(enemyAlive).length;
+    $('enemyCountLabel').textContent=`${hostileCount} HOSTILE${hostileCount===1?'':'S'}`;
+    if(battle.duel&&Math.abs(angleDifference(p.angle,p.targetAngle))<.03&&Math.abs(p.omega)<.03&&($('combatHint').textContent||'').startsWith('SHIP TURNING'))$('combatHint').textContent='FACING SET · CLICK AN ENEMY ROOM TO FOCUS FIRE';
   }
   function renderAll(){renderCatalog();renderGrid();renderInspector();renderCrew();renderHud();if(mode==='map')renderMap();}
 
@@ -2122,20 +2122,34 @@
     const type=room.weaponType||'weapon',def=MODULES[type];
     return {type,damage:Math.round(def.damage*.6+sector*.35),reload:def.reload*1.6,range:def.range,speed:def.speed,ammo:def.ammo,color:def.color,family:def.family,guidance:def.guidance||0,splash:def.splash||0,arc:def.arc};
   }
+  function enemyEvasionChance(enemy){
+    if(!battle?.duel)return 0;
+    const engine=enemy.modules?.find((room)=>room.type==='engine'&&room.hp>0);
+    return engine?Math.min(.32,.12+save.sector*.015)*systemEfficiency(engine)*enemySystemEfficiency(enemy,'core'):0;
+  }
+  function chooseEnemyTargetRoom(enemy){
+    const rooms=save.modules.filter((room)=>room.hp>0),weight=(room)=>({shield:4,focusShield:4,weapon:3,droneControl:3,core:2,engine:2})[room.type]||1;
+    let roll=Math.random()*rooms.reduce((sum,room)=>sum+weight(room),0);
+    for(const room of rooms){roll-=weight(room);if(roll<=0)return room;}
+    return rooms[0]||null;
+  }
   function fireEnemyWeapons(enemy,dt){
     if(!enemyAlive(enemy))return;enemy.ammo??=18+save.sector*4;
     const rooms=enemy.modules?.length?enemy.modules.filter((room)=>room.type==='weapon'&&room.hp>0):[enemy];
     for(const room of rooms){
-      const efficiency=systemEfficiency(room)*enemySystemEfficiency(enemy,'core'),stats=enemyWeaponStats(room),mount=enemyWeaponMount(enemy,room),player=battle.player;
-      const aim=Math.atan2(player.y-mount.y,player.x-mount.x),wanted=stats.guidance?0:clamp(angleDifference(mount.direction,aim),-stats.arc*Math.PI/360,stats.arc*Math.PI/360);
+      const efficiency=systemEfficiency(room)*enemySystemEfficiency(enemy,'core')*(battle.duel&&enemy.slowTime>0?enemy.slowFactor||.4:1),stats=enemyWeaponStats(room),mount=enemyWeaponMount(enemy,room),player=battle.player;
+      const targetRoom=battle.duel?save.modules.find((module)=>module.id===enemy.targetRoomId&&module.hp>0):null;
+      const targetPoint=targetRoom?hullPointWorld(moduleStation(targetRoom),player):player;
+      const aim=Math.atan2(targetPoint.y-mount.y,targetPoint.x-mount.x),wanted=stats.guidance?0:clamp(angleDifference(mount.direction,aim),-stats.arc*Math.PI/360,stats.arc*Math.PI/360);
       room.aimOffset=(room.aimOffset||0)+clamp(wanted-(room.aimOffset||0),-Math.PI*dt*efficiency,Math.PI*dt*efficiency);
       room.cooldown=(room.cooldown??enemy.cooldown??.7)-dt*efficiency;room.flash=Math.max(0,(room.flash||0)-dt);
-      if(efficiency<=0||room.cooldown>0||distance(mount,player)>stats.range||(enemy.ammo??0)<stats.ammo||Math.abs(wanted-room.aimOffset)>=.015)continue;
+      if(efficiency<=0||room.cooldown>0||(!battle.duel&&distance(mount,player)>stats.range)||(enemy.ammo??0)<stats.ammo||Math.abs(wanted-room.aimOffset)>=.015)continue;
       if(!stats.guidance&&Math.abs(angleDifference(mount.direction,aim))>stats.arc*Math.PI/360)continue;
       const angle=mount.direction+room.aimOffset;
       const clearance=stats.guidance?Math.max(4,...(enemy.modules||[]).flatMap((part)=>part.cells.map(([x])=>(x+.5-(room.muzzle?.[0]??3.5))*ENEMY_TILE+4))):0;
       enemy.ammo-=stats.ammo;room.cooldown=stats.reload;room.flash=.1;
-      fireProjectile('enemy',mount.x+Math.cos(angle)*.01,mount.y+Math.sin(angle)*.01,player,stats.damage,stats.speed,stats.range,{angle,muzzleClearance:36,family:stats.family,color:stats.color,guidance:stats.guidance,target:stats.guidance?player:null,launchRemaining:clearance,splash:stats.splash,source:enemy,weaponType:stats.type});
+      const range=battle.duel?Math.max(stats.range,distance(mount,targetPoint)+player.r+80):stats.range;
+      fireProjectile('enemy',mount.x+Math.cos(angle)*.01,mount.y+Math.sin(angle)*.01,player,stats.damage,stats.speed,range,{angle,muzzleClearance:36,family:stats.family,color:stats.color,guidance:stats.guidance,target:stats.guidance?player:null,launchRemaining:clearance,splash:stats.splash,source:enemy,weaponType:stats.type});
     }
   }
   function enemyShieldRooms(enemy){return (enemy.modules||[]).filter((room)=>room.type==='shield');}
@@ -2235,26 +2249,28 @@
     const count=kind==='rescue'?2:save.sector>3&&Math.random()<.35?2:1;
     const choices=kind!=='rescue'&&save.sector>=3?Object.keys(ENEMY_LOADOUTS):['cannon','laser','missile'],first=Math.floor(Math.random()*choices.length);
     const layouts=Array.from({length:count},(_,i)=>{const loadout=choices[(first+i)%choices.length];return {...enemyLayout(kind!=='rescue',save.sector,loadout),loadout};});
-    const cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0),enemyCells=layouts.reduce((sum,layout)=>sum+layout.cells,0);
-    const width=Math.max(2400+cellCount*16+enemyCells*8,shipRadius()*7+900),world={w:width,h:Math.max(1800,width*.72)};
+    const playerRadius=shipRadius(),enemyRadius=Math.max(...layouts.map((layout)=>layout.r));
+    const separation=Math.max(320,playerRadius+enemyRadius+65),world={w:Math.max(960,separation+playerRadius*2+enemyRadius*2+170),h:Math.max(700,playerRadius*2+enemyRadius*2+(count-1)*180+130)};
+    const centerX=world.w/2,centerY=world.h/2,playerX=centerX-separation/2,enemyX=centerX+separation/2;
     const enemies=[];
     for(let i=0;i<count;i++){
       const layout=layouts[i],modules=layout.modules;
       for(const room of modules)if(room.type==='weapon')room.cooldown=rand(.7,1.5);
       const hp=modules.reduce((sum,room)=>sum+room.hp,0);
-      enemies.push({x:world.w*.5+220+i*70,y:world.h*.5+(count===1?0:i===0?-135:135),angle:Math.PI,hp,maxHp:hp,r:layout.r,modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:kind==='rescue'?48:40,phase:rand(0,TAU),orbitSign:i%2?-1:1,loadout:layout.loadout,ammo:18+save.sector*4,name:`${ENEMY_LOADOUTS[layout.loadout].name} ${kind==='rescue'?'SKIFF':'RAIDER'}`});
+      const x=enemyX,y=centerY+(count===1?0:i===0?-145:145);
+      enemies.push({x,y,angle:Math.atan2(centerY-y,playerX-x),hp,maxHp:hp,r:layout.r,modules,path:[],pathTimer:0,cooldown:rand(.7,1.5),speed:0,moving:false,phase:rand(0,TAU),orbitSign:i%2?-1:1,loadout:layout.loadout,ammo:18+save.sector*4,name:`${ENEMY_LOADOUTS[layout.loadout].name} ${kind==='rescue'?'SKIFF':'RAIDER'}`});
     }
-    const player={x:world.w*.5-260,y:world.h*.5,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,path:[],selected:false,r:shipRadius(),thrusters:{}};
+    const player={x:playerX,y:centerY,vx:0,vy:0,angle:0,omega:0,targetAngle:0,dest:null,path:[],selected:true,r:playerRadius,thrusters:{}};
     // Stocks and magazines persist: entering combat never creates ammunition.
-    battle={kind,world,player,enemies,asteroids:makeAsteroids(world,Math.min(14,8+Math.ceil(cellCount/12)+count),player,enemies),projectiles:[],stars:Array.from({length:Math.min(650,Math.round(world.w*world.h/9500))},()=>({x:rand(0,world.w),y:rand(0,world.h),s:Math.random()<.17?2:1})),shake:0,shields:{}};
+    battle={kind,duel:true,world,player,enemies,asteroids:[],projectiles:[],stars:Array.from({length:Math.min(160,Math.round(world.w*world.h/9500))},()=>({x:rand(0,world.w),y:rand(0,world.h),s:Math.random()<.17?2:1})),shake:0,shields:{},targetEnemy:0,targetRoom:null};
     recoverDrones();battle.drones=save.drones;updateDroneAssembly(0);battle.teleportCooldown=0;
     enemies.forEach((enemy)=>{enemy.crew=enemy.modules.filter((room)=>room.type==='core'||room.type==='weapon').slice(0,2).map((room,i)=>({id:`guard-${i}`,hp:70,room:enemy.modules.indexOf(room),x:room.cells[0][0],y:room.cells[0][1]}));});
     persist();
     for(const module of save.modules){module.cooldown=rand(.25,.8);module.aimOffset=0;}
     updateDrones(0);
     setMode('combat');$('combatWaveLabel').textContent=kind==='rescue'?'DEFEND THE FREIGHTER':'HOSTILE CONTACT';
-    $('arenaSizeLabel').textContent=`ARENA ${Math.round(world.w)} × ${Math.round(world.h)}`;
-    $('combatHint').textContent='SELECT YOUR SHIP TO GIVE A MOVE ORDER';$('combatRotationLabel').textContent='0°';
+    $('arenaSizeLabel').textContent=`FIXED ENGAGEMENT · ${count} HOSTILE${count===1?'':'S'}`;
+    $('combatHint').textContent='CLICK AN ENEMY ROOM TO FOCUS FIRE';$('combatRotationLabel').textContent='0°';$('combatFacingSlider').value='0';
     log(`${count} hostile ${count===1?'ship':'ships'} engaged.`);renderAll();
   }
   function finishBattle(victory){
@@ -2452,6 +2468,11 @@
     const lx=(mount.x-bounds.cx)*COMBAT_TILE,ly=(mount.y-bounds.cy)*COMBAT_TILE,cos=Math.cos(player.angle),sin=Math.sin(player.angle);
     return {x:player.x+lx*cos-ly*sin,y:player.y+lx*sin+ly*cos,direction:player.angle+mount.direction};
   }
+  function duelAimPoint(enemy){
+    if(!battle?.duel||battle.enemies[battle.targetEnemy]!==enemy)return enemy;
+    const room=enemy.modules?.[battle.targetRoom];
+    return room?.hp>0?{...enemyRoomPoint(enemy,room),r:ENEMY_TILE/2}:enemy;
+  }
   function missileLaunch(weapon){
     const mount=weaponGeometry(weapon),cells=save.modules.flatMap(moduleCells),limit=hullEscapeLimit(mount,cells);
     const signature=`${mount.x},${mount.y},${mount.direction}:${cells.map((cell)=>cell.join(',')).join(';')}`,cached=missileLaunchCache.get(weapon);
@@ -2464,8 +2485,8 @@
     const result={angle,clearance};missileLaunchCache.set(weapon,{signature,result});return result;
   }
   function weaponCanTarget(weapon,player,target) {
-    const def=MODULES[weapon.type],mount=weaponWorld(weapon,player),aim=Math.atan2(target.y-mount.y,target.x-mount.x),dist=distance(target,mount);
-    if(dist>weaponRange(weapon))return false;
+    const def=MODULES[weapon.type],mount=weaponWorld(weapon,player),point=duelAimPoint(target),aim=Math.atan2(point.y-mount.y,point.x-mount.x),dist=distance(point,mount);
+    if(!battle?.duel&&dist>weaponRange(weapon))return false;
     if(def.guidance)return !!missileLaunch(weapon);
     return Math.abs(angleDifference(mount.direction,aim))<=def.arc*Math.PI/360
       &&(def.hullPass||hullRay(weaponGeometry(weapon),aim-player.angle,save.modules.flatMap(moduleCells),dist/COMBAT_TILE)>=dist/COMBAT_TILE);
@@ -2473,7 +2494,7 @@
   function beamSpan(origin,target){return clamp(Math.atan2((target.r||25)+12,distance(origin,target)),.06,.55);}
   function startBeam(emitter,target,options){
     const origin=options.drone?emitter:weaponWorld(emitter,battle.player);
-    (battle.beams??=[]).push({emitter,target,...options,elapsed:0,span:beamSpan(origin,target),hitRooms:new Set(),x:origin.x,y:origin.y,to:{x:origin.x,y:origin.y}});
+    (battle.beams??=[]).push({emitter,target,...options,elapsed:0,span:beamSpan(origin,options.drone?target:duelAimPoint(target)),hitRooms:new Set(),x:origin.x,y:origin.y,to:{x:origin.x,y:origin.y}});
   }
   function beamEmitterPower(beam){
     if(beam.drone){
@@ -2484,7 +2505,8 @@
   }
   function traceBeam(beam,progress){
     const player=battle.player,origin=beam.drone?beam.emitter:weaponWorld(beam.emitter,player);
-    let angle=Math.atan2(beam.target.y-origin.y,beam.target.x-origin.x)+(progress*2-1)*beam.span;
+    const aim=beam.drone?beam.target:duelAimPoint(beam.target);
+    let angle=Math.atan2(aim.y-origin.y,aim.x-origin.x)+(progress*2-1)*beam.span;
     if(!beam.drone){
       const half=MODULES[beam.emitter.type].arc*Math.PI/360;
       beam.emitter.aimOffset=clamp(angleDifference(origin.direction,angle),-half,half);angle=origin.direction+beam.emitter.aimOffset;beam.emitter.flash=.08;
@@ -2534,7 +2556,8 @@
     const mount=weaponWorld(weapon,player),base=weaponGeometry(weapon).direction,def=MODULES[weapon.type];
     if(!target)return 0;
     const launch=def.guidance?missileLaunch(weapon):null;
-    return launch?angleDifference(base,launch.angle):clamp(angleDifference(mount.direction,Math.atan2(target.y-mount.y,target.x-mount.x))-(def.beamDuration?beamSpan(mount,target):0),-def.arc*Math.PI/360,def.arc*Math.PI/360);
+    const point=duelAimPoint(target);
+    return launch?angleDifference(base,launch.angle):clamp(angleDifference(mount.direction,Math.atan2(point.y-mount.y,point.x-mount.x))-(def.beamDuration?beamSpan(mount,point):0),-def.arc*Math.PI/360,def.arc*Math.PI/360);
   }
   function turnWeapon(weapon,player,target,dt){
     const wanted=weaponAim(weapon,player,target),current=weapon.aimOffset||0;
@@ -2543,13 +2566,14 @@
   }
   function fireWeapon(weapon,player,target) {
     const def=MODULES[weapon.type],mount=weaponWorld(weapon,player),salvo=def.salvo||1;
-    const aim=Math.atan2(target.y-mount.y,target.x-mount.x),spread=(def.spread||0)*Math.PI/180,half=def.arc*Math.PI/360;
+    const point=duelAimPoint(target),aim=Math.atan2(point.y-mount.y,point.x-mount.x),spread=(def.spread||0)*Math.PI/180,half=def.arc*Math.PI/360;
     const launch=def.guidance?missileLaunch(weapon):null;
     if(def.guidance&&!launch)return;weapon.aimOffset=weaponAim(weapon,player,target);weapon.flash=.07;
-    if(def.beamDuration){startBeam(weapon,target,{damage:def.damage+(weapon.level-1)*5,range:weaponRange(weapon),duration:def.beamDuration,color:def.color});return;}
+    const range=battle?.duel?Math.max(weaponRange(weapon),distance(mount,point)+target.r+80):weaponRange(weapon);
+    if(def.beamDuration){startBeam(weapon,target,{damage:def.damage+(weapon.level-1)*5,range,duration:def.beamDuration,color:def.color});return;}
     for(let i=0;i<salvo;i++){
       const angle=launch?player.angle+launch.angle:mount.direction+clamp(angleDifference(mount.direction,aim+(salvo===1?0:(i/(salvo-1)-.5)*spread)),-half,half);
-      fireProjectile('player',mount.x+Math.cos(angle)*.01,mount.y+Math.sin(angle)*.01,target,def.damage+(weapon.level-1)*5,def.speed,weaponRange(weapon),{
+      fireProjectile('player',mount.x+Math.cos(angle)*.01,mount.y+Math.sin(angle)*.01,target,def.damage+(weapon.level-1)*5,def.speed,range,{
         angle,muzzleClearance:Math.min(36,weaponRange(weapon)*.5),target:def.guidance?target:null,guidance:def.guidance||0,launchRemaining:launch?.clearance||0,
         delay:(def.burstInterval||0)*i,emitter:weapon,burstTarget:target,spreadOffset:launch?0:(salvo===1?0:(i/(salvo-1)-.5)*spread),
         color:def.color,family:def.family,splash:def.splash||0,pierce:def.pierce||0,chain:def.chain||0,hullPass:!!def.hullPass,
@@ -2825,7 +2849,9 @@
   }
   function updateBattle(dt,time){
     if(!battle)return;const b=battle,p=b.player;b.shake=Math.max(0,b.shake-dt);
-    navigatePlayer(dt);updateShields(dt);updateBoarding(dt);updateDrones(dt);
+    if(b.duel){const x=p.x,y=p.y;navigatePlayer(dt);p.x=x;p.y=y;p.vx=0;p.vy=0;}
+    else navigatePlayer(dt);
+    updateShields(dt);updateBoarding(dt);updateDrones(dt);
     for(const module of save.modules){
       if(module.hp<=0||module.hp>=maxHp(module))continue;
       const repairers=crewAtStation('repair',module);
@@ -2839,18 +2865,27 @@
     }
     b.effects=(b.effects||[]).filter((effect)=>(effect.time-=dt)>0);
     const living=b.enemies.filter(enemyAlive);
+    if(b.duel&&b.targetRoom!==null&&b.enemies[b.targetEnemy]?.modules[b.targetRoom]?.hp<=0)b.targetRoom=null;
     for(const weapon of activeModules(...WEAPON_TYPES)){
       weapon.flash=Math.max(0,(weapon.flash||0)-dt);
       const def=MODULES[weapon.type],mount=weaponWorld(weapon,p);weapon.cooldown-=dt;
       if(b.beams?.some((beam)=>beam.emitter===weapon))continue;
       const burst=b.projectiles.find((shot)=>shot.emitter===weapon&&shot.delay>0&&shot.burstTarget&&enemyAlive(shot.burstTarget)&&weaponCanTarget(weapon,p,shot.burstTarget));
-      const target=burst?.burstTarget||living.filter((enemy)=>weaponCanTarget(weapon,p,enemy)).sort((a,c)=>distance(a,mount)-distance(c,mount))[0];
+      const preferred=b.duel?b.enemies[b.targetEnemy]:null;
+      const target=burst?.burstTarget||(preferred&&enemyAlive(preferred)&&weaponCanTarget(weapon,p,preferred)?preferred:living.filter((enemy)=>weaponCanTarget(weapon,p,enemy)).sort((a,c)=>distance(a,mount)-distance(c,mount))[0]);
       const aligned=turnWeapon(weapon,p,target,dt);
       if(!target||!aligned||weapon.cooldown>0||magazineCount(weapon)<def.ammo)continue;
       if(def.ammo)weapon.magazine=magazineCount(weapon)-def.ammo;weapon.cooldown=def.reload/systemPower(weapon)/(1+crewAtStation('gun',weapon)*.4)/(1+(weapon.level-1)*.22);
       fireWeapon(weapon,p,target);
     }
     for(const enemy of living){
+      if(b.duel){
+        enemy.moving=false;enemy.targetTimer=(enemy.targetTimer||0)-dt;
+        if(enemy.targetTimer<=0||!save.modules.some((room)=>room.id===enemy.targetRoomId&&room.hp>0)){
+          enemy.targetRoomId=chooseEnemyTargetRoom(enemy)?.id;enemy.targetTimer=rand(2,4);
+        }
+        fireEnemyWeapons(enemy,dt);continue;
+      }
       const speed=enemy.speed*(enemy.slowTime>0?enemy.slowFactor:1)*enemySystemEfficiency(enemy,'engine');
       const goal=enemyTacticalGoal(enemy,p,b.asteroids,b.world);
       enemy.pathTimer-=dt;enemy.moving=speed>0&&distance(enemy,goal)>18;
@@ -2878,7 +2913,7 @@
         const def=MODULES[weapon.type],mount=weaponWorld(weapon,p),launch=def.guidance?missileLaunch(weapon):null;
         if(def.guidance&&!launch){b.projectiles.splice(i,1);continue;}
         if(Math.abs(weaponAim(weapon,p,target)-(weapon.aimOffset||0))>=.015){shot.delay=.001;continue;}
-        const aim=Math.atan2(target.y-mount.y,target.x-mount.x),half=def.arc*Math.PI/360;
+        const point=duelAimPoint(target),aim=Math.atan2(point.y-mount.y,point.x-mount.x),half=def.arc*Math.PI/360;
         const angle=launch?p.angle+launch.angle:mount.direction+clamp(angleDifference(mount.direction,aim+shot.spreadOffset),-half,half);
         const speed=Math.hypot(shot.vx,shot.vy);shot.x=mount.x+Math.cos(angle)*.01;shot.y=mount.y+Math.sin(angle)*.01;
         shot.vx=Math.cos(angle)*speed;shot.vy=Math.sin(angle)*speed;shot.launchRemaining=launch?.clearance||0;weapon.aimOffset=angle-p.angle-weaponGeometry(weapon).direction;shot.muzzleClearance=Math.min(36,weaponRange(weapon)*.5);weapon.flash=.07;
@@ -2932,6 +2967,13 @@
         const impactDamage=shot.damage;
         if(hitDrone){hitDrone.hp=Math.max(0,hitDrone.hp-shot.damage);}
         else if(target&&shot.owner==='player'){
+          if(b.duel&&!shot.evasionChecked){
+            shot.evasionChecked=true;
+            if(Math.random()<enemyEvasionChance(target)){
+              (b.effects??=[]).push({x:target.x,y:target.y-target.r-25,text:'MISS',color:'#eac9ad',time:.6,duration:.6});
+              b.projectiles.splice(i,1);break;
+            }
+          }
           const penetrated=weaponImpact(shot,target,null,hitRoom);
           if(hitRoom)shot.hitRooms.add(hitRoom);else shot.hitIds.add(target);
           if(penetrated&&shot.pierce>0&&!shieldedEnemy){
@@ -3007,9 +3049,14 @@
         g.fillStyle='#ef9a87';g.fillRect(cx-13,cy-16,26*room.hp/room.maxHp,3);
       }
     }
+    if(battle?.duel&&battle.enemies[battle.targetEnemy]===enemy&&battle.targetRoom!==null){
+      const focused=enemy.modules[battle.targetRoom];
+      if(focused?.hp>0){g.strokeStyle='#f9d68d';g.lineWidth=2;for(const [x,y] of focused.cells)g.strokeRect(x*ENEMY_TILE-11,y*ENEMY_TILE-11,22,22);}
+    }
     drawEnemyCrew(g,enemy);
     g.restore();
     const strength=enemyShieldStrength(enemy),capacity=enemyShieldRooms(enemy).reduce((sum,room)=>sum+(room.capacity??100),0);
+    if(battle?.duel&&battle.enemies[battle.targetEnemy]===enemy){g.save();g.strokeStyle='#f4d293';g.lineWidth=2;g.setLineDash([6,5]);g.beginPath();g.arc(enemy.x,enemy.y,r+24,0,TAU);g.stroke();g.restore();}
     if(strength>0){const flash=enemyShieldRooms(enemy).some((room)=>room.shieldFlash>0);g.save();g.globalAlpha=.15+.45*strength/capacity+(flash ? .25 : 0);g.strokeStyle='#c3a3ef';g.lineWidth=flash?3:2;g.beginPath();g.arc(enemy.x,enemy.y,r+17,0,TAU);g.stroke();g.restore();}
     g.save();g.font='10px monospace';g.textAlign='center';g.fillStyle='#e6c3b8';g.fillText(enemy.name,enemy.x,enemy.y-r-39);
     g.fillStyle='#b9a3f7';g.fillText(`SHIELD ${Math.ceil(strength)} / ${capacity}`,enemy.x,enemy.y-r-25);
@@ -3051,9 +3098,10 @@
     }
     g.restore();
   }
-  function arenaViewport(world){const zoom=COMBAT_ZOOMS[combatZoomIndex];return {w:Math.min(1080*zoom,world.w),h:Math.min(760*zoom,world.h)};}
+  function arenaViewport(world){if(battle?.duel)return {w:world.w,h:world.h};const zoom=COMBAT_ZOOMS[combatZoomIndex];return {w:Math.min(1080*zoom,world.w),h:Math.min(760*zoom,world.h)};}
   function arenaCamera(){
     const {world,player}=battle,view=arenaViewport(world),person=save.crew.find((person)=>person.id===selectedCrewId),focus=person?.aboard?battle.enemies[person.aboard.enemy]:player;
+    if(battle.duel)return {w:world.w,h:world.h,x:0,y:0};
     return {w:view.w,h:view.h,x:clamp((focus?.x??world.w/2)-view.w/2,0,world.w-view.w),y:clamp((focus?.y??world.h/2)-view.h/2,0,world.h-view.h)};
   }
   function drawArena(time){
@@ -3061,17 +3109,27 @@
     const view=arenaCamera();
     ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.scale(canvas.width/view.w,canvas.height/view.h);ctx.translate(-view.x,-view.y);
     ctx.fillStyle='#071522';ctx.fillRect(view.x,view.y,view.w,view.h);
-    ctx.strokeStyle='#1d3449';ctx.lineWidth=2;
-    for(let x=Math.floor(view.x/48)*48;x<view.x+view.w;x+=48){ctx.beginPath();ctx.moveTo(x,view.y);ctx.lineTo(x,view.y+view.h);ctx.stroke();}
-    for(let y=Math.floor(view.y/48)*48;y<view.y+view.h;y+=48){ctx.beginPath();ctx.moveTo(view.x,y);ctx.lineTo(view.x+view.w,y);ctx.stroke();}
+    if(b.duel){
+      ctx.fillStyle='#10283a';ctx.fillRect(12,12,w/2-20,h-24);
+      ctx.fillStyle='#241e2c';ctx.fillRect(w/2+8,12,w/2-20,h-24);
+      ctx.strokeStyle='#4a6f80';ctx.lineWidth=2;ctx.strokeRect(12,12,w/2-20,h-24);
+      ctx.strokeStyle='#8b647a';ctx.strokeRect(w/2+8,12,w/2-20,h-24);
+      ctx.fillStyle='#83dce1';ctx.font='bold 16px monospace';ctx.fillText('YOUR SHIP',30,78);
+      ctx.fillStyle='#efac9c';ctx.fillText('HOSTILE SHIPS',w/2+26,78);
+      ctx.strokeStyle='#496475';ctx.setLineDash([7,10]);ctx.beginPath();ctx.moveTo(w/2,70);ctx.lineTo(w/2,h-50);ctx.stroke();ctx.setLineDash([]);
+    }else{
+      ctx.strokeStyle='#1d3449';ctx.lineWidth=2;
+      for(let x=Math.floor(view.x/48)*48;x<view.x+view.w;x+=48){ctx.beginPath();ctx.moveTo(x,view.y);ctx.lineTo(x,view.y+view.h);ctx.stroke();}
+      for(let y=Math.floor(view.y/48)*48;y<view.y+view.h;y+=48){ctx.beginPath();ctx.moveTo(view.x,y);ctx.lineTo(view.x+view.w,y);ctx.stroke();}
+    }
     for(const star of b.stars){ctx.fillStyle=star.s===2?'#8cbdc4':'#4f7386';ctx.fillRect(star.x,star.y,star.s,star.s);}
-    ctx.strokeStyle='#4b7488';ctx.lineWidth=4;ctx.strokeRect(3,3,w-6,h-6);
-    for(const rock of b.asteroids){
+    if(!b.duel){ctx.strokeStyle='#4b7488';ctx.lineWidth=4;ctx.strokeRect(3,3,w-6,h-6);}
+    for(const rock of b.duel?[]:b.asteroids){
       if(rock.hp<rock.maxHp){ctx.fillStyle='#192e3c';ctx.fillRect(rock.x-16,rock.y-rock.r-9,32,3);ctx.fillStyle='#c9b797';ctx.fillRect(rock.x-16,rock.y-rock.r-9,32*rock.hp/rock.maxHp,3);}
       ctx.save();ctx.translate(rock.x,rock.y);ctx.rotate(rock.spin);
       const sprite=rock.sprite||(rock.sprite=asteroidSprite(rock));ctx.drawImage(sprite,-sprite.width/SPRITE_SCALE/2,-sprite.height/SPRITE_SCALE/2,sprite.width/SPRITE_SCALE,sprite.height/SPRITE_SCALE);ctx.restore();
     }
-    if(p.dest){
+    if(!b.duel&&p.dest){
       ctx.setLineDash([9,9]);ctx.strokeStyle='#7bdee3aa';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(p.x,p.y);for(const point of p.path)ctx.lineTo(point.x,point.y);ctx.stroke();ctx.setLineDash([]);
       ctx.strokeStyle='#80e2e4';ctx.strokeRect(p.dest.x-9,p.dest.y-9,18,18);
       ctx.beginPath();ctx.moveTo(p.dest.x,p.dest.y);ctx.lineTo(p.dest.x+Math.cos(p.targetAngle)*26,p.dest.y+Math.sin(p.targetAngle)*26);ctx.stroke();
@@ -3106,7 +3164,7 @@
     }
     for(const shot of b.projectiles)if(!(shot.delay>0)&&!(shot.muzzleClearance>0))drawProjectile(ctx,shot);
     ctx.fillStyle='#a6c8d0';ctx.font='14px monospace';ctx.fillText(`SECTOR ${String(save.sector).padStart(2,'0')}  //  ${Math.round(hullRatio()*100)}% HULL`,view.x+20,view.y+view.h-19);
-    if(p.selected){ctx.fillStyle='#92dfe0';ctx.fillText(`SPEED ${Math.round(Math.hypot(p.vx,p.vy))}  TURN ${Math.round(Math.abs(p.omega)*180/Math.PI)}°/s`,view.x+view.w-270,view.y+view.h-19);}
+    if(p.selected){ctx.fillStyle='#92dfe0';ctx.fillText(b.duel?`FACING ${((Math.round(p.angle*180/Math.PI)%360)+360)%360}°  //  FIXED POSITION`:`SPEED ${Math.round(Math.hypot(p.vx,p.vy))}  TURN ${Math.round(Math.abs(p.omega)*180/Math.PI)}°/s`,view.x+view.w-310,view.y+view.h-19);}
   }
   function arenaDisplaySize(world,availableWidth,availableHeight,density){
     const scale=Math.min(availableWidth/world.w,availableHeight/world.h);
@@ -3121,7 +3179,7 @@
     const size=arenaDisplaySize(arenaViewport(battle.world),arena.clientWidth,arena.clientHeight,window.devicePixelRatio);
     canvas.style.width=`${size.width}px`;canvas.style.height=`${size.height}px`;
     if(canvas.width!==size.pixelWidth||canvas.height!==size.pixelHeight){canvas.width=size.pixelWidth;canvas.height=size.pixelHeight;}
-    $('combatZoomLabel').textContent=`${Math.round(100/COMBAT_ZOOMS[combatZoomIndex])}%`;
+    if($('combatZoomLabel'))$('combatZoomLabel').textContent=`${Math.round(100/COMBAT_ZOOMS[combatZoomIndex])}%`;
   }
   function changeCombatZoom(direction){
     if(!battle)return;
@@ -3129,6 +3187,17 @@
     fitArenaCanvas();
   }
   function canvasPoint(event){const rect=canvas.getBoundingClientRect(),view=arenaCamera();return{x:view.x+(event.clientX-rect.left)/rect.width*view.w,y:view.y+(event.clientY-rect.top)/rect.height*view.h};}
+  function selectCombatTarget(point){
+    if(!battle?.duel)return false;
+    const index=battle.enemies.findIndex((enemy)=>enemyAlive(enemy)&&distance(point,enemy)<enemy.r+22);
+    if(index<0)return false;
+    const enemy=battle.enemies[index],local=enemyLocal(point,enemy);
+    const roomIndex=enemy.modules.findIndex((room)=>room.hp>0&&room.cells.some(([x,y])=>Math.abs(x-local.x)<=.5&&Math.abs(y-local.y)<=.5));
+    battle.targetEnemy=index;battle.targetRoom=roomIndex>=0?roomIndex:null;battle.droneTarget=index;
+    const room=enemy.modules[roomIndex],name=room?.type==='weapon'?MODULES[room.weaponType||'weapon'].name:room?.type;
+    $('combatHint').textContent=`FOCUS FIRE · ${enemy.name}${name?` / ${name.toUpperCase()}`:''}`;
+    renderOperations();return true;
+  }
   function selectPlayer(point=null){
     selectedCrewId=null;renderCrew();
     if(!battle)return;const p=battle.player;p.selected=true;
@@ -3138,7 +3207,7 @@
       const gx=Math.floor(localX/COMBAT_TILE+bounds.cx),gy=Math.floor(localY/COMBAT_TILE+bounds.cy),module=occupancy().get(`${gx},${gy}`);
       if(module){selectedModuleId=module.id;renderInspector();}
     }
-    $('combatHint').textContent='SCROLL TO ROTATE · RIGHT CLICK TO MOVE';toast('Ship selected');
+    $('combatHint').textContent=battle.duel?'CLICK AN ENEMY ROOM TO FOCUS FIRE':'SCROLL TO ROTATE · RIGHT CLICK TO MOVE';toast('Ship selected');
   }
   function orderMove(point){
     if(!battle)return;if(!battle.player.selected){toast('Select your ship first.');return;}
@@ -3155,7 +3224,14 @@
     if(battle.player.dest)battle.player.turnOrderPending=true;
     const degrees=((Math.round(battle.player.targetAngle*180/Math.PI)%360)+360)%360;
     $('combatRotationLabel').textContent=`${degrees}°`;
-    $('combatHint').textContent='SHIP TURNING UNDER ENGINE THRUST';
+    if($('combatFacingSlider'))$('combatFacingSlider').value=String(degrees);
+    $('combatHint').textContent=battle.duel?'SHIP TURNING · WEAPONS FIRE WHEN ALIGNED':'SHIP TURNING UNDER ENGINE THRUST';
+  }
+  function setCombatFacing(degrees){
+    if(!battle?.duel||!Number.isFinite(degrees))return;
+    const p=battle.player;p.selected=true;p.targetAngle=((Math.round(degrees)%360)+360)%360*Math.PI/180;
+    $('combatRotationLabel').textContent=`${Math.round(degrees)}°`;
+    $('combatHint').textContent='SHIP TURNING · WEAPONS FIRE WHEN ALIGNED';
   }
   function refreshCrewStatus(){
     const force=$('engineForce'),module=selectedModule();if(force&&ENGINE_TYPES.includes(module?.type))force.textContent=Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0);
@@ -3175,7 +3251,7 @@
       if(!eventOpen&&(mode==='hangar'||mode==='trade'))updateDrones(dt);
       if(mode==='combat'&&battle){updateBattle(dt,time);drawArena(time);}
       if(mode==='hangar'||mode==='trade')drawHangar();
-      if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();renderAmmo();const selected=selectedModule();if(selected&&MODULES[selected.type].ammoType){const detail=$('magazineDetail');if(detail)detail.textContent=`${MODULES[selected.type].ammoType.toUpperCase()} MAGAZINE ${magazineCount(selected)} / ${MODULES[selected.type].magazine}${magazineCount(selected)<MODULES[selected.type].ammo?' · EMPTY · NEEDS LOADER':''}`;}if(mode!=='combat'){renderSystems();renderOperations();}}
+      if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();renderAmmo();if(mode==='combat')renderCombatTelemetry();const selected=selectedModule();if(selected&&MODULES[selected.type].ammoType){const detail=$('magazineDetail');if(detail)detail.textContent=`${MODULES[selected.type].ammoType.toUpperCase()} MAGAZINE ${magazineCount(selected)} / ${MODULES[selected.type].magazine}${magazineCount(selected)<MODULES[selected.type].ammo?' · EMPTY · NEEDS LOADER':''}`;}if(mode!=='combat'){renderSystems();renderOperations();}}
     }
     requestAnimationFrame(frame);
   }
@@ -3196,7 +3272,7 @@
     $('buildFlipWeapon').addEventListener('click',flipBuild);
     $('buildRotateLeft').addEventListener('click',()=>rotateBuild(-1));$('buildRotateRight').addEventListener('click',()=>rotateBuild(1));
     $('combatRotateLeft').addEventListener('click',()=>rotateArrival(-1));$('combatRotateRight').addEventListener('click',()=>rotateArrival(1));
-    $('combatZoomOut').addEventListener('click',()=>changeCombatZoom(1));$('combatZoomIn').addEventListener('click',()=>changeCombatZoom(-1));
+    $('combatFacingSlider').addEventListener('input',(event)=>setCombatFacing(Number(event.target.value)));
     $('selectShipButton').addEventListener('click',()=>selectPlayer());$('jumpButton').addEventListener('click',toggleMap);$('resetButton').addEventListener('click',returnToMainMenu);
     $('leaveTrader').addEventListener('click',()=>{persist();openMap();renderAll();});
     $('revisitTrader').addEventListener('click',()=>{const node=currentMapNode();if(node?.type==='trader')openTrader(node);});
@@ -3205,13 +3281,14 @@
     $('marketFilters').querySelectorAll('button').forEach((button)=>button.addEventListener('click',()=>{marketFilter=button.dataset.filter;$('marketFilters').querySelectorAll('button').forEach((item)=>item.setAttribute('aria-pressed',String(item===button)));renderCatalog();}));
     $('nextSectorButton').addEventListener('click',goNextSector);
     canvas.addEventListener('contextmenu',(event)=>event.preventDefault());
-    canvas.addEventListener('wheel',(event)=>{event.preventDefault();const delta=event.deltaY||event.deltaX;if(event.shiftKey)changeCombatZoom(delta>0?1:-1);else rotateArrival(delta>0?1:-1);},{passive:false});
+    canvas.addEventListener('wheel',(event)=>{event.preventDefault();const delta=event.deltaY||event.deltaX;if(!battle?.duel&&event.shiftKey)changeCombatZoom(delta>0?1:-1);else rotateArrival(delta>0?1:-1);},{passive:false});
     canvas.addEventListener('pointerdown',(event)=>{
       if(!battle)return;const point=canvasPoint(event);
-      if(event.button===2){event.preventDefault();if(selectedCrewId){orderCrewWorld(point);return;}orderMove(point);return;}
+      if(event.button===2){event.preventDefault();if(selectedCrewId){orderCrewWorld(point);return;}if(!battle.duel)orderMove(point);return;}
       if(event.button!==0)return;
       if(selectCrewAtWorld(point))return;
       if(distance(point,battle.player)<battle.player.r+14)selectPlayer(point);
+      else if(battle.duel)selectCombatTarget(point);
       else if(event.pointerType==='touch')orderMove(point);
     });
     document.addEventListener('keydown',(event)=>{
@@ -3223,7 +3300,7 @@
       if(event.key.toLowerCase()==='f'&&mode==='trade'&&selectedCatalog&&MODULES[selectedCatalog].range){event.preventDefault();flipBuild();}
       if(event.key.toLowerCase()==='q'){if(mode==='combat')rotateArrival(-1);else if(mode==='trade')rotateBuild(-1);}
       if(event.key.toLowerCase()==='e'){if(mode==='combat')rotateArrival(1);else if(mode==='trade')rotateBuild(1);}
-      if(mode==='combat'&&['-','_','=','+'].includes(event.key)){event.preventDefault();changeCombatZoom(['-','_'].includes(event.key)?1:-1);}
+      if(mode==='combat'&&!battle?.duel&&['-','_','=','+'].includes(event.key)){event.preventDefault();changeCombatZoom(['-','_'].includes(event.key)?1:-1);}
       if(event.key==='Escape'&&mode==='trade'&&!eventOpen){if(!cancelRoomMove()){selectedCatalog=null;rearrangingShip=false;roomDrag=null;renderAll();}}
     });
     log('Ship systems online. Plot a route on the sector map.');

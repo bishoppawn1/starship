@@ -75,16 +75,16 @@
             <button id="leaveTrader" class="primary-button full-width" type="button">LEAVE TRADER →</button>
           </div>
           <div id="combatTools" hidden>
-            <p class="muted small">Select your ship, set its arrival angle, and issue a move order.</p>
-            <div class="instruction-card"><span>01</span><div><strong>SELECT SHIP</strong><small>Left click your ship</small></div></div>
-            <div class="instruction-card"><span>02</span><div><strong>SET ROTATION</strong><small>Mouse wheel or Q / E</small></div></div>
-            <div class="instruction-card"><span>03</span><div><strong>MOVE</strong><small>Right click the arena</small></div></div>
-            <p class="muted tiny">Crew: click a person or portrait, then right click a floor cell to move. Select My Ship returns to ship orders. Shift-scroll zooms the arena; ordinary scroll sets ship rotation. On touch screens, tap your ship and then tap a destination.</p>
-            <div class="tool-note"><span class="note-icon">↻</span><div><strong>ARRIVAL ROTATION</strong><span id="combatRotationLabel">0°</span></div></div>
+            <p class="muted small">Your ship and the enemy hold position and exchange fire. Turn your ship to choose which side faces incoming shots and which weapons can fire.</p>
+            <div class="instruction-card"><span>01</span><div><strong>CHOOSE A FACING</strong><small>Use the dial, wheel, or Q / E</small></div></div>
+            <div class="instruction-card"><span>02</span><div><strong>FOCUS FIRE</strong><small>Click an enemy room to aim at it</small></div></div>
+            <div class="instruction-card"><span>03</span><div><strong>CREW ORDERS</strong><small>Select crew, then right click a floor cell</small></div></div>
+            <p class="muted tiny">Turning takes time and uses your engines. Your weapons fire automatically when their arcs are clear. The enemy stays to the right; 0° points your bow toward it.</p>
+            <div class="tool-note"><span class="note-icon">↻</span><div><strong>SHIP FACING</strong><span id="combatRotationLabel">0°</span></div></div>
+            <label class="combat-facing-control">PRESENT SIDE TO ENEMY<input id="combatFacingSlider" type="range" min="0" max="345" step="15" value="0" aria-label="Ship facing angle"></label>
             <div class="rotation-controls"><button id="combatRotateLeft" type="button" aria-label="Rotate ship counterclockwise">↶</button><span>15° / STEP</span><button id="combatRotateRight" type="button" aria-label="Rotate ship clockwise">↷</button></div>
-            <div class="combat-zoom-controls"><button id="combatZoomOut" type="button" aria-label="Zoom battle out">−</button><span>BATTLE ZOOM <strong id="combatZoomLabel">100%</strong></span><button id="combatZoomIn" type="button" aria-label="Zoom battle in">+</button></div>
-            <div id="flightTelemetry" class="flight-telemetry">HEADING 0°<br>SPEED 0 · THRUSTERS IDLE</div>
-            <button id="selectShipButton" class="outline-button full-width" type="button">SELECT MY SHIP</button>
+            <div id="flightTelemetry" class="flight-telemetry">FACING 0°<br>ENEMY TO STARBOARD · WEAPONS AUTO</div>
+            <button id="selectShipButton" class="outline-button full-width" type="button">FOCUS MY SHIP</button>
           </div>
           <div id="mapTools" hidden>
             <p class="muted small">Explore connected beacons in any direction. Revisit charted locations, then leave through the sector exit when ready.</p>
@@ -109,8 +109,8 @@
             <div class="stage-bottom"><span id="mapHint">EXPLORE CONNECTED BEACONS</span><span>NO PURSUING FLEET · LEAVE WHEN READY</span></div>
           </div>
           <div id="combatScreen" class="combat-screen" hidden>
-            <div class="arena-wrap"><canvas id="combatCanvas" width="960" height="800" aria-label="Space combat arena"></canvas><div class="arena-overlay top-left"><span class="signal-dot danger"></span><span id="combatWaveLabel">HOSTILE CONTACT</span></div><div class="arena-overlay top-right" id="enemyCountLabel">1 HOSTILE</div></div>
-            <div class="stage-bottom"><span id="combatHint">SELECT YOUR SHIP TO GIVE A MOVE ORDER</span><span id="arenaSizeLabel">ARENA 960 × 600</span></div>
+            <div class="arena-wrap"><canvas id="combatCanvas" width="960" height="800" aria-label="Ship to ship combat"></canvas><div class="arena-overlay top-left"><span class="signal-dot danger"></span><span id="combatWaveLabel">HOSTILE CONTACT</span></div><div class="arena-overlay top-right" id="enemyCountLabel">1 HOSTILE</div></div>
+            <div class="stage-bottom"><span id="combatHint">CLICK AN ENEMY ROOM TO FOCUS FIRE</span><span id="arenaSizeLabel">FIXED ENGAGEMENT</span></div>
           </div>
         </section>
 

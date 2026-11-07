@@ -17,7 +17,7 @@ function game(){
       createGrid,panBuild,zoomBuild,centerBuildView,shipArtFrame,shipBounds,drawArena,shipSprite,gridButtons,buildView,startBattle,shipRadius,
       traderStock,openTrader,buyTraderItem,buyRecruit,upgradeTraderStock,onGridClick,crewGoal,renderCrew,crewAtStation,
       normalizeSystems,commandCore,coreOutput,generatorOutput,auxiliaryOutput,totalPower,powerUsed,systemDemand,sharedPower,systemSupply,systemPower,upgradeCorePower,engineThrusters,evasionChance,weaponWorld,renderSystems,
-      shieldStats,shieldState,absorbShields,shieldInterception,updateShields,fireProjectile,updateBattle,
+      shieldStats,shieldState,absorbShields,shieldInterception,updateShields,fireProjectile,updateBattle,selectCombatTarget,enemyRoomPoint,enemyEvasionChance,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
       filter(value){marketFilter=value;renderCatalog();},setMode(value){mode=value;},stubFlight(){navigatePlayer=()=>{};}};
   })();`);
@@ -72,7 +72,28 @@ test('artwork follows translated hulls and scales its backing texture without li
   battle(g,save).enemies=[];g.drawArena(0);const call=g.draws.find((args)=>args[0]===g.shipSprite);assert.ok(call);assert.equal(call[1],0);assert.equal(call[2],0);
   save.modules=[core(0,0)];for(let i=0;i<100;i++)save.modules.push({id:i+2,type:'armor',footprint:{shape:[[0,0],[1,0],[2,0]],station:null},x:2+i*3,y:0,rotation:0,hp:65,level:1});
   const frame=g.shipArtFrame();assert.ok(frame.w>300);assert.ok(frame.w*24*frame.scale<=8192+1e-7);
-  g.startBattle('pirate');assert.ok(g.getBattle().world.w>=g.shipRadius()*6+400);
+  g.startBattle('pirate');const duel=g.getBattle();
+  assert.equal(duel.duel,true);assert.equal(duel.asteroids.length,0);
+  assert.ok(duel.world.w>duel.player.r*2+duel.enemies[0].r*2);
+});
+
+test('fixed combat holds both ships in view, turns the player in place, and lets a room be targeted',()=>{
+  const g=game(),save=g.newSave();g.setSave(save);g.startBattle('pirate');
+  const duel=g.getBattle(),player=duel.player,enemy=duel.enemies[0],start={px:player.x,py:player.y,ex:enemy.x,ey:enemy.y};
+  assert.equal(duel.duel,true);assert.equal(duel.asteroids.length,0);
+  for(const room of save.modules)if(g.MODULES[room.type].range)room.cooldown=1000;
+  for(const room of enemy.modules)if(room.type==='weapon')room.cooldown=1000;
+  const weapon=enemy.modules.find((room)=>room.type==='weapon');
+  assert.equal(g.selectCombatTarget(g.enemyRoomPoint(enemy,weapon)),true);
+  assert.equal(enemy.modules[duel.targetRoom],weapon);
+  assert.ok(g.enemyEvasionChance(enemy)>0);
+  player.targetAngle=Math.PI/2;
+  for(let i=0;i<400;i++)g.updateBattle(.02,i*.02);
+  assert.equal(player.x,start.px);assert.equal(player.y,start.py);
+  assert.equal(enemy.x,start.ex);assert.equal(enemy.y,start.ey);
+  assert.ok(Math.abs(player.angle-Math.PI/2)<.08);
+  enemy.modules.find((room)=>room.type==='engine').hp=0;
+  assert.equal(g.enemyEvasionChance(enemy),0);
 });
 
 test('trader draws can repeat, aggregate quantities, omit other types, and never restock on revisit',()=>{
