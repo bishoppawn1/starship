@@ -197,3 +197,5 @@
 .build-grid.rearranging-ship .grid-cell.occupied { cursor:grab; }
 .build-grid.moving-room .grid-cell { cursor:crosshair; }
 .grid-cell.moving-source { outline:1px dashed var(--gold); outline-offset:-3px; }
+
+.shield-aim-controls{display:flex;gap:8px;margin:8px 0}.shield-aim-controls button{flex:1;background:#183037;border:1px solid #467d7a;color:#b8f3df;padding:7px;font-size:10px}

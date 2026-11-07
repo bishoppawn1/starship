@@ -9,7 +9,7 @@
 .starter-picker{padding:24px 32px 32px;border-top:1px solid var(--line)}
 .starter-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
 .starter-heading h2{font-size:17px;margin:9px 0}
-.starter-lineup{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:20px}
+.starter-lineup{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:20px}
 .starter-card{display:flex;flex-direction:column;align-items:stretch;text-align:left;border:1px solid #456d7b;background:#101f2c;color:var(--text);padding:18px;gap:10px;line-height:1.6;min-width:0}
 .starter-card:hover{border-color:var(--gold);background:#1b2d35}
 .starter-card>strong{font-size:21px;color:var(--gold)}

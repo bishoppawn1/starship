@@ -16,14 +16,14 @@
     shield: '#bfa6f1', armor: '#9aadc0'
   };
   const MODULES = {
-    core: { name: 'Command Core', short: 'C', color: C.core, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 170, cost: 0, description: 'Command console and shared power source. Staff a pilot here to enable engine evasion.' },
+    core: { name: 'Command Core', short: 'C', color: C.core, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 170, cost: 0, description: 'Pilot command room. Room upgrades add hull durability; upgrade the ship reactor separately in System Power.' },
     engine: { name: 'Standard Ion Engine', short: 'E', color: C.engine, shape: [[0,0],[0,1],[0,2]], station: [0,1], hp: 80, cost: 35, thrust: 270, description: 'Powered directional thruster. An operator boosts thrust; a pilot enables evasion. Keep the exhaust clear.' },
     smallEngine: { name: 'Compact Ion Engine', short: 'E', color: '#90c6d8', shape: [[0,0]], station: [0,0], hp: 50, cost: 22, thrust: 110, description: 'Single-cell maneuvering thruster. Low force, easy to fit at the hull edge. Keep the exhaust clear.' },
     heavyEngine: { name: 'Heavy Ion Engine', short: 'E', color: '#a7c99b', shape: [[0,0],[1,0],[0,1],[1,1],[0,2],[1,2]], station: [0,1], hp: 125, cost: 70, thrust: 620, description: 'Six-cell drive with three exhaust nozzles. High force for heavy hulls. Keep the exhaust clear.' },
     weapon: { name: 'Pulse Cannon', short: 'W', color: C.weapon, shape: [[0,0],[1,0],[1,1]], station: [1,1], mount: [1,0], muzzle: [2,.5], hp: 75, cost: 45, range: 420, arc: 130, damage: 14, reload: 1.2, ammo: 1, description: 'A crewed pulse cannon with a 130° forward firing arc.' },
     railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range slug pierces two aligned rooms within a narrow 50° arc.' },
     shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:100, recharge:10, description: 'A 100-strength full-hull shield. Shared power and a crew operator improve recharge.' },
-    focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:160, recharge:16, arc:105, description: 'A 160-strength shield covering a 105° sector, with faster recharge.' },
+    focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:160, recharge:16, arc:105, description: 'A 160-strength shield covering a 105° sector. Aim it independently in the inspector, including during combat; room placement does not lock its direction.' },
     generator: { name: 'Small Power Generator', short: 'G', color: '#e5be72', shape: [[0,0],[1,0]], station: [0,0], hp: 65, cost: 35, generation: 2, description: 'Compact two-cell generator. Adds 2 shared power; each upgrade adds 1 more. No crew or power required.' },
     teleporter: { name: 'Crew Teleporter', short: 'T', color: '#a5e2d7', shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 80, cost: 75, description: 'Send selected crew from this pad to an enemy within 600 units. Recall them after a 12-second recharge. Requires shared power.' },
     droneControl: { name: 'Drone Bay', short: 'D', color: '#b9cde4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 65, door:[2,.5], description: 'Launches crew-loaded drones automatically through a clear exterior door. Two drone slots, plus one per upgrade. Build a Drone Assembly and leave the launch lane open.' },
@@ -227,7 +227,7 @@
   }
   function commandCore(data=save){return data.modules.find((module)=>module.type==='core');}
   function systemDemand(module){const def=MODULES[module.type];return module.type==='ammoAssembly'||ENGINE_TYPES.includes(module.type)||def.range||SHIELD_TYPES.includes(module.type)||['teleporter','droneControl','droneAssembly'].includes(module.type)?2:0;}
-  function coreOutput(data=save){const core=commandCore(data);return core?.hp>0?8+2*((core.powerLevel||1)-1):0;}
+  function coreOutput(data=save){return commandCore(data)?.hp>0?8+2*((data.reactorLevel||1)-1):0;}
   function generatorOutput(module){const base=MODULES[module.type].generation;return module.hp>0&&base?base+module.level-1:0;}
   function auxiliaryOutput(data=save){return data.modules.reduce((sum,module)=>sum+generatorOutput(module),0);}
   function totalPower(data=save){return coreOutput(data)+auxiliaryOutput(data);}
@@ -237,16 +237,17 @@
   function systemSupply(module){return module.hp>0&&systemDemand(module)?sharedPower():0;}
   function systemPower(module){return systemDemand(module)?systemSupply(module)/2:module.hp>0?1:0;}
   function normalizeSystems(data){
-    const core=commandCore(data);
-    if(core&&(!Number.isInteger(core.powerLevel)||core.powerLevel<1))core.powerLevel=Number.isInteger(data.reactorLevel)&&data.reactorLevel>0?data.reactorLevel:1;
-    delete data.reactorLevel;
-    for(const module of data.modules)delete module.power;
+    const core=commandCore(data),valid=(level)=>Number.isInteger(level)&&level>0?level:1;
+    if(data.powerVersion!==2)data.reactorLevel=Math.max(valid(data.reactorLevel),valid(core?.powerLevel));
+    else data.reactorLevel=valid(data.reactorLevel);
+    data.powerVersion=2;
+    for(const module of data.modules){delete module.power;delete module.powerLevel;if(module.type==='focusShield')module.shieldFacing=shieldDirection(module);}
   }
   function canUpgradeCorePower(cost){return mode!=='combat'&&commandCore()?.hp>0&&save.metal>=cost;}
   function upgradeCorePower(){
-    const core=commandCore(),cost=40+20*((core?.powerLevel||1)-1);
+    const core=commandCore(),cost=40+20*((save.reactorLevel||1)-1);
     if(!canUpgradeCorePower(cost))return false;
-    save.metal-=cost;core.powerLevel=(core.powerLevel||1)+1;persist();renderAll();toast('Command core upgraded · +2 shared power');return true;
+    save.metal-=cost;save.reactorLevel=(save.reactorLevel||1)+1;persist();renderAll();toast('Ship reactor upgraded · +2 shared power');return true;
   }
   function evasionChance(){
     const core=save.modules.find((module)=>module.type==='core');
@@ -257,12 +258,12 @@
   }
   function renderSystems(){
     const panel=$('systemsPanel'),scrollTop=panel.querySelector?.('.power-rows')?.scrollTop||0,core=commandCore();
-    const count=poweredSystems().length,share=sharedPower(),cost=40+20*((core?.powerLevel||1)-1);
-    panel.innerHTML=`<div class="reactor-summary"><strong>SHIP POWER · ${totalPower()}</strong><span>COMMAND CORE ${coreOutput()} + GENERATORS ${auxiliaryOutput()}<br>AUTO SHARE · ${count} SYSTEMS · ${share.toFixed(2)} EACH<br>${Math.round(evasionChance()*100)}% EVADE</span></div><button id="upgradeCorePower" type="button" ${!canUpgradeCorePower(cost)?'disabled':''}>UPGRADE CORE POWER +2 · ◆ ${cost}</button><div class="power-rows">${save.modules.filter((module)=>systemDemand(module)).map((module)=>{
+    const count=poweredSystems().length,share=sharedPower(),cost=40+20*((save.reactorLevel||1)-1);
+    panel.innerHTML=`<div class="reactor-summary"><strong>SHIP POWER · ${totalPower()}</strong><span>REACTOR LV ${save.reactorLevel||1} · ${coreOutput()} + GENERATORS ${auxiliaryOutput()}<br>AUTO SHARE · ${count} SYSTEMS · ${share.toFixed(2)} EACH<br>${Math.round(evasionChance()*100)}% EVADE</span></div><button id="upgradeCorePower" type="button" ${!canUpgradeCorePower(cost)?'disabled':''}>UPGRADE REACTOR +2 · ◆ ${cost}</button><div class="power-rows">${save.modules.filter((module)=>systemDemand(module)).map((module)=>{
       const performance=systemPower(module),shield=SHIELD_TYPES.includes(module.type),stats=shield?shieldStats(module):null;
       const strength=shield?(battle?shieldState(module).charge:module.hp>0?stats.capacity:0):0;
       return `<div class="power-row"><span title="Grid ${module.x}, ${module.y}">${MODULES[module.type].name} <small>(${module.x}, ${module.y})</small></span><strong>${module.hp>0?`${Math.round(performance*100)}% POWER`:'OFFLINE'}</strong><div class="power-meter" role="meter" aria-label="${MODULES[module.type].name} performance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(performance*100)}"><span style="width:${performance*100}%"></span></div>${shield?`<span class="shield-strength">SHIELD ${Math.round(strength)} / ${stats.capacity}</span><div class="power-meter shield-meter"><span style="width:${strength/stats.capacity*100}%"></span></div>`:''}</div>`;
-    }).join('')}</div><small>The command core and generators share power evenly across active systems. Lower power slows weapons, engine thrust, shield recharge, drone actions, and teleporter recharge.</small>`;
+    }).join('')}</div><small>The ship reactor and generators share power evenly. Reactor upgrades are separate from command-room hull upgrades. Lower power slows weapons, engine thrust, shield recharge, drone actions, and teleporter recharge.</small>`;
     const rows=panel.querySelector?.('.power-rows');if(rows)rows.scrollTop=scrollTop;
     $('upgradeCorePower').addEventListener('click',upgradeCorePower);
   }
@@ -341,18 +342,26 @@
   const STARTER_SHIPS = [
     {id:'wayfarer',name:'Wayfarer',role:'LIGHT PATROL',description:'Twin pulse cannons. Ammo-free weapons and agile handling.'},
     {id:'arsenal',name:'Arsenal',role:'MISSILE FRIGATE',description:'Twin missile racks, two upgraded missile assemblies and two loaders. Six crew.'},
-    {id:'bulwark',name:'Bulwark',role:'HEAVY GUNSHIP',description:'Twin railguns, two heavy-ammo assemblies and two loaders. Six crew.'}
+    {id:'bulwark',name:'Bulwark',role:'HEAVY GUNSHIP',description:'Twin railguns, two heavy-ammo assemblies and two loaders. Six crew.'},
+    {id:'drones',name:'Drones',role:'DRONE CARRIER',description:'Combat and beam drones, two assemblies, an exterior bay and two drone carriers. Laser support and five crew.'}
   ];
   function starterModules(starterId){
     const rooms=[['core',5,4,0],['engine',4,2,0],['engine',4,5,0]];
     if(starterId==='arsenal')rooms.push(['missile',6,2,0],['missile',6,6,0],['generator',7,4,1],['ammoAssembly',5,6,0],['ammoAssembly',5,2,0],['shield',8,4,0]);
     else if(starterId==='bulwark')rooms.push(['railgun',5,2,0],['railgun',5,7,0],['ammoAssembly',5,3,1],['ammoAssembly',5,6,1],['shield',7,4,0]);
+    else if(starterId==='drones')rooms.push(['droneAssembly',5,2,0],['droneAssembly',5,6,0],['droneControl',7,4,0],['laser',7,2,0],['generator',7,3,0],['shield',7,6,0]);
     else rooms.push(['weapon',6,3,0],['weapon',6,5,1],['shield',8,4,0]);
-    return rooms.map(([type,x,y,rotation],i)=>({id:i+1,type,x,y,rotation,hp:MODULES[type].hp+(type==='ammoAssembly'&&starterId==='arsenal'?25:0),level:type==='ammoAssembly'&&starterId==='arsenal'?2:1,...(i===4&&starterId==='wayfarer'?{weaponFacing:1}:{}),...(type==='ammoAssembly'?{ammoRecipe:starterId==='arsenal'?'missile':'heavy'}:{}),...(MODULES[type].ammoType?{magazine:MODULES[type].magazine}:{})}));
+    return rooms.map(([type,x,y,rotation],i)=>({id:i+1,type,x,y,rotation,hp:MODULES[type].hp+(type==='ammoAssembly'&&starterId==='arsenal'?25:0),level:type==='ammoAssembly'&&starterId==='arsenal'?2:1,...(i===4&&starterId==='wayfarer'?{weaponFacing:1}:{}),...(type==='ammoAssembly'?{ammoRecipe:starterId==='arsenal'?'missile':'heavy'}:{}),...(type==='droneAssembly'?{droneType:y===2?'combat':'beam'}:{}),...(MODULES[type].ammoType?{magazine:MODULES[type].magazine}:{})}));
   }
   function starterCrew(starterId){
     const people=CREW.map((person)=>({...person,hp:100,hurtTime:0}));
-    if(starterId!=='wayfarer'){
+    if(starterId==='drones'){
+      const modules=starterModules(starterId),assemblies=modules.filter((room)=>room.type==='droneAssembly');
+      Object.assign(people[0],moduleStation(modules.find((room)=>room.type==='laser')));
+      Object.assign(people[1],{x:6.5,y:5.5});Object.assign(people[2],moduleStation(assemblies[0]),{task:'drone'});
+      people.push({id:'lyra',name:'LYRA',initial:'L',color:'#ea9baf',task:'drone',hp:100,hurtTime:0,...moduleStation(assemblies[1])},
+        {id:'nova',name:'NOVA',initial:'N',color:'#efc27c',task:'pilot',hp:100,hurtTime:0,...moduleStation(modules[0])});
+    }else if(starterId!=='wayfarer'){
       const modules=starterModules(starterId),weapons=modules.filter((room)=>MODULES[room.type].ammoType),factories=modules.filter((room)=>room.type==='ammoAssembly');
       Object.assign(people[0],moduleStation(weapons[0]));
       Object.assign(people[2],moduleStation(factories[1]));
@@ -367,7 +376,12 @@
     const modules=starterModules(starterId);
     const data={metal:90,sector:1,wins:0,nextId:modules.length+1,starterId,starterLayoutVersion:2,weaponFootprintsVersion:2,inventory:{ion:1},passengers:0,
       modules,crew:starterCrew(starterId),map:makeMap(1)};
-    data.drones=[];normalizeSystems(data);normalizeAmmo(data);return data;
+    data.drones=[];
+    if(starterId==='drones'){
+      data.reactorLevel=2;const bay=modules.find((room)=>room.type==='droneControl');
+      data.drones=modules.filter((room)=>room.type==='droneAssembly').map((assembly,i)=>({id:i+1,assembly:assembly.id,bay:bay.id,type:assembly.droneType,hp:60,phase:'ready',cooldown:.5,angle:0,path:[],...moduleStation(bay)}));data.nextDroneId=2;
+    }
+    normalizeSystems(data);normalizeAmmo(data);return data;
   }
   function migrateStarter(data) {
     if(data.starterLayoutVersion===2)return;
@@ -860,13 +874,14 @@
       selectedModuleId=module.id;movingModuleId=null;selectedCatalog=null;persist();renderAll();toast('Room moved');return;
     }
     const def=MODULES[selectedCatalog];if((save.inventory[selectedCatalog]||0)<1){toast('Buy this module from a trader first.');return;}
-    const module={id:save.nextId++,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing,flipped:placementFlipped(selectedCatalog),hp:def.hp,level:1};
+    const module={id:save.nextId++,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing,flipped:placementFlipped(selectedCatalog),hp:def.hp,level:1,...(selectedCatalog==='focusShield'?{shieldFacing:0}:{})};
     save.modules.push(module);save.inventory[selectedCatalog]--;selectedModuleId=module.id;selectedCatalog=null;
     persist();log(`${def.name} installed from the hold.`);toast(`${def.name} installed`);renderAll();
   }
   function beginModuleMove(refit=false){
     const module=selectedModule();if(mode!=='trade'||!module)return false;
     selectedCrewId=null;hoverCell={x:module.x,y:module.y};
+    if(module.type==='focusShield')module.shieldFacing=shieldDirection(module);
     movingModuleId=module.id;refittingFootprint=refit;selectedCatalog=module.type;buildRotation=module.rotation;buildWeaponFacing=module.weaponFacing||0;buildFlipped=!!module.flipped;
     $('buildRotationLabel').textContent=`${buildRotation*90}°`;renderAll();return true;
   }
@@ -880,12 +895,17 @@
     if(!module){$('moduleInspector').innerHTML='<div class="empty-inspector">Click a ship room to inspect its station, firing arc, upgrade, or repair it.</div>';return;}
     const def=MODULES[module.type],maximum=maxHp(module),ratio=module.hp/maximum,upgradeCost=25*module.level+(module.type==='core'?10:0),repairCost=Math.ceil((maximum-module.hp)/10)*3;
     const direction=['RIGHT','DOWN','LEFT','UP'][def.range?weaponFacingQuarter(module):module.rotation];
-    const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° FOCUSED ARC · ${direction}`} · ${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
+    const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° FOCUSED ARC · AIM ${shieldDirection(module)}°`} · ${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
+    const shieldAim=module.type==='focusShield'?`<label class="weapon-range">AIM SHIELD<select id="shieldDirection" aria-label="Shield direction">${[...new Set([0,45,90,135,180,225,270,315,shieldDirection(module)])].sort((a,b)=>a-b).map((degrees)=>`<option value="${degrees}" ${degrees===shieldDirection(module)?'selected':''}>${degrees}°${({0:' · RIGHT',90:' · DOWN',180:' · LEFT',270:' · UP'})[degrees]||''}</option>`).join('')}</select></label><div class="shield-aim-controls"><button data-shield-turn="-15" type="button" aria-label="Aim shield counterclockwise">↶ 15°</button><button data-shield-turn="15" type="button" aria-label="Aim shield clockwise">15° ↷</button></div><p class="muted small">Direction follows the ship, independently of this room. Re-aim at any time; no refit needed.</p>`:'';
     const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · ${def.guidance?'UNLIMITED RANGE':`RANGE ${weaponRange(module)}`} · ${direction}${module.flipped?' · MIRRORED':''} · ${ammoLabel(def)}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE · ${def.thrust} BASE</div><div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
     const ammoDetail=def.ammoType?`<div id="magazineDetail" class="inspector-detail">${def.ammoType.toUpperCase()} MAGAZINE ${magazineCount(module)} / ${def.magazine}${magazineCount(module)<def.ammo?' · EMPTY · NEEDS LOADER':''}</div>`:module.type==='ammoAssembly'?`<label class="weapon-range">PRODUCE <select id="ammoRecipe"><option value="heavy" ${module.ammoRecipe!=='missile'?'selected':''}>Heavy · 4 rounds / batch</option><option value="missile" ${module.ammoRecipe==='missile'?'selected':''}>Missile · 2 rounds / batch</option></select></label><p class="muted small">Uses energy only. One batch every 4 seconds at full power. Finished rounds stay here until a loader collects them.</p>`:'';
     const rangeControl=def.range?`<div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div><div class="weapon-rules">${weaponBehavior(module.type)}</div>${!def.guidance?`<label class="weapon-range" for="weaponRange">RANGE LIMIT <input id="weaponRange" type="number" min="30" max="${def.range}" step="1" value="${weaponRange(module)}" ${!['hangar','trade'].includes(mode)?'disabled':''}><span>MAX ${def.range}</span></label>`:''}${mode==='trade'?'<button id="flipWeapon" class="outline-button full-width" type="button">FLIP WEAPON ↔ · FREE</button>':''}${def.mountFacings===2?`<button id="rotateWeapon" class="outline-button full-width" type="button" ${!['hangar','trade'].includes(mode)?'disabled':''}>TURN MOUNT 90° ↻</button>`:''}`:'';
     const droneInfo=module.type==='droneControl'?`<div class="inspector-detail">LAUNCH → ${direction} · ${droneBayClear(module)?'CLEAR TO SPACE':'BLOCKED · MOVE BAY TO EXTERIOR'} · ${droneBayCapacity(module)} SLOTS</div>`:module.type==='droneAssembly'?`<label class="drone-assembly">DRONE DESIGN<select id="inspectorDroneDesign" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===(module.droneType||'combat')?'selected':''}>${def.name}</option>`).join('')}</select></label><div class="inspector-detail">ONE DRONE · ${assemblyTime(module).toFixed(1)}s BUILD TIME · AUTOMATIC REPLACEMENT</div>`:'';
-    $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}${ammoDetail}<div class="inspector-detail">${systemDemand(module)?`AUTO POWER ${systemSupply(module).toFixed(2)} · ${Math.round(systemPower(module)*100)}% PERFORMANCE`:module.type==='core'?`COMMAND POWER ${coreOutput()} · SHARED EQUALLY`:def.generation?`GENERATOR OUTPUT ${generatorOutput(module)} · SHARED EQUALLY · +1 PER UPGRADE`:'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${droneInfo}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>UPGRADE<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
+    $('moduleInspector').innerHTML=`<div class="inspector-head">${def.range?miniShape(module.type):`<span class="inspector-swatch" style="--module-color:${def.color}"></span>`}<strong>${def.name.toUpperCase()} · LV ${module.level}</strong></div><div class="inspector-sub"><span>${def.description}</span><span>${Math.ceil(module.hp)}/${maximum}</span></div>${detail}${shieldAim}${ammoDetail}<div class="inspector-detail">${systemDemand(module)?`AUTO POWER ${systemSupply(module).toFixed(2)} · ${Math.round(systemPower(module)*100)}% PERFORMANCE`:module.type==='core'?'PILOT CONSOLE · ROOM UPGRADES ADD HULL ONLY':def.generation?`GENERATOR OUTPUT ${generatorOutput(module)} · SHARED EQUALLY · +1 PER UPGRADE`:'PASSIVE SYSTEM · NO POWER REQUIRED'}</div>${rangeControl}${droneInfo}${module.footprint&&mode==='trade'?'<button id="refitFootprint" class="outline-button full-width" type="button">REFIT TO NEW FOOTPRINT · FREE</button>':''}${mode==='trade'?`<button id="moveModule" class="outline-button full-width" type="button">${movingModuleId===module.id?'CANCEL MOVE':'MOVE ROOM'}</button>`:''}<div class="meter ${ratio<.35?'low':''}"><span style="width:${Math.round(ratio*100)}%"></span></div><div class="inspector-actions"><button id="upgradeModule" type="button" ${module.level>=3||save.metal<upgradeCost||mode==='combat'?'disabled':''}>${module.type==='core'?'REINFORCE ROOM':'UPGRADE'}<br>◆ ${upgradeCost}</button><button id="repairModule" type="button" ${repairCost===0||save.metal<repairCost||mode==='combat'?'disabled':''}>REPAIR<br>◆ ${repairCost}</button></div>`;
+    if(module.type==='focusShield'){
+      $('shieldDirection').addEventListener('change',(event)=>setShieldDirection(module.id,+event.target.value));
+      $('moduleInspector').querySelectorAll('[data-shield-turn]').forEach((button)=>button.addEventListener('click',()=>setShieldDirection(module.id,shieldDirection(module)+ +button.dataset.shieldTurn)));
+    }
     if(module.type==='droneAssembly')$('inspectorDroneDesign').addEventListener('change',(event)=>setDroneDesign(module.id,event.target.value));
     paintWeaponThumbnails($('moduleInspector'));
     if(module.type==='ammoAssembly')$('ammoRecipe').addEventListener('change',(event)=>{if(!AMMO[event.target.value])return;module.ammoRecipe=event.target.value;module.ammoProgress=0;persist();renderAmmo();});
@@ -910,9 +930,10 @@
     $('repairModule').addEventListener('click',()=>{if(repairCost===0||save.metal<repairCost||mode==='combat')return;save.metal-=repairCost;module.hp=maximum;persist();log(`${def.name} repaired.`);toast(`${def.name} repaired`);renderAll();});
   }
   function renderCrew(){
-    $('crewList').innerHTML=save.crew.map((person)=>{
+    if(selectedCrewId&&!crewAlive(selectedCrew()||{hp:0}))selectedCrewId=null;
+    $('crewList').innerHTML=save.crew.filter(crewAlive).map((person)=>{
       const template=crewAppearance(person);
-      return `<div class="crew-card ${selectedCrewId===person.id?'crew-selected':''}"><div class="crew-top"><button type="button" class="crew-avatar crew-select" data-select-crew="${person.id}" aria-label="Select ${template.name}" aria-pressed="${selectedCrewId===person.id}" style="--crew-color:${template.color}">${template.initial}</button><strong>${template.name}</strong><small>${crewStatus(person)}</small></div><div class="crew-health" role="meter" aria-label="${template.name} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.ceil(person.hp??100)}"><span style="width:${person.hp??100}%"></span><b>${Math.ceil(person.hp??100)} / 100</b></div><select ${!crewAlive(person)||person.aboard?'disabled':''} data-crew="${person.id}" aria-label="${template.name} assignment">${Object.entries(TASKS).map(([value,label])=>`<option value="${value}" ${person.task===value?'selected':''}>${label}</option>`).join('')}</select></div>`;
+      return `<div data-crew-id="${person.id}" class="crew-card ${selectedCrewId===person.id?'crew-selected':''}"><div class="crew-top"><button type="button" class="crew-avatar crew-select" data-select-crew="${person.id}" aria-label="Select ${template.name}" aria-pressed="${selectedCrewId===person.id}" style="--crew-color:${template.color}">${template.initial}</button><strong>${template.name}</strong><small>${crewStatus(person)}</small></div><div class="crew-health" role="meter" aria-label="${template.name} health" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.ceil(person.hp??100)}"><span style="width:${person.hp??100}%"></span><b>${Math.ceil(person.hp??100)} / 100</b></div><select ${!crewAlive(person)||person.aboard?'disabled':''} data-crew="${person.id}" aria-label="${template.name} assignment">${Object.entries(TASKS).map(([value,label])=>`<option value="${value}" ${person.task===value?'selected':''}>${label}</option>`).join('')}</select></div>`;
     }).join('');
     $('crewList').querySelectorAll('[data-select-crew]').forEach((button)=>button.addEventListener('click',()=>selectCrew(button.dataset.selectCrew)));
     renderCrewOrders();
@@ -975,54 +996,43 @@
     if(person.droneCargo!==undefined){const drone=save.drones.find((drone)=>drone.id===person.droneCargo);g.fillStyle='#152331';g.fillRect(x+2,y-1,11,7);g.fillStyle=DRONE_PROGRAMS[drone?.type||'combat'].color;g.fillRect(x+4,y,7,4);g.fillStyle='#e2f4df';g.fillRect(x+6,y+1,2,1);}
     if(person.carrying){g.fillStyle='#17232e';g.fillRect(x+3,y-2,7,7);g.fillStyle=AMMO[person.carrying.type].color;g.fillRect(x+4,y-1,5,5);g.fillStyle='#fff0c9';g.fillRect(x+6,y-1,1,5);}
   }
-  function drawStation(g,module,throttle=0){
-    const def=MODULES[module.type],geom=moduleGeometry(module),station=geom.station;
-    if(station){
-      const px=(module.x+station[0])*TILE,py=(module.y+station[1])*TILE;
-      g.fillStyle='#091a27';g.fillRect(px+5,py+5,14,14);
-      g.fillStyle='#51697b';g.fillRect(px+6,py+6,12,12);
-      g.fillStyle='#142d3b';g.fillRect(px+7,py+7,10,10);
-      g.fillStyle=def.color;g.fillRect(px+8,py+8,8,2);
-      g.fillStyle='#9eb8c5';g.fillRect(px+7,py+17,2,2);g.fillRect(px+15,py+17,2,2);
-      if(module.type==='core'){
-        g.fillStyle='#7fe0e7';g.fillRect(px+8,py+8,8,5);
-        g.fillStyle='#e8fff2';g.fillRect(px+9,py+9,3,1);g.fillRect(px+13,py+11,2,1);
-        g.fillStyle='#ecb970';g.fillRect(px+8,py+15,2,1);g.fillRect(px+12,py+15,4,1);
-        g.fillStyle='#4e7184';g.fillRect(px+3,py+9,2,6);g.fillRect(px+19,py+9,2,6);
+  function stationConsole(module,occupied=occupancy()){
+    const geometry=moduleGeometry(module),station=geometry.station;if(!station)return null;
+    const x=module.x+station[0],y=module.y+station[1],own=new Set(moduleCells(module).map((cell)=>cell.join(',')));
+    const sides=[[0,-1,0],[1,0,Math.PI/2],[0,1,Math.PI],[-1,0,-Math.PI/2]];
+    const side=sides.filter(([dx,dy])=>!own.has(`${x+dx},${y+dy}`)).sort((a,b)=>Number(occupied.has(`${x+a[0]},${y+a[1]}`))-Number(occupied.has(`${x+b[0]},${y+b[1]}`)))[0]||sides[0];
+    return {x:(x+.5)*TILE,y:(y+.5)*TILE,angle:side[2],shared:occupied.has(`${x+side[0]},${y+side[1]}`)};
+  }
+  function drawStation(g,module,throttle=0,occupied){
+    const def=MODULES[module.type],console=stationConsole(module,occupied);if(!console)return;
+    const live=module.hp>0,width=console.shared?7:14,left=console.shared?-10:-7;
+    g.save();g.translate(console.x,console.y);g.rotate(console.angle);
+    // A shallow monitor and keyboard sit against the wall, leaving the crew's
+    // floor cell open. At a connecting doorway, use the short corner panel.
+    g.fillStyle='#252d2d';g.fillRect(left-1,-11,width+2,7);
+    g.fillStyle='#777f76';g.fillRect(left,-10,width,5);
+    g.fillStyle='#bcc4ad';g.fillRect(left,-10,width,1);
+    g.fillStyle='#173a39';g.fillRect(left+1,-9,width-2,3);
+    g.fillStyle=live?(def.range?'#d18b73':def.color):'#52615a';g.fillRect(left+2,-8,width-4,1);
+    g.fillStyle='#b5c7a3';g.fillRect(left+1,-5,2,1);g.fillRect(left+4,-5,1,1);
+    if(width>7){g.fillRect(left+7,-5,2,1);g.fillStyle=live?'#8bd7ad':'#647263';g.fillRect(left+10,-8,1,1);}
+    g.restore();
+    const cells=moduleCells(module),station=moduleStation(module),machine=cells.find(([x,y])=>x!==Math.floor(station.x)||y!==Math.floor(station.y));
+    if(machine&&['droneAssembly','ammoAssembly','generator','teleporter','droneControl'].includes(module.type)){
+      const x=(machine[0]+.5)*TILE,y=(machine[1]+.5)*TILE;
+      g.fillStyle='#37413d';g.fillRect(x-7,y-5,14,10);g.fillStyle='#798172';g.fillRect(x-6,y-4,12,8);
+      if(module.type==='droneAssembly'){
+        g.fillStyle='#b2a07b';g.fillRect(x-7,y-7,3,12);g.fillRect(x-5,y-7,10,3);g.fillStyle='#3d5757';g.fillRect(x-3,y-1,7,4);g.fillStyle='#b8d7b5';g.fillRect(x,y,2,1);
+      }else if(module.type==='ammoAssembly'){
+        g.fillStyle=AMMO[module.ammoRecipe||'heavy'].color;g.fillRect(x-4,y-2,3,5);g.fillRect(x+1,y-2,3,5);
+      }else if(def.generation){
+        g.fillStyle='#9a8b60';g.fillRect(x-4,y-3,8,6);g.fillStyle=live?'#ecd79b':'#675f4d';g.fillRect(x-1,y-3,2,6);
+      }else{
+        g.fillStyle='#3d6261';g.fillRect(x-4,y-3,8,6);g.fillStyle=live?'#a1d7c7':'#607970';g.fillRect(x-2,y-1,4,2);
       }
-      if(module.type==='shield'){
-        g.fillStyle='#8c6bc4';g.fillRect(px+8,py+7,8,10);
-        g.fillStyle='#e9d6ff';g.fillRect(px+11,py+8,2,8);g.fillRect(px+8,py+11,8,2);
-        g.fillStyle='#ab8ded';g.fillRect(px+3,py+10,2,4);g.fillRect(px+19,py+10,2,4);
-      }
-      if(module.type==='focusShield'){
-        g.fillStyle='#397f82';g.fillRect(px+8,py+7,8,10);
-        g.fillStyle='#b0fff1';g.fillRect(px+9,py+9,6,2);g.fillRect(px+11,py+11,2,5);
-        g.fillStyle='#5accc1';g.fillRect(px+3,py+10,2,4);g.fillRect(px+19,py+10,2,4);
-        g.save();g.translate(px+12,py+12);g.rotate(module.rotation*Math.PI/2);
-        g.fillStyle='#e5fff4';g.fillRect(5,-1,4,2);g.fillRect(7,-3,2,6);g.restore();
-      }
-      if(def.generation){
-        g.fillStyle='#514c3f';g.fillRect(px+6,py+6,12,12);
-        g.fillStyle='#c4a566';g.fillRect(px+8,py+7,8,10);
-        g.fillStyle=module.hp>0?'#ffe7a0':'#665c49';g.fillRect(px+11,py+8,2,8);g.fillRect(px+8,py+11,8,2);
-        g.fillStyle='#847d69';g.fillRect(px+3,py+8,2,8);g.fillRect(px+19,py+8,2,8);
-      }
-      if(['teleporter','droneControl','droneAssembly'].includes(module.type)){g.fillStyle=module.type==='teleporter'?'#62c8ba':'#94adce';g.fillRect(px+7,py+7,10,10);g.fillStyle='#152b3a';g.fillRect(px+9,py+9,6,6);g.fillStyle='#f0e8ab';g.fillRect(px+11,py+10,2,4);}
-      if(module.type==='droneAssembly'){g.fillStyle='#aa9268';g.fillRect(px+3,py+5,3,14);g.fillRect(px+4,py+3,15,3);g.fillStyle='#e3d4a7';g.fillRect(px+16,py+4,3,8);g.fillStyle='#526c7b';g.fillRect(px+9,py+10,6,5);g.fillStyle='#90d6cb';g.fillRect(px+11,py+11,2,2);}
-      if(module.type==='ammoAssembly'){g.fillStyle='#49525a';g.fillRect(px+5,py+5,14,14);g.fillStyle='#b49768';g.fillRect(px+6,py+6,12,4);g.fillStyle=AMMO[module.ammoRecipe||'heavy'].color;g.fillRect(px+8,py+12,3,5);g.fillRect(px+13,py+12,3,5);}
-      if(ENGINE_TYPES.includes(module.type)){
-        g.fillStyle='#0d2731';g.fillRect(px+7,py+7,10,10);
-        g.fillStyle='#71c9a6';g.fillRect(px+8,py+8,8,4);
-        g.fillStyle='#e6fff0';g.fillRect(px+9,py+9,3,1);
-        g.fillStyle='#345b65';g.fillRect(px+8,py+14,2,2);g.fillRect(px+12,py+14,4,2);
-      }
-      if(def.range){
-        g.fillStyle='#15283a';g.fillRect(px+7,py+7,10,9);
-        g.fillStyle='#b85d51';g.fillRect(px+8,py+8,8,4);
-        g.fillStyle='#fff0c7';g.fillRect(px+9,py+9,3,1);
-        g.fillStyle='#6b8390';g.fillRect(px+8,py+14,2,2);g.fillRect(px+13,py+14,3,2);
-      }
+    }
+    if(module.type==='focusShield'){
+      g.save();g.translate(console.x,console.y);g.rotate(shieldDirection(module)*Math.PI/180);g.fillStyle=live?'#a4e9d4':'#526a62';g.fillRect(3,-.5,4,1);g.fillRect(5,-2,1,4);g.restore();
     }
   }
   function drawHullShell(g,occupied){
@@ -1184,9 +1194,10 @@
           }
         }
       }
-      drawStation(g,module,thrusters[module.id]||0);
+      drawStation(g,module,thrusters[module.id]||0,occupied);
     }
     for(const module of save.modules)drawExteriorHardware(g,module,thrusters[module.id]||0);
+    if(showSelection&&!selectedCatalog&&SHIELD_TYPES.includes(selectedModule()?.type))drawShieldCoverage(g,selectedModule(),TILE);
     for(const person of save.crew)if(crewHome(person))drawCrewSprite(g,person);
     for(const drone of save.drones||[])if(drone.hp>0){const point=drone.phase==='stored'?dronePickupPoint(drone):drone;
       if(['stored','ready'].includes(drone.phase)||drone.type==='repair'&&drone.phase==='active')drawDroneSprite(g,point.x*TILE,point.y*TILE,drone.type);}
@@ -1202,7 +1213,7 @@
     if(mode!=='trade'||!selectedCatalog||!hoverCell)return null;
     const place=placementAt(selectedCatalog,hoverCell.x,hoverCell.y,buildRotation);
     const original=save.modules.find((module)=>module.id===movingModuleId);
-    return {valid:place.valid,module:{level:1,hp:MODULES[selectedCatalog].hp,...original,footprint:refittingFootprint?null:original?.footprint,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing,flipped:placementFlipped(selectedCatalog)}};
+    return {valid:place.valid,module:{level:1,hp:MODULES[selectedCatalog].hp,...original,footprint:refittingFootprint?null:original?.footprint,type:selectedCatalog,x:place.x,y:place.y,rotation:buildRotation,weaponFacing:buildWeaponFacing,flipped:placementFlipped(selectedCatalog),...(selectedCatalog==='focusShield'?{shieldFacing:original?shieldDirection(original):0}:{})}};
   }
   function drawHangar(){
     sizeArtCanvas(hangarCanvas,{w:buildView.cols,h:buildView.rows,scale:SPRITE_SCALE});
@@ -1213,6 +1224,7 @@
     g.globalAlpha=.7;
     for(const [x,y] of moduleCells(module)){g.fillStyle=preview.valid?'#81e4bb':'#ed7783';g.fillRect(x*TILE+1,y*TILE+1,TILE-2,TILE-2);}
     g.globalAlpha=1;drawStation(g,module);drawExteriorHardware(g,module);
+    if(SHIELD_TYPES.includes(module.type))drawShieldCoverage(g,module,TILE,[...save.modules.filter((part)=>part.id!==movingModuleId),module]);
     if(MODULES[module.type].range){
       const mount=weaponGeometry(module);g.fillStyle='#fff2bd';g.fillRect(mount.x*TILE-2,mount.y*TILE-2,4,4);
     }
@@ -1235,6 +1247,7 @@
 
   function selectedCrew(){return save.crew.find((person)=>person.id===selectedCrewId);}
   function selectCrew(id){
+    if(!save.crew.some((person)=>person.id===id&&crewAlive(person)))return false;
     selectedCrewId=id;selectedCatalog=null;movingModuleId=null;rearrangingShip=false;roomDrag=null;
     if(battle)battle.player.selected=false;
     renderCrew();renderGrid();
@@ -1275,7 +1288,7 @@
   function hurtCrew(person,amount){
     if(!crewAlive(person)||amount<=0)return;
     person.hp=Math.max(0,(person.hp??100)-amount);person.hurtTime=5;
-    if(person.hp===0){delete person.manualGoal;delete person.boardOrder;delete person.aboard;person.workModuleId=null;delete crewRoutes[person.id];log(`${crewAppearance(person).name} was killed.`);persist();}
+    if(person.hp===0){delete person.manualGoal;delete person.boardOrder;delete person.aboard;person.workModuleId=null;delete crewRoutes[person.id];log(`${crewAppearance(person).name} was killed.`);if(selectedCrewId===person.id)selectedCrewId=null;persist();renderCrew();}
   }
   function boardingPad(){return activeModules('teleporter')[0];}
   function boardingReady(enemy){return !!battle&&!!enemy&&!!boardingPad()&&(battle.teleportCooldown||0)<=0&&enemyAlive(enemy)&&distance(enemy,battle.player)<=600;}
@@ -1984,7 +1997,7 @@
   }
   function showStarterPicker(){
     $('menuConfirm').hidden=true;$('starterPicker').hidden=false;
-    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>100-strength full-hull shield · ${ship.id==='wayfarer'?3:6} crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
+    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>100-strength full-hull shield · ${ship.id==='wayfarer'?3:ship.id==='drones'?5:6} crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
     const original=save;
     try{
       for(const preview of $('starterLineup').querySelectorAll('canvas[data-starter-preview]')){
@@ -2646,6 +2659,25 @@
     const def=MODULES[module.type];
     return {capacity:Math.round(def.capacity*(1+.35*((module.level||1)-1))),recharge:def.recharge*systemPower(module)*(1+.4*Math.min(1,crewAtStation('shield',module)))};
   }
+  function shieldDirection(module){return ((Number.isFinite(module.shieldFacing)?module.shieldFacing:(module.rotation||0)*90)%360+360)%360;}
+  function setShieldDirection(id,degrees){
+    const module=save.modules.find((room)=>room.id===id&&room.type==='focusShield');
+    if(!module||!Number.isFinite(degrees))return false;
+    module.shieldFacing=((Math.round(degrees)%360)+360)%360;persist();renderInspector();
+    if(mode==='hangar'||mode==='trade')drawHangar();return true;
+  }
+  function drawShieldCoverage(g,module,tile,modules=save.modules){
+    const cells=modules.flatMap(moduleCells),xs=cells.map(([x])=>x),ys=cells.map(([,y])=>y);
+    const width=Math.max(...xs)-Math.min(...xs)+1,height=Math.max(...ys)-Math.min(...ys)+1;
+    const x=(Math.min(...xs)+width/2)*tile,y=(Math.min(...ys)+height/2)*tile;
+    const focused=module.type==='focusShield',angle=shieldDirection(module)*Math.PI/180,span=focused?MODULES[module.type].arc*Math.PI/180:TAU;
+    const radius=(Math.max(38/COMBAT_TILE,Math.hypot(width,height)*.54)+(focused?23:17)/COMBAT_TILE)*tile;
+    g.save();g.strokeStyle=focused?'#92f9e9':'#b9a3f7';g.fillStyle=focused?'rgba(146,249,233,.07)':'rgba(185,163,247,.04)';g.lineWidth=1.5;
+    g.beginPath();g.moveTo(x,y);g.arc(x,y,radius,angle-span/2,angle+span/2);g.closePath();g.fill();
+    g.beginPath();g.arc(x,y,radius,angle-span/2,angle+span/2);g.stroke();
+    if(focused){g.beginPath();g.moveTo(x+Math.cos(angle)*radius*.78,y+Math.sin(angle)*radius*.78);g.lineTo(x+Math.cos(angle)*radius,y+Math.sin(angle)*radius);g.stroke();}
+    g.restore();
+  }
 
   function shieldState(module){
     if(!battle)return null;const capacity=shieldStats(module).capacity;
@@ -2654,7 +2686,7 @@
   }
 
   function shieldCovers(module,player,angle){
-    return module.type==='shield'||Math.abs(angleDifference(player.angle+module.rotation*Math.PI/2,angle))<=MODULES[module.type].arc*Math.PI/360;
+    return module.type==='shield'||Math.abs(angleDifference(player.angle+shieldDirection(module)*Math.PI/180,angle))<=MODULES[module.type].arc*Math.PI/360;
   }
   function shieldInterception(shot,dx,dy,player,limit){
     let best=null;
@@ -2903,7 +2935,7 @@
   function drawShields(player){
     for(const module of activeModules(...SHIELD_TYPES)){
       const state=shieldState(module),stats=shieldStats(module);if(state.charge<=0)continue;
-      const focused=module.type==='focusShield',center=player.angle+module.rotation*Math.PI/2,span=focused?MODULES[module.type].arc*Math.PI/180:TAU;
+      const focused=module.type==='focusShield',center=player.angle+shieldDirection(module)*Math.PI/180,span=focused?MODULES[module.type].arc*Math.PI/180:TAU;
       ctx.save();ctx.globalAlpha=Math.min(1,.15+.45*state.charge/stats.capacity+(state.flash>0?.25:0));ctx.strokeStyle=focused?'#92f9e9':'#b9a3f7';ctx.lineWidth=state.flash>0?3:2;
       ctx.beginPath();ctx.arc(player.x,player.y,player.r+17+(focused?6:0),center-span/2,center+span/2);ctx.stroke();ctx.restore();
     }
@@ -3039,8 +3071,9 @@
   }
   function refreshCrewStatus(){
     const force=$('engineForce'),module=selectedModule();if(force&&ENGINE_TYPES.includes(module?.type))force.textContent=Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0);
-    $('crewList').querySelectorAll('.crew-card').forEach((card,index)=>{
-      const person=save.crew[index];
+    $('crewList').querySelectorAll('.crew-card').forEach((card)=>{
+      const person=save.crew.find((member)=>member.id===card.dataset.crewId);
+      if(!person||!crewAlive(person)){renderCrew();return;}
       card.querySelector('small').textContent=crewStatus(person);
       const meter=card.querySelector('.crew-health');if(meter){meter.setAttribute('aria-valuenow',Math.ceil(person.hp??100));meter.querySelector('span').style.width=`${person.hp??100}%`;meter.querySelector('b').textContent=`${Math.ceil(person.hp??100)} / 100`;}
       const select=card.querySelector('select');if(select)select.disabled=!crewAlive(person)||!!person.aboard;

@@ -94,32 +94,32 @@ test('recruited crew have unique persistent identities, can take jobs, and remai
   assert.equal(new Set(loaded.crew.map((person)=>person.id)).size,4);
 });
 
-test('the command core shares power evenly and upgrades improve every underpowered system',()=>{
+test('the ship reactor shares power evenly and upgrades improve every underpowered system',()=>{
   const g=game(),save=g.newSave();save.modules=save.modules.slice(0,5);save.nextId=6;save.metal=500;g.setSave(save);g.setMode('trade');assert.equal(g.coreOutput(),8);assert.equal(g.powerUsed(),8);
   const shield={id:10,type:'shield',x:7,y:7,rotation:0,level:1,hp:85};save.modules.push(shield);
   for(const module of save.modules.filter((m)=>g.systemDemand(m))){near(g.systemSupply(module),1.6);near(g.systemPower(module),.8);}
   const engine=save.modules.find((m)=>m.type==='engine'),extra={...engine,id:11};save.modules.push(extra);
   near(g.systemSupply(engine),8/6);near(g.systemSupply(shield),8/6);
-  assert.equal(g.upgradeCorePower(),true);assert.equal(save.metal,460);assert.equal(g.coreOutput(),10);assert.equal(g.commandCore().powerLevel,2);
+  assert.equal(g.upgradeCorePower(),true);assert.equal(save.metal,460);assert.equal(g.coreOutput(),10);assert.equal(save.reactorLevel,2);
   for(const module of save.modules.filter((m)=>g.systemDemand(m)))near(g.systemSupply(module),10/6);
   extra.hp=1;near(g.systemSupply(extra),10/6);near(g.systemSupply(engine),10/6);
   extra.hp=0;assert.equal(g.systemSupply(extra),0);near(g.systemSupply(engine),2);
   save.modules[0].hp=1;assert.equal(g.coreOutput(),10);save.modules[0].hp=0;assert.equal(g.coreOutput(),0);assert.equal(g.systemPower(engine),0);
 });
 
-test('core power can be upgraded on the sector map but remains locked during combat',()=>{
+test('ship reactor power can be upgraded on the sector map but remains locked during combat',()=>{
   const g=game(),save=g.newSave();g.setSave(save);g.setMode('map');
   g.renderSystems();assert.doesNotMatch(g.elements.get('systemsPanel').innerHTML,/<button id="upgradeCorePower"[^>]*disabled/);
   assert.equal(g.upgradeCorePower(),true);assert.equal(save.metal,50);assert.equal(g.coreOutput(),10);
-  assert.equal(g.loadSave().modules.find((module)=>module.type==='core').powerLevel,2);
+  assert.equal(g.loadSave().reactorLevel,2);
   g.setMode('combat');g.renderSystems();assert.match(g.elements.get('systemsPanel').innerHTML,/<button id="upgradeCorePower"[^>]*disabled/);
   assert.equal(g.upgradeCorePower(),false);assert.equal(save.metal,50);
 });
 
-test('old reactor upgrades migrate into the core and manual allocations no longer restrict systems',()=>{
+test('old power upgrades stay in the separate reactor and manual allocations no longer restrict systems',()=>{
   const g=game(),old=g.newSave();delete old.modules[0].powerLevel;old.reactorLevel=3;
   for(const module of old.modules)module.power=0;g.setSave(old);g.persist();const loaded=g.loadSave();g.setSave(loaded);
-  assert.equal(g.commandCore().powerLevel,3);assert.equal(g.coreOutput(),12);assert.equal(loaded.reactorLevel,undefined);
+  assert.equal(loaded.reactorLevel,3);assert.equal(g.coreOutput(),12);assert.equal(g.commandCore().powerLevel,undefined);
   assert.ok(loaded.modules.every((module)=>module.power===undefined));
   for(const module of loaded.modules.filter((module)=>g.systemDemand(module)))assert.equal(g.systemPower(module),1);
 });
@@ -155,7 +155,7 @@ test('lower shared power slows actual weapon reload and the panel has no manual 
   const b=battle(g,save),mount=g.weaponWorld(gun,b.player);b.enemies[0].x=mount.x+100;b.enemies[0].y=mount.y;
   g.updateBattle(.001,0);near(gun.cooldown,g.MODULES.weapon.reload/.8);
   g.renderSystems();const panel=g.elements.get('systemsPanel').innerHTML;
-  assert.ok(panel.includes('COMMAND CORE'));assert.ok(panel.includes('80% POWER'));assert.ok(!panel.includes('data-power='));assert.ok(!panel.includes('power-bars'));
+  assert.ok(panel.includes('REACTOR LV'));assert.ok(panel.includes('80% POWER'));assert.ok(!panel.includes('data-power='));assert.ok(!panel.includes('power-bars'));
 });
 
 test('pilot evasion rolls once per approaching shot and an evaded shot passes both shields and hull',()=>{
@@ -187,7 +187,7 @@ test('purchased generators contribute only after installation and survive save/l
   const generator=save.modules.find((module)=>module.type==='generator');assert.ok(generator);
   assert.equal(g.moduleCells(generator).length,2);assert.equal(save.inventory.generator,0);assert.equal(g.totalPower(),10);
   assert.equal(g.systemDemand(generator),0);assert.equal(g.powerUsed(),8);g.renderSystems();
-  const panel=g.elements.get('systemsPanel').innerHTML;assert.ok(panel.includes('SHIP POWER · 10'));assert.ok(panel.includes('COMMAND CORE 8 + GENERATORS 2'));
+  const panel=g.elements.get('systemsPanel').innerHTML;assert.ok(panel.includes('SHIP POWER · 10'));assert.ok(panel.includes('REACTOR LV 1 · 8 + GENERATORS 2'));
   g.persist();const loaded=g.loadSave();g.setSave(loaded);assert.equal(g.totalPower(),10);
   const market=loaded.map.nodes.find((n)=>n.id===node.id),before=JSON.stringify(market);g.openTrader(market);
   assert.equal(JSON.stringify(market),before);assert.equal(market.stock.find((item)=>item.type==='generator').qty,qty-1);
