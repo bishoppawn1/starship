@@ -19,7 +19,7 @@ function setup(starter='wayfarer',rest={}){
 function fly(g,player,seconds=120){
   let turning=0;
   for(let frame=0;frame<seconds*60;frame++){
-    const previous=player.angle;g.navigatePlayer(1/60);turning+=Math.abs(player.angle-previous);
+    const previous=player.angle;g.navigatePlayer(1/60);turning+=Math.abs(g.angleDifference(previous,player.angle));
     if(!player.dest&&Math.abs(g.angleDifference(player.angle,player.targetAngle))<.06&&Math.hypot(player.vx,player.vy)<2&&Math.abs(player.omega)<.04)return {seconds:frame/60,turning};
   }
   return {seconds,turning};
@@ -143,4 +143,57 @@ test('changing arrival rotation after stopping turns in place and settles exactl
   for(let frame=0;frame<30;frame++)g.navigatePlayer(1/60);assert.equal(player.dest,null);
   player.targetAngle=.6;for(let frame=0;frame<1800;frame++)g.navigatePlayer(1/60);
   assert.equal(player.x,1000);assert.equal(player.y,1000);assert.equal(player.angle,.6);assert.equal(player.omega,0);assert.equal(player.vx,0);assert.equal(player.vy,0);
+});
+
+// Existing saves can still have the original reverse-thruster starter layouts.
+function withReverseThrusters(starter){
+  const state=setup(starter),{g,save,player}=state;
+  save.modules=save.modules.filter((room)=>room.type!=='shield');
+  const positions=starter==='wayfarer'?[[5,2],[5,7]]:starter==='arsenal'?[[7,1],[7,8]]:[[8,1],[8,8]];
+  save.modules.push(...positions.map(([x,y],index)=>({id:100+index,type:'smallEngine',x,y,rotation:2,level:1,hp:50})));
+  player.r=g.shipRadius();return state;
+}
+
+for(const starter of ['wayfarer','arsenal','bulwark'])test(`${starter} holds its travel heading through acceleration and braking`,()=>{
+  for(const reverse of [false,true])for(const side of [-1,1]){
+    const {g,player}=reverse?withReverseThrusters(starter):setup(starter),destination={x:1400,y:1000+side*200};
+    g.orderMove(destination);let turning=0,travelDeviation=0;const rotations=new Set();
+    for(let frame=0;frame<7200&&player.dest;frame++){
+      const previous=player.angle;g.navigatePlayer(1/60);
+      turning+=Math.abs(g.angleDifference(previous,player.angle));
+      if(!player.arrival)travelDeviation=Math.max(travelDeviation,Math.abs(g.angleDifference(0,player.angle)));
+      if(player.travel)rotations.add(player.travel.rotation);
+      assert.equal(player.targetAngle,0,'autopilot must preserve the selected arrival angle');
+    }
+    assert.equal(player.dest,null,`${starter}, reverse=${reverse}, side=${side}: move unfinished`);
+    assert.ok(travelDeviation<1.2,`unexpected mid-flight turn: ${travelDeviation} radians`);
+    assert.ok(turning<2.5,`unnecessary turning: ${turning} radians`);
+    assert.equal(rotations.size,1,'braking must not switch travel drive direction');
+    assert.equal(player.x,destination.x);assert.equal(player.y,destination.y);assert.equal(player.angle,0);assert.equal(player.omega,0);
+  }
+});
+
+test('reverse engines back toward a destination without flipping the hull to brake',()=>{
+  const {g,player}=withReverseThrusters('wayfarer');g.orderMove({x:600,y:1000});let maxAngle=0;
+  for(let frame=0;frame<7200&&player.dest;frame++){
+    g.navigatePlayer(1/60);maxAngle=Math.max(maxAngle,Math.abs(g.angleDifference(0,player.angle)));
+  }
+  assert.equal(player.dest,null);assert.ok(maxAngle<.05,`backward move rotated ${maxAngle} radians`);
+  assert.equal(player.x,600);assert.equal(player.y,1000);assert.equal(player.angle,0);
+});
+
+test('repeated angle changes during flight keep the latest selected angle at arrival',()=>{
+  for(const dt of [1/30,1/144]){
+    const {g,player}=withReverseThrusters('arsenal');g.orderMove({x:1400,y:1200});
+    for(let frame=0;frame<5/dt;frame++)g.navigatePlayer(dt);
+    for(let step=0;step<8;step++)g.rotateArrival(1);
+    for(let frame=0;frame<1/dt;frame++)g.navigatePlayer(dt);
+    for(let step=0;step<11;step++)g.rotateArrival(-1);
+    const selected=player.targetAngle;
+    for(let frame=0;frame<120/dt&&player.dest;frame++){g.navigatePlayer(dt);assert.equal(player.targetAngle,selected);}
+    assert.equal(player.dest,null,`move unfinished at dt=${dt}`);assert.equal(player.x,1400);assert.equal(player.y,1200);
+    assert.equal(player.angle,selected);assert.equal(player.omega,0);
+    for(let frame=0;frame<3/dt;frame++)g.navigatePlayer(dt);
+    assert.equal(player.angle,selected);assert.equal(player.x,1400);assert.equal(player.y,1200);
+  }
 });
