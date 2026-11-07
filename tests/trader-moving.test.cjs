@@ -11,8 +11,8 @@ function game(){
     getBoundingClientRect(){if(this.dataset.x!==undefined){const left=+this.dataset.x*24,top=+this.dataset.y*24;return {left,top,right:left+24,bottom:top+24,width:24,height:24};}return {left:0,top:0,right:288,bottom:240,width:288,height:240};},parentElement:{clientWidth:900,clientHeight:700}};};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
     globalThis.game={MODULES,newSave,persist,loadSave,openTrader,buyTraderItem,onGridClick,canPlace,moduleStation,moduleCells,createGrid,gridButtons,
-      toggleRearrangeShip,cancelRoomMove,beginModuleMove,startRoomDrag,updateRoomDrag,finishRoomDrag,buildPointerPoint,panBuild,zoomBuild,setMode,selectCrew,placementPreview,
-      getSave(){return save;},setSave(value){save=value;},getState(){return {rearrangingShip,movingModuleId,selectedCatalog,selectedCrewId,roomDrag,hoverCell};},getView(){return buildView;},hover(x,y){hoverCell={x,y};}};
+      connectedHull,openMap,toggleMap,openHangar,showGame,returnToMainMenu,toggleRearrangeShip,cancelRoomMove,beginModuleMove,startRoomDrag,updateRoomDrag,finishRoomDrag,buildPointerPoint,panBuild,zoomBuild,setMode,selectCrew,placementPreview,
+      getSave(){return save;},setSave(value){save=value;},getState(){return {mode,screen,rearrangingShip,movingModuleId,selectedCatalog,selectedCrewId,roomDrag,hoverCell};},getView(){return buildView;},hover(x,y){hoverCell={x,y};}};
   })();`);
   const sandbox={Math,performance:{now:()=>0},setTimeout:()=>0,clearTimeout(){},window:{devicePixelRatio:1},
     localStorage:{getItem:(k)=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},
@@ -48,7 +48,7 @@ test('desktop dragging retains the grabbed-cell offset and commits only when dro
 });
 
 test('invalid moves retain the original and dropping outside cancels without losing the room',()=>{
-  const g=game(),{room,save}=setup(g),before=JSON.stringify(save.modules);g.startRoomDrag(pointer(7,4));g.updateRoomDrag(pointer(10,8));g.finishRoomDrag(pointer(10,8));
+  const g=game(),{room,save}=setup(g),before=JSON.stringify(save.modules);g.startRoomDrag(pointer(7,4));g.updateRoomDrag(pointer(4,4));g.finishRoomDrag(pointer(4,4));
   assert.equal(JSON.stringify(save.modules),before);assert.equal(g.getState().movingModuleId,room.id);assert.equal(g.cancelRoomMove(),true);assert.equal(g.getState().movingModuleId,null);
   g.startRoomDrag(pointer(7,4));g.updateRoomDrag(pointer(7,5));g.finishRoomDrag(pointer(7,5,{clientX:400}));assert.equal(JSON.stringify(save.modules),before);assert.equal(g.getState().movingModuleId,null);
 });
@@ -67,4 +67,48 @@ test('drag pointer positions follow the zoomed viewport and signed world coordin
 test('buying a part exits rearrangement and crew selection cancels a pending room move',()=>{
   const g=game(),{save,person,room}=setup(g);g.toggleRearrangeShip();g.onGridClick(7,4);g.selectCrew(person.id);assert.equal(g.getState().movingModuleId,null);assert.equal(g.getState().rearrangingShip,false);assert.equal(room.y,4);
   g.openTrader({type:'trader',stock:[{type:'armor',qty:1,price:20}]});g.toggleRearrangeShip();g.onGridClick(7,4);assert.equal(g.buyTraderItem('armor'),true);assert.equal(g.getState().rearrangingShip,false);assert.equal(g.getState().selectedCatalog,'armor');assert.equal(g.getState().movingModuleId,null);assert.equal(save.inventory.armor,1);assert.equal(room.y,4);
+});
+
+
+test('detached room placements preserve room and crew state, block all departure paths, then unlock after reconnection',()=>{
+  const g=game(),{save,room,person}=setup(g),metal=save.metal;
+  g.toggleRearrangeShip();g.onGridClick(7,4);assert.equal(g.canPlace('armor',9,8,0),true);g.onGridClick(9,8);
+  assert.equal(room.x,9);assert.equal(room.y,8);assert.equal(room.hp,41);assert.equal(room.level,2);assert.equal(save.metal,metal);
+  assert.equal(person.x,g.moduleStation(room).x);assert.equal(person.y,g.moduleStation(room).y);
+  assert.equal(g.connectedHull(save.modules),false);assert.equal(g.elements.get('leaveTrader').disabled,true);
+  assert.match(g.elements.get('refitStatus').textContent,/ROOMS DISCONNECTED/);
+  g.toggleRearrangeShip();assert.match(g.elements.get('refitStatus').textContent,/ROOMS DISCONNECTED/);
+  for(const depart of [g.openMap,g.toggleMap,g.openHangar,()=>g.setMode('combat')]){
+    depart();assert.equal(g.getState().mode,'trade');assert.equal(room.x,9);
+  }
+  // Diagonal contact does not count as a connected hull.
+  g.toggleRearrangeShip();g.onGridClick(10,8);g.onGridClick(6,6);assert.equal(g.connectedHull(save.modules),false);
+  assert.equal(g.elements.get('leaveTrader').disabled,true);
+  g.onGridClick(7,6);g.onGridClick(6,5);assert.equal(g.connectedHull(save.modules),true);
+  assert.equal(g.elements.get('leaveTrader').disabled,false);assert.doesNotMatch(g.elements.get('refitStatus').textContent,/ROOMS DISCONNECTED/);
+  g.openMap();assert.equal(g.getState().mode,'map');
+});
+
+test('moving a bridge can split existing rooms, and cancellation preserves the confirmed disconnected layout',()=>{
+  const g=game(),{save,room}=setup(g);
+  save.modules.push({id:3,type:'armor',x:9,y:4,rotation:0,level:1,hp:50,footprint:{shape:[[0,0]],station:null,mount:null,muzzle:null}});
+  assert.equal(g.connectedHull(save.modules),true);g.toggleRearrangeShip();g.onGridClick(7,4);
+  assert.equal(g.canPlace('armor',4,6,0),true);g.onGridClick(4,6);
+  assert.equal(g.connectedHull(save.modules),false);assert.equal(room.x,4);
+  g.onGridClick(5,6);assert.equal(g.cancelRoomMove(),true);assert.equal(room.x,4);assert.equal(room.y,6);
+  assert.equal(g.elements.get('leaveTrader').disabled,true);
+  // A held part still requires an edge connection, and may bridge separated sections.
+  g.openTrader({type:'trader',stock:[{type:'armor',qty:1,price:1}]});g.buyTraderItem('armor');
+  assert.equal(g.canPlace('armor',-15,-15,0),false);
+});
+
+test('detached refits resume at their trader after menu continuation and saved-game reload',()=>{
+  const g=game(),{save,room}=setup(g),node=save.map.nodes.find(node=>node.type==='trader');save.map.current=node.id;
+  g.showGame();g.openTrader(node);g.toggleRearrangeShip();g.onGridClick(7,4);g.onGridClick(-4,-3);
+  assert.equal(room.x,-4);assert.equal(g.connectedHull(save.modules),false);
+  g.returnToMainMenu();assert.equal(g.getState().screen,'menu');g.showGame();assert.equal(g.getState().mode,'trade');
+  assert.equal(g.elements.get('leaveTrader').disabled,true);assert.equal(g.getSave().modules[1].x,-4);
+  const loaded=g.loadSave(),fresh=game();fresh.setSave(loaded);fresh.createGrid();fresh.showGame();
+  assert.equal(fresh.getState().mode,'trade');assert.equal(fresh.elements.get('leaveTrader').disabled,true);
+  assert.equal(fresh.getSave().modules[1].x,-4);assert.equal(fresh.getSave().modules[1].hp,41);
 });

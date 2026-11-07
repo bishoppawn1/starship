@@ -532,6 +532,7 @@
   }
   function connectedHull(modules) {
     const cells=new Set(modules.flatMap(moduleCells).map(([x,y])=>`${x},${y}`));
+    if(!cells.size)return false;
     const queue=[cells.values().next().value],seen=new Set(queue);
     for(const key of queue){const [x,y]=key.split(',').map(Number);for(const [dx,dy] of [[1,0],[-1,0],[0,1],[0,-1]]){
       const next=`${x+dx},${y+dy}`;if(cells.has(next)&&!seen.has(next)){seen.add(next);queue.push(next);}
@@ -545,7 +546,7 @@
       save.modules=original.filter((module)=>module!==moving);
       try {
         const candidate={...moving,x,y,rotation,weaponFacing:buildWeaponFacing,flipped:placementFlipped(type),footprint:refittingFootprint?null:moving.footprint};
-        return canPlaceFootprint(type,x,y,rotation,candidate.footprint)&&connectedHull([...save.modules,candidate])&&weaponsHaveClearArc([...save.modules,candidate])&&droneLanesPreserved([...save.modules,candidate],original);
+        return canPlaceFootprint(type,x,y,rotation,candidate.footprint,mode!=='trade')&&(mode==='trade'||connectedHull([...save.modules,candidate]))&&weaponsHaveClearArc([...save.modules,candidate])&&droneLanesPreserved([...save.modules,candidate],original);
       } finally {save.modules=original;}
     }
     if(!canPlaceFootprint(type,x,y,rotation))return false;
@@ -648,12 +649,12 @@
     const outside=exteriorCells(new Set(occupied.keys()));
     return moduleClearance(module).every(([x,y])=>!occupied.has(`${x},${y}`)&&!reserved.has(`${x},${y}`)&&outside.has(`${x},${y}`));
   }
-  function canPlaceFootprint(type,x,y,rotation,footprint=null) {
+  function canPlaceFootprint(type,x,y,rotation,footprint=null,requireConnection=true) {
     const occupied=occupancy(),candidate={type,x,y,rotation,weaponFacing:buildWeaponFacing,flipped:placementFlipped(type),footprint},cells=moduleCells(candidate);
     if(cells.some(([cx,cy])=>occupied.has(`${cx},${cy}`)))return false;
     const reserved=new Set(save.modules.flatMap(moduleClearance).map(([cx,cy])=>`${cx},${cy}`));
     if(cells.some(([cx,cy])=>reserved.has(`${cx},${cy}`)))return false;
-    if(!cells.some(([cx,cy])=>[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>occupied.has(`${cx+dx},${cy+dy}`))))return false;
+    if(requireConnection&&!cells.some(([cx,cy])=>[[1,0],[-1,0],[0,1],[0,-1]].some(([dx,dy])=>occupied.has(`${cx+dx},${cy+dy}`))))return false;
     const blocked=new Set([...occupied.keys(),...cells.map(([cx,cy])=>`${cx},${cy}`)]);
     const clearance=moduleClearance(candidate);
     if(clearance.some(([cx,cy])=>blocked.has(`${cx},${cy}`)))return false;
@@ -736,11 +737,13 @@
     rearrangingShip=!rearrangingShip;renderAll();return true;
   }
   function renderRefitControls(){
-    const moving=save.modules.find((module)=>module.id===movingModuleId),grid=$('buildGrid');
+    const moving=save.modules.find((module)=>module.id===movingModuleId),grid=$('buildGrid'),disconnected=!connectedHull(save.modules);
+    $('leaveTrader').disabled=disconnected;
+    $('leaveTrader').title=disconnected?'Reconnect every room before leaving the trader.':'';
     $('rearrangeShip').textContent=rearrangingShip?'FINISH REARRANGING':'REARRANGE SHIP · FREE';
     $('rearrangeShip').setAttribute('aria-pressed',String(rearrangingShip));
     $('cancelRoomMove').hidden=!moving;
-    $('refitStatus').textContent=moving?`Moving ${MODULES[moving.type].name}. Click a clear connected position to place it. Q / E rotate${MODULES[moving.type].range?' · F flips':''}. Escape cancels.`:rearrangingShip?'Click a room to pick it up, then click its new position. Moving rooms is free.':'Drag any room to move it, or choose Rearrange Ship to use clicks.';
+    $('refitStatus').textContent=(disconnected?'ROOMS DISCONNECTED · Reconnect every room by an edge before leaving. ':'')+(moving?`Moving ${MODULES[moving.type].name}. Click clear space to place it. Q / E rotate${MODULES[moving.type].range?' · F flips':''}. Escape cancels.`:rearrangingShip?'Click a room to pick it up, then click its new position. Temporary gaps are allowed while docked.':'Drag any room to move it, or choose Rearrange Ship to use clicks. Temporary gaps are allowed while docked.');
     grid.classList[mode==='trade'&&rearrangingShip?'add':'remove']('rearranging-ship');
     grid.classList[moving?'add':'remove']('moving-room');
   }
@@ -861,7 +864,7 @@
     if(existing&&!selectedCatalog){selectedModuleId=existing.id;if(mode==='trade'&&rearrangingShip)beginModuleMove();else renderAll();return;}
     if(mode!=='trade'||!selectedCatalog){toast('Visit a trader to buy and install modules.');return;}
     const place=placementAt(selectedCatalog,x,y,buildRotation);
-    if(!place.valid){toast('Connect rooms and keep exhaust and a weapon arc clear to space.');return;}
+    if(!place.valid){toast(movingModuleId!==null?'Keep rooms clear of each other, exhaust, and weapon arcs.':'Connect rooms and keep exhaust and a weapon arc clear to space.');return;}
     if(movingModuleId!==null){
       const module=save.modules.find((part)=>part.id===movingModuleId),oldCells=new Set(moduleCells(module).map(([cx,cy])=>`${cx},${cy}`));
       const occupants=save.crew.filter((person)=>oldCells.has(`${Math.floor(person.x)},${Math.floor(person.y)}`));
@@ -1748,6 +1751,9 @@
   }
 
   function setMode(next){
+    if(mode==='trade'&&next!=='trade'&&!connectedHull(save.modules)){
+      toast('Reconnect every room by an edge before leaving the trader.');renderRefitControls();return false;
+    }
     mode=next;
     if(next!=='trade'){selectedCatalog=null;movingModuleId=null;rearrangingShip=false;roomDrag=null;refittingFootprint=false;tradeNode=null;}
     const shipView=next==='hangar'||next==='trade';
@@ -2002,7 +2008,10 @@
   }
   function showGame(){
     screen='playing';$('mainMenu').hidden=true;$('quitScreen').hidden=true;$('appShell').hidden=false;
-    centerBuildView(false);setMode('hangar');renderAll();
+    centerBuildView(false);
+    const node=currentMapNode();
+    if(!connectedHull(save.modules)&&node?.type==='trader')openTrader(node);else setMode('hangar');
+    renderAll();
   }
   function showStarterPicker(){
     $('menuConfirm').hidden=true;$('starterPicker').hidden=false;

@@ -243,7 +243,7 @@ test('trader moves keep room identity, damage, upgrades, range, and crew, withou
   g.selectModule(gun.id);assert.equal(g.beginModuleMove(),false);
   g.openTrader({type:'trader',stock:[]});g.selectModule(gun.id);assert.equal(g.beginModuleMove(),true);
   const metal=save.metal,inventory=JSON.stringify(save.inventory),original={...gun};
-  g.onGridClick(0,0);assert.equal(JSON.stringify(gun),JSON.stringify(original));
+  assert.equal(g.canPlace(gun.type,0,0,gun.rotation),true);assert.equal(JSON.stringify(gun),JSON.stringify(original));
   let destination;
   for(let y=0;y<10;y++)for(let x=0;x<12;x++)if(g.canPlace(gun.type,x,y,gun.rotation)&&(x!==gun.x||y!==gun.y))destination={x,y};
   assert.ok(destination);g.onGridClick(destination.x,destination.y);
@@ -253,13 +253,13 @@ test('trader moves keep room identity, damage, upgrades, range, and crew, withou
   assert.ok(save.modules.flatMap(g.moduleCells).some(([x,y])=>x===Math.floor(save.crew[0].x)&&y===Math.floor(save.crew[0].y)));
 });
 
-test('moving a connecting room cannot disconnect other rooms and leaving a trader cancels the move',()=>{
+test('moving a bridge may disconnect rooms, and leaving a connected hull cancels an unconfirmed move',()=>{
   const g=game(),save=g.newSave();save.modules=[
     {id:1,type:'core',x:4,y:4,rotation:0,hp:170,level:1},
     {id:2,type:'armor',footprint:{shape:[[0,0],[1,0],[2,0]],station:null},x:6,y:4,rotation:0,hp:65,level:1},
     {id:3,type:'core',x:9,y:4,rotation:0,hp:170,level:1}];g.setSave(save);
   g.openTrader({type:'trader',stock:[]});g.selectModule(2);g.beginModuleMove();
-  assert.equal(g.canPlace('armor',4,3,0),false);
+  assert.equal(g.canPlace('armor',4,3,0),true);
   const before=JSON.stringify(save.modules);g.setMode('hangar');g.onGridClick(4,3);assert.equal(JSON.stringify(save.modules),before);
 });
 
