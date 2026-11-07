@@ -971,6 +971,7 @@
     const p=battle.player,heading=((Math.round(p.angle*180/Math.PI)%360)+360)%360;
     const firing=Object.values(p.thrusters).filter((throttle)=>throttle>.08).length;
     $('flightTelemetry').innerHTML=battle.duel?`FACING ${heading}° · ORDERED ${((Math.round(p.targetAngle*180/Math.PI)%360)+360)%360}°<br>${firing?`${firing} THRUSTER${firing===1?'':'S'} TURNING`:'HOLDING POSITION'} · WEAPONS AUTO`:`HEADING ${heading}°<br>SPEED ${Math.round(Math.hypot(p.vx,p.vy))} · ${firing} THRUSTER${firing===1?'':'S'} FIRING`;
+    renderCombatTargets();
     const hostileCount=battle.enemies.filter(enemyAlive).length;
     $('enemyCountLabel').textContent=`${hostileCount} HOSTILE${hostileCount===1?'':'S'}`;
     if(battle.duel&&Math.abs(angleDifference(p.angle,p.targetAngle))<.03&&Math.abs(p.omega)<.03&&($('combatHint').textContent||'').startsWith('SHIP TURNING'))$('combatHint').textContent='FACING SET · CLICK AN ENEMY ROOM TO FOCUS FIRE';
@@ -3122,7 +3123,7 @@
     if(heavy){g.fillStyle='#c2b9c9';g.fillRect(-10,39,20,5);g.fillStyle='#715e76';g.fillRect(-6,44,12,8);}
     enemySprites.set(key,sprite);return sprite;
   }
-  function drawEnemy(enemy){
+  function drawEnemy(enemy,showLabel=true){
     const g=ctx,r=enemy.r;
     g.save();g.translate(enemy.x,enemy.y);g.rotate(enemy.angle);
     g.drawImage(enemySprite(enemy),-110,-80,220,160);
@@ -3150,9 +3151,11 @@
     const strength=enemyShieldStrength(enemy),capacity=enemyShieldRooms(enemy).reduce((sum,room)=>sum+(room.capacity??100),0);
     if(battle?.duel&&battle.enemies[battle.targetEnemy]===enemy){g.save();g.strokeStyle='#f4d293';g.lineWidth=2;g.setLineDash([6,5]);g.beginPath();g.arc(enemy.x,enemy.y,r+24,0,TAU);g.stroke();g.restore();}
     if(strength>0){const flash=enemyShieldRooms(enemy).some((room)=>room.shieldFlash>0);g.save();g.globalAlpha=.15+.45*strength/capacity+(flash ? .25 : 0);g.strokeStyle='#c3a3ef';g.lineWidth=flash?3:2;g.beginPath();g.arc(enemy.x,enemy.y,r+17,0,TAU);g.stroke();g.restore();}
-    g.save();g.font='10px monospace';g.textAlign='center';g.fillStyle='#e6c3b8';g.fillText(enemy.name,enemy.x,enemy.y-r-39);
-    g.fillStyle='#b9a3f7';g.fillText(`SHIELD ${Math.ceil(strength)} / ${capacity}`,enemy.x,enemy.y-r-25);
-    g.fillStyle='#6e617d';g.fillRect(enemy.x-40,enemy.y-r-19,80,4);g.fillStyle='#c1a0ef';g.fillRect(enemy.x-40,enemy.y-r-19,capacity?80*strength/capacity:0,4);g.restore();
+    if(showLabel){
+      g.save();g.font='10px monospace';g.textAlign='center';g.fillStyle='#e6c3b8';g.fillText(enemy.name,enemy.x,enemy.y-r-39);
+      g.fillStyle='#b9a3f7';g.fillText(`SHIELD ${Math.ceil(strength)} / ${capacity}`,enemy.x,enemy.y-r-25);
+      g.fillStyle='#6e617d';g.fillRect(enemy.x-40,enemy.y-r-19,80,4);g.fillStyle='#c1a0ef';g.fillRect(enemy.x-40,enemy.y-r-19,capacity?80*strength/capacity:0,4);g.restore();
+    }
     if((enemy.modules||[]).some((module)=>module.ionTime>0)){g.fillStyle='#80dce9';g.fillRect(enemy.x-16,enemy.y-r-6,5,5);}
     if(enemy.slowTime>0){g.fillStyle='#9ceaf0';g.fillRect(enemy.x-24,enemy.y-r-6,5,5);}
     if(enemy.burnTime>0){g.fillStyle='#f5a267';g.fillRect(enemy.x-16,enemy.y-r-6,5,5);}
@@ -3190,14 +3193,107 @@
     }
     g.restore();
   }
-  function arenaViewport(world){if(battle?.duel)return {w:world.w,h:world.h};const zoom=COMBAT_ZOOMS[combatZoomIndex];return {w:Math.min(1080*zoom,world.w),h:Math.min(760*zoom,world.h)};}
+  function arenaViewport(world){if(battle?.duel)return {w:1100,h:720};const zoom=COMBAT_ZOOMS[combatZoomIndex];return {w:Math.min(1080*zoom,world.w),h:Math.min(760*zoom,world.h)};}
   function arenaCamera(){
     const {world,player}=battle,view=arenaViewport(world),person=save.crew.find((person)=>person.id===selectedCrewId),focus=person?.aboard?battle.enemies[person.aboard.enemy]:player;
-    if(battle.duel)return {w:world.w,h:world.h,x:0,y:0};
+    if(battle.duel)return {...view,x:0,y:0};
     return {w:view.w,h:view.h,x:clamp((focus?.x??world.w/2)-view.w/2,0,world.w-view.w),y:clamp((focus?.y??world.h/2)-view.h/2,0,world.h-view.h)};
+  }
+  function combatPanelLayout(){
+    if(!battle?.duel)return [];
+    const {player,enemies}=battle,panels=[];
+    const fit=(panel,center,extent)=>{
+      const content={x:panel.x+10,y:panel.y+42,w:panel.w-20,h:panel.h-100},scale=Math.min(content.w,content.h)/(extent*2);
+      return {...panel,content,scale,camera:{x:center.x-content.w/scale/2,y:center.y-content.h/scale/2,w:content.w/scale,h:content.h/scale}};
+    };
+    const extent=Math.max(player.r+65,...activeModules(...SHIELD_TYPES).map((room)=>{const field=shieldGeometry(room,player);return distance(field,player)+field.radius+18;}));
+    panels.push(fit({kind:'player',x:22,y:88,w:560,h:594},player,extent));
+    const count=Math.max(1,enemies.length),gap=14,width=(474-gap*(count-1))/count;
+    for(const [index,enemy] of enemies.entries())panels.push(fit({kind:'enemy',enemyIndex:index,x:604+index*(width+gap),y:180,w:width,h:392},enemy,enemy.r+100));
+    return panels;
+  }
+  function combatPanelPoint(point){
+    const panel=combatPanelLayout().find((item)=>point.x>=item.content.x&&point.x<=item.content.x+item.content.w&&point.y>=item.content.y&&point.y<=item.content.y+item.content.h);
+    if(!panel)return {x:0,y:0,outside:true};
+    return {x:panel.camera.x+(point.x-panel.content.x)/panel.scale,y:panel.camera.y+(point.y-panel.content.y)/panel.scale,...(panel.kind==='enemy'?{enemyIndex:panel.enemyIndex}:{})};
+  }
+  function droneInCombatPanel(drone,panel){
+    if(panel.kind==='player')return drone.type==='defense'||drone.phase==='launching';
+    if(drone.type==='boarding')return drone.enemy===panel.enemyIndex;
+    if(!['combat','beam'].includes(drone.type)||drone.phase!=='active')return false;
+    const chosen=battle.enemies[battle.droneTarget??0],target=chosen&&enemyAlive(chosen)?chosen:battle.enemies.filter(enemyAlive).sort((a,b)=>distance(a,drone)-distance(b,drone))[0];
+    return battle.enemies[panel.enemyIndex]===target;
+  }
+  function renderCombatTargets(){
+    const container=$('combatTargets');if(!container||!battle?.duel)return;
+    const signature=JSON.stringify([battle.targetEnemy,battle.enemies.map((enemy)=>[enemy.name,enemyAlive(enemy)])]);
+    if(container.dataset.targets===signature)return;container.dataset.targets=signature;
+    container.innerHTML=battle.enemies.map((enemy,index)=>`<button type="button" data-combat-target="${index}" aria-pressed="${battle.targetEnemy===index}" ${enemyAlive(enemy)?'':'disabled'}><span>CONTACT ${String(index+1).padStart(2,'0')}</span><strong>${enemy.name}</strong><small>${enemyAlive(enemy)?battle.targetEnemy===index?'TARGET LOCKED':'CLICK TO TARGET':'DESTROYED'}</small></button>`).join('');
+    container.querySelectorAll('[data-combat-target]').forEach((button)=>button.addEventListener('click',()=>{
+      const index=+button.dataset.combatTarget,enemy=battle.enemies[index];if(enemy&&enemyAlive(enemy))selectCombatTarget({...enemy,enemyIndex:index});
+    }));
+  }
+  function drawDuelMonitors(time){
+    const view=arenaCamera(),panels=combatPanelLayout(),b=battle;
+    ctx.setTransform(canvas.width/view.w,0,0,canvas.height/view.h,0,0);ctx.clearRect(0,0,view.w,view.h);ctx.fillStyle='#08131f';ctx.fillRect(0,0,view.w,view.h);
+    ctx.font='bold 17px monospace';ctx.fillStyle='#e6ad9e';ctx.fillText('HOSTILE TARGET MONITORS',604,132);
+    ctx.font='12px monospace';ctx.fillStyle='#8399aa';ctx.fillText('SELECT A ROOM TO PRIORITIZE FIRE',604,154);
+    for(const panel of panels){
+      const enemy=panel.kind==='enemy'?b.enemies[panel.enemyIndex]:null,alive=!enemy||enemyAlive(enemy),selected=enemy&&alive&&b.targetEnemy===panel.enemyIndex;
+      ctx.fillStyle=enemy?'#171c2a':'#0e2231';ctx.fillRect(panel.x,panel.y,panel.w,panel.h);ctx.strokeStyle=selected?'#e5bd78':enemy?'#755566':'#3b6674';ctx.lineWidth=selected?3:2;ctx.strokeRect(panel.x,panel.y,panel.w,panel.h);
+      ctx.fillStyle=selected?'#e5bd78':enemy?'#cf9b97':'#92dce1';ctx.font='bold 14px monospace';ctx.fillText(enemy?`CONTACT ${String(panel.enemyIndex+1).padStart(2,'0')}${selected?' · LOCKED':''}`:'YOUR SHIP',panel.x+14,panel.y+26);
+      ctx.save();ctx.beginPath();ctx.rect(panel.content.x,panel.content.y,panel.content.w,panel.content.h);ctx.clip();
+      ctx.translate(panel.content.x,panel.content.y);ctx.scale(panel.scale,panel.scale);ctx.translate(-panel.camera.x,-panel.camera.y);
+      for(const star of b.stars||[]){ctx.fillStyle='#40586a';ctx.fillRect(star.x,star.y,star.s,star.s);}
+      if(alive)drawCombatObjects(time,panel);ctx.restore();
+      ctx.font='12px monospace';ctx.fillStyle=enemy?'#e6c4bb':'#acd6d6';
+      if(enemy){
+        const capacity=enemyShieldRooms(enemy).reduce((sum,room)=>sum+(room.capacity??100),0),hull=Math.max(0,Math.round(enemy.hp/Math.max(1,enemy.maxHp)*100));
+        ctx.fillText(enemy.name,panel.x+12,panel.y+panel.h-38);ctx.fillStyle='#a9b3c4';ctx.fillText(alive?`HULL ${hull}% · SHIELD ${Math.ceil(enemyShieldStrength(enemy))}/${capacity}`:'CONTACT DESTROYED',panel.x+12,panel.y+panel.h-17);
+      }else{
+        ctx.fillText(`HULL ${Math.round(hullRatio()*100)}% · FACING ${((Math.round(b.player.angle*180/Math.PI)%360)+360)%360}°`,panel.x+14,panel.y+panel.h-36);
+        ctx.fillStyle='#8399aa';ctx.fillText('CREW AND SYSTEMS LIVE · TURN WITH THE FACING DIAL',panel.x+14,panel.y+panel.h-16);
+      }
+    }
+    ctx.fillStyle='#8399aa';ctx.font='12px monospace';ctx.fillText('CLICK A CONTACT OR ROOM TO FOCUS FIRE',604,610);
+  }
+  function drawCombatObjects(time,panel=null){
+    const b=battle,p=b.player;
+    const selected=selectedModule();
+    if((!panel||panel.kind==='player')&&p.selected&&selected&&MODULES[selected.type].muzzle){
+      const mount=weaponWorld(selected,p);
+      const bounds=shipBounds();
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);ctx.translate(-bounds.cx*COMBAT_TILE,-bounds.cy*COMBAT_TILE);
+      drawWeaponArc(ctx,selected,COMBAT_TILE,'rgba(244,177,108,.17)');ctx.restore();
+      ctx.fillStyle='#ffe5b7';ctx.fillRect(mount.x-3,mount.y-3,6,6);
+    }
+    for(const [index,enemy] of b.enemies.entries())if(enemyAlive(enemy)&&(!panel||panel.kind==='enemy'&&panel.enemyIndex===index))drawEnemy(enemy,!panel);
+    if(!panel||panel.kind==='player'){
+      if(p.selected){ctx.strokeStyle='#88e5e5';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();ctx.arc(p.x,p.y,p.r+13,0,TAU);ctx.stroke();ctx.setLineDash([]);}
+      const art=shipArtFrame();sizeArtCanvas(shipSprite,art);drawInterior(spriteCtx,false,p.thrusters,art);
+      const bounds=shipBounds(),minX=bounds.minX-2,minY=bounds.minY-2;
+      const maxX=bounds.maxX+2,maxY=bounds.maxY+2;
+      const width=maxX-minX+1,height=maxY-minY+1;
+      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);
+      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(shipSprite,(minX-art.x)*TILE*art.scale,(minY-art.y)*TILE*art.scale,width*TILE*art.scale,height*TILE*art.scale,(minX-bounds.cx)*COMBAT_TILE,(minY-bounds.cy)*COMBAT_TILE,width*COMBAT_TILE,height*COMBAT_TILE);
+      ctx.restore();
+      drawShields(p);
+    }
+    for(const drone of b.drones||[])if(drone.hp>0&&drone.type!=='repair'&&['launching','active','outbound'].includes(drone.phase)&&(!panel||droneInCombatPanel(drone,panel)))drawDroneSprite(ctx,drone.x,drone.y,drone.type,drone.facing||0);
+    for(const beam of b.beams||[])drawBeam(ctx,beam);
+    for(const effect of b.effects||[]){
+      ctx.globalAlpha=effect.time/effect.duration;ctx.fillStyle=effect.color;
+      if(effect.text){ctx.font='14px monospace';ctx.fillText(effect.text,effect.x,effect.y-(1-effect.time/effect.duration)*15);}
+      else if(effect.to){ctx.strokeStyle=effect.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(effect.x,effect.y);ctx.lineTo(effect.to.x,effect.to.y);ctx.stroke();}
+      else if(effect.pulse){ctx.strokeStyle=effect.color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(effect.x,effect.y,effect.r*(1-effect.time/effect.duration),0,TAU);ctx.stroke();}
+      else {const radius=effect.r*(1-effect.time/effect.duration);for(let i=0;i<12;i++){const angle=i*TAU/12;ctx.fillRect(effect.x+Math.cos(angle)*radius-3,effect.y+Math.sin(angle)*radius-3,6,6);}}
+      ctx.globalAlpha=1;
+    }
+    for(const shot of b.projectiles)if(!(shot.delay>0)&&!(shot.muzzleClearance>0))drawProjectile(ctx,shot);
   }
   function drawArena(time){
     if(!battle)return;const b=battle,w=b.world.w,h=b.world.h,p=b.player;
+    if(b.duel){drawDuelMonitors(time);return;}
     const view=arenaCamera();
     ctx.setTransform(1,0,0,1,0,0);ctx.clearRect(0,0,canvas.width,canvas.height);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.scale(canvas.width/view.w,canvas.height/view.h);ctx.translate(-view.x,-view.y);
     ctx.fillStyle='#071522';ctx.fillRect(view.x,view.y,view.w,view.h);
@@ -3226,35 +3322,7 @@
       ctx.strokeStyle='#80e2e4';ctx.strokeRect(p.dest.x-9,p.dest.y-9,18,18);
       ctx.beginPath();ctx.moveTo(p.dest.x,p.dest.y);ctx.lineTo(p.dest.x+Math.cos(p.targetAngle)*26,p.dest.y+Math.sin(p.targetAngle)*26);ctx.stroke();
     }
-    const selected=selectedModule();
-    if(p.selected&&selected&&MODULES[selected.type].muzzle){
-      const mount=weaponWorld(selected,p);
-      const bounds=shipBounds();
-      ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);ctx.translate(-bounds.cx*COMBAT_TILE,-bounds.cy*COMBAT_TILE);
-      drawWeaponArc(ctx,selected,COMBAT_TILE,'rgba(244,177,108,.17)');ctx.restore();
-      ctx.fillStyle='#ffe5b7';ctx.fillRect(mount.x-3,mount.y-3,6,6);
-    }
-    for(const enemy of b.enemies)if(enemyAlive(enemy))drawEnemy(enemy);
-    if(p.selected){ctx.strokeStyle='#88e5e5';ctx.lineWidth=2;ctx.setLineDash([5,5]);ctx.beginPath();ctx.arc(p.x,p.y,p.r+13,0,TAU);ctx.stroke();ctx.setLineDash([]);}
-    const art=shipArtFrame();sizeArtCanvas(shipSprite,art);drawInterior(spriteCtx,false,p.thrusters,art);
-    const bounds=shipBounds(),minX=bounds.minX-2,minY=bounds.minY-2;
-    const maxX=bounds.maxX+2,maxY=bounds.maxY+2;
-    const width=maxX-minX+1,height=maxY-minY+1;
-    ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.angle);
-    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(shipSprite,(minX-art.x)*TILE*art.scale,(minY-art.y)*TILE*art.scale,width*TILE*art.scale,height*TILE*art.scale,(minX-bounds.cx)*COMBAT_TILE,(minY-bounds.cy)*COMBAT_TILE,width*COMBAT_TILE,height*COMBAT_TILE);
-    ctx.restore();
-    drawShields(p);
-    for(const drone of b.drones||[])if(drone.hp>0&&drone.type!=='repair'&&['launching','active','outbound'].includes(drone.phase))drawDroneSprite(ctx,drone.x,drone.y,drone.type,drone.facing||0);
-    for(const beam of b.beams||[])drawBeam(ctx,beam);
-    for(const effect of b.effects||[]){
-      ctx.globalAlpha=effect.time/effect.duration;ctx.fillStyle=effect.color;
-      if(effect.text){ctx.font='14px monospace';ctx.fillText(effect.text,effect.x,effect.y-(1-effect.time/effect.duration)*15);}
-      else if(effect.to){ctx.strokeStyle=effect.color;ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(effect.x,effect.y);ctx.lineTo(effect.to.x,effect.to.y);ctx.stroke();}
-      else if(effect.pulse){ctx.strokeStyle=effect.color;ctx.lineWidth=2;ctx.beginPath();ctx.arc(effect.x,effect.y,effect.r*(1-effect.time/effect.duration),0,TAU);ctx.stroke();}
-      else {const radius=effect.r*(1-effect.time/effect.duration);for(let i=0;i<12;i++){const angle=i*TAU/12;ctx.fillRect(effect.x+Math.cos(angle)*radius-3,effect.y+Math.sin(angle)*radius-3,6,6);}}
-      ctx.globalAlpha=1;
-    }
-    for(const shot of b.projectiles)if(!(shot.delay>0)&&!(shot.muzzleClearance>0))drawProjectile(ctx,shot);
+    drawCombatObjects(time);
     ctx.fillStyle='#a6c8d0';ctx.font='14px monospace';ctx.fillText(`SECTOR ${String(save.sector).padStart(2,'0')}  //  ${Math.round(hullRatio()*100)}% HULL`,view.x+20,view.y+view.h-19);
     if(p.selected){ctx.fillStyle='#92dfe0';ctx.fillText(b.duel?`FACING ${((Math.round(p.angle*180/Math.PI)%360)+360)%360}°  //  FIXED POSITION`:`SPEED ${Math.round(Math.hypot(p.vx,p.vy))}  TURN ${Math.round(Math.abs(p.omega)*180/Math.PI)}°/s`,view.x+view.w-310,view.y+view.h-19);}
   }
@@ -3278,17 +3346,20 @@
     combatZoomIndex=clamp(combatZoomIndex+direction,0,COMBAT_ZOOMS.length-1);
     fitArenaCanvas();
   }
-  function canvasPoint(event){const rect=canvas.getBoundingClientRect(),view=arenaCamera();return{x:view.x+(event.clientX-rect.left)/rect.width*view.w,y:view.y+(event.clientY-rect.top)/rect.height*view.h};}
+  function canvasPoint(event){
+    const rect=canvas.getBoundingClientRect(),view=arenaCamera(),point={x:view.x+(event.clientX-rect.left)/rect.width*view.w,y:view.y+(event.clientY-rect.top)/rect.height*view.h};
+    return battle?.duel?combatPanelPoint(point):point;
+  }
   function selectCombatTarget(point){
     if(!battle?.duel)return false;
-    const index=battle.enemies.findIndex((enemy)=>enemyAlive(enemy)&&distance(point,enemy)<enemy.r+22);
-    if(index<0)return false;
+    const index=Number.isInteger(point.enemyIndex)?point.enemyIndex:battle.enemies.findIndex((enemy)=>enemyAlive(enemy)&&distance(point,enemy)<enemy.r+22);
+    if(index<0||!battle.enemies[index]||!enemyAlive(battle.enemies[index]))return false;
     const enemy=battle.enemies[index],local=enemyLocal(point,enemy);
     const roomIndex=enemy.modules.findIndex((room)=>room.hp>0&&room.cells.some(([x,y])=>Math.abs(x-local.x)<=.5&&Math.abs(y-local.y)<=.5));
     battle.targetEnemy=index;battle.targetRoom=roomIndex>=0?roomIndex:null;battle.droneTarget=index;
     const room=enemy.modules[roomIndex],name=room?.type==='weapon'?MODULES[room.weaponType||'weapon'].name:room?.type;
     $('combatHint').textContent=`FOCUS FIRE · ${enemy.name}${name?` / ${name.toUpperCase()}`:''}`;
-    renderOperations();return true;
+    renderOperations();renderCombatTargets();return true;
   }
   function selectPlayer(point=null){
     selectedCrewId=null;renderCrew();
@@ -3375,7 +3446,7 @@
     canvas.addEventListener('contextmenu',(event)=>event.preventDefault());
     canvas.addEventListener('wheel',(event)=>{event.preventDefault();const delta=event.deltaY||event.deltaX;if(!battle?.duel&&event.shiftKey)changeCombatZoom(delta>0?1:-1);else rotateArrival(delta>0?1:-1);},{passive:false});
     canvas.addEventListener('pointerdown',(event)=>{
-      if(!battle)return;const point=canvasPoint(event);
+      if(!battle)return;const point=canvasPoint(event);if(point.outside)return;
       if(event.button===2){event.preventDefault();if(selectedCrewId){orderCrewWorld(point);return;}if(!battle.duel)orderMove(point);return;}
       if(event.button!==0)return;
       if(selectCrewAtWorld(point))return;
