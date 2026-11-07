@@ -344,9 +344,9 @@
   ];
   function starterModules(starterId){
     const rooms=[['core',5,4,0],['engine',4,2,0],['engine',4,5,0]];
-    if(starterId==='arsenal')rooms.push(['missile',6,2,0],['missile',6,6,0],['generator',7,4,1],['smallEngine',7,1,2],['smallEngine',7,8,2],['ammoAssembly',5,6,0],['ammoAssembly',5,2,0]);
-    else if(starterId==='bulwark')rooms.push(['railgun',5,2,0],['railgun',5,7,0],['ammoAssembly',5,3,1],['ammoAssembly',5,6,1],['smallEngine',8,1,2],['smallEngine',8,8,2]);
-    else rooms.push(['weapon',6,3,0],['weapon',6,5,1],['smallEngine',5,2,2],['smallEngine',5,7,2]);
+    if(starterId==='arsenal')rooms.push(['missile',6,2,0],['missile',6,6,0],['generator',7,4,1],['ammoAssembly',5,6,0],['ammoAssembly',5,2,0],['shield',8,4,0]);
+    else if(starterId==='bulwark')rooms.push(['railgun',5,2,0],['railgun',5,7,0],['ammoAssembly',5,3,1],['ammoAssembly',5,6,1],['shield',7,4,0]);
+    else rooms.push(['weapon',6,3,0],['weapon',6,5,1],['shield',8,4,0]);
     return rooms.map(([type,x,y,rotation],i)=>({id:i+1,type,x,y,rotation,hp:MODULES[type].hp+(type==='ammoAssembly'&&starterId==='arsenal'?25:0),level:type==='ammoAssembly'&&starterId==='arsenal'?2:1,...(i===4&&starterId==='wayfarer'?{weaponFacing:1}:{}),...(type==='ammoAssembly'?{ammoRecipe:starterId==='arsenal'?'missile':'heavy'}:{}),...(MODULES[type].ammoType?{magazine:MODULES[type].magazine}:{})}));
   }
   function starterCrew(starterId){
@@ -582,8 +582,12 @@
     if(ENGINE_TYPES.includes(module.type)){
       const [dx,dy]=[[1,0],[0,1],[-1,0],[0,-1]][module.rotation],cells=moduleCells(module);
       const own=new Set(cells.map(([x,y])=>`${x},${y}`));
-      const rear=cells.filter(([x,y])=>!own.has(`${x-dx},${y-dy}`)).map(([x,y])=>[x-dx,y-dy]);
       const station=moduleGeometry(module).station;
+      // The standard engine's two nozzles share its middle cell. Its outer
+      // cells have no exhaust, so rooms may sit beside that central plume.
+      const rear=module.type==='heavyEngine'
+        ?cells.filter(([x,y])=>!own.has(`${x-dx},${y-dy}`)).map(([x,y])=>[x-dx,y-dy])
+        :[[module.x+station[0]-dx,module.y+station[1]-dy]];
       rear.push([module.x+station[0]-2*dx,module.y+station[1]-2*dy]);
       return rear;
     }
@@ -1979,7 +1983,7 @@
   }
   function showStarterPicker(){
     $('menuConfirm').hidden=true;$('starterPicker').hidden=false;
-    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>2 reverse thrusters · ${ship.id==='wayfarer'?3:6} crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
+    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>100-strength full-hull shield · ${ship.id==='wayfarer'?3:6} crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
     const original=save;
     try{
       for(const preview of $('starterLineup').querySelectorAll('canvas[data-starter-preview]')){
@@ -2295,7 +2299,9 @@
   }
   function navigatePlayer(dt){
     const p=battle.player,engines=engineThrusters(),cellCount=save.modules.reduce((sum,module)=>sum+moduleCells(module).length,0);
-    const mass=Math.max(2,cellCount*.3),inertia=mass*p.r*p.r*.42,lever=Math.max(20,p.r*.58);
+    const driveDirections=new Set(engines.map((engine)=>engine.module.rotation));
+    const forwardOnly=driveDirections.size===1;
+    const mass=Math.max(2,cellCount*.3),inertia=mass*p.r*p.r*(forwardOnly?.02:.42),lever=Math.max(20,p.r*.58);
     if(p.arrival&&p.dest&&(p.dest.x!==p.arrival.x||p.dest.y!==p.arrival.y))p.arrival=null;
     if(p.turnOrderPending&&Math.abs(angleDifference(p.angle,p.targetAngle))<.06&&Math.abs(p.omega)<.1)p.turnOrderPending=false;
     const orienting=!!p.dest&&!p.arrival&&!!p.turnOrderPending;
@@ -2304,17 +2310,20 @@
       if(p.path.length>1&&distance(p,p.path[0])<34)p.path.shift();
       const waypoint=p.path[0]||p.dest;
       const dx=waypoint.x-p.x,dy=waypoint.y-p.y,dist=Math.hypot(dx,dy),speed=Math.hypot(p.vx,p.vy);
-      if(p.path.length<=1&&distance(p,p.dest)<12&&speed<2&&clearSegment(p,p.dest,p.r,battle.asteroids)){
+      if(p.path.length<=1&&distance(p,p.dest)<12&&speed<(forwardOnly?6:2)&&clearSegment(p,p.dest,p.r,battle.asteroids)){
         p.arrival={x:p.dest.x,y:p.dest.y,fromX:p.x,fromY:p.y,elapsed:0};
       }
       else{
         desiredX=clamp(dx*.38-p.vx*2.4,-55,55);desiredY=clamp(dy*.38-p.vy*2.4,-55,55);
         const magnitude=Math.hypot(desiredX,desiredY),factor=Math.min(1,55/(magnitude||1));desiredX*=factor;desiredY*=factor;
-        for(const rock of battle.asteroids){
-          const rx=p.x-rock.x,ry=p.y-rock.y,d=Math.hypot(rx,ry)||1,clearance=rock.r+p.r+WRECK_BERTH+12;
-          if(d<clearance){const strength=(clearance-d)/clearance*105;desiredX+=rx/d*strength;desiredY+=ry/d*strength;}
-        }
-        if(Math.hypot(desiredX,desiredY)>1){
+        if(forwardOnly&&dist>1){
+          // A ship with no reverse drive points at the waypoint and coasts
+          // before arrival, instead of continuously turning around to brake.
+          const targetSpeed=Math.min(50,dist*.35),ux=dx/dist,uy=dy/dist;
+          desiredX=clamp((ux*targetSpeed-p.vx)*2.4,-55,55);
+          desiredY=clamp((uy*targetSpeed-p.vy)*2.4,-55,55);
+          heading=Math.atan2(dy,dx)-engines[0].direction;
+        }else if(Math.hypot(desiredX,desiredY)>1){
           // Forward and reverse engines can produce the same world force at different hull headings.
           // Prefer the reachable heading with less turning, without assuming all engines face forward.
           const directions=new Map();
@@ -2323,6 +2332,12 @@
           const options=[...directions].map(([rotation,force])=>({heading:accelerationAngle-rotation*Math.PI/2,force}));
           options.sort((a,b)=>(Math.abs(angleForAvailableTorque(p,a.heading,engines))+.2*strongest/a.force)-(Math.abs(angleForAvailableTorque(p,b.heading,engines))+.2*strongest/b.force));
           if(options.length)heading=options[0].heading;
+        }
+        for(const rock of battle.asteroids){
+          const rx=p.x-rock.x,ry=p.y-rock.y,d=Math.hypot(rx,ry)||1,clearance=rock.r+p.r+WRECK_BERTH+12;
+          if(d<clearance){const strength=(clearance-d)/clearance*105;desiredX+=rx/d*strength;desiredY+=ry/d*strength;
+            if(forwardOnly)heading=Math.atan2(desiredY,desiredX)-engines[0].direction;
+          }
         }
       }
     }
@@ -2338,7 +2353,7 @@
     const desiredTorque=clamp(inertia*(targetOmega-p.omega)*3,-Math.min(22000,negativeTorque),Math.min(22000,positiveTorque));
     const directions=new Set(engines.filter((engine)=>engine.force>0).map((engine)=>engine.module.rotation));
     // Without counterthrust, some translation is unavoidable; do not let position damping veto the turn.
-    const yawWeight=[...directions].some((rotation)=>directions.has((rotation+2)%4))?1.25:4;
+    const yawWeight=[...directions].some((rotation)=>directions.has((rotation+2)%4))?1.25:Math.abs(turn)>.08||Math.abs(p.omega)>.12?50:1.25;
     const desired=[mass*desiredX,mass*desiredY,desiredTorque/lever*yawWeight],coeff=engines.map((engine)=>{
       const direction=p.angle+engine.direction;
       return [Math.cos(direction)*engine.force,Math.sin(direction)*engine.force,engine.torque/lever*yawWeight];
@@ -2357,8 +2372,8 @@
       fx+=Math.cos(direction)*engine.force*throttle;fy+=Math.sin(direction)*engine.force*throttle;
       torque+=engine.torque*throttle;p.thrusters[engine.module.id]=throttle;
     }
-    p.vx=clamp((p.vx+fx/mass*dt)*Math.exp(-.16*dt),-85,85);
-    p.vy=clamp((p.vy+fy/mass*dt)*Math.exp(-.16*dt),-85,85);
+    p.vx=clamp((p.vx+fx/mass*dt)*Math.exp(-(forwardOnly?.4:.16)*dt),-85,85);
+    p.vy=clamp((p.vy+fy/mass*dt)*Math.exp(-(forwardOnly?.4:.16)*dt),-85,85);
     p.omega=clamp((p.omega+torque/inertia*dt)*Math.exp(-.7*dt),-1.45,1.45);
     p.x+=p.vx*dt;p.y+=p.vy*dt;p.angle+=p.omega*dt;
     if(p.x<p.r+5){p.x=p.r+5;p.vx=Math.max(0,p.vx);}if(p.x>battle.world.w-p.r-5){p.x=battle.world.w-p.r-5;p.vx=Math.min(0,p.vx);}

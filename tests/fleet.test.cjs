@@ -183,7 +183,7 @@ test('a swept player projectile damages the first pirate room it crosses',()=>{
 });
 
 test('focused shield strength covers one arc and recharges faster than full-hull strength',()=>{
-  const g=game(),save=g.newSave();
+  const g=game(),save=g.newSave();save.modules=save.modules.filter((module)=>module.type!=='shield');
   save.modules.push({id:20,type:'shield',x:1,y:1,rotation:0,level:1,hp:85});
   save.modules.push({id:21,type:'focusShield',x:8,y:6,rotation:0,level:1,hp:75});
   g.setSave(save);
@@ -269,7 +269,7 @@ test('placement previews carry the chosen weapon mount and rotation before insta
   const first=g.placementPreview();assert.equal(first.module.type,'missile');assert.equal(first.module.rotation,0);
   const points=[];g.elements.get('hangarArt').getContext().lineTo=(x,y)=>points.push([x,y]);g.drawHangar();
   assert.ok(points.length>10,'the uninstalled weapon renders its firing arc');
-  g.rotateBuild(1);assert.equal(g.placementPreview().module.rotation,1);assert.equal(save.modules.length,7);
+  g.rotateBuild(1);assert.equal(g.placementPreview().module.rotation,1);assert.equal(save.modules.length,6);
 });
 
 test('energy and light weapons fire with empty magazines while heavy guns and launchers wait for loaders',()=>{

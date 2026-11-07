@@ -26,7 +26,7 @@ const near=(a,b)=>assert.ok(Math.abs(a-b)<1e-7,`${a} != ${b}`);
 const core=(x=0,y=0)=>({id:1,type:'core',x,y,rotation:0,hp:170,level:1});
 function engine(g,type,rotation=0){return {id:2,type,x:-Math.max(...g.moduleGeometry({type,rotation}).cells.map(([x])=>x))-1,y:0,rotation,hp:g.MODULES[type].hp,level:1};}
 
-test('engine sizes fit, rotate, and reserve their full exhaust edge',()=>{
+test('engine sizes fit, rotate, and reserve only their actual nozzle lanes',()=>{
   const g=game();
   assert.equal(g.ENGINE_TYPES.length,3);
   assert.deepEqual(Array.from(g.ENGINE_TYPES,(type)=>g.MODULES[type].shape.length).sort((a,b)=>a-b),[1,3,6]);
@@ -34,7 +34,7 @@ test('engine sizes fit, rotate, and reserve their full exhaust edge',()=>{
     const module={id:2,type,x:-100,y:200,rotation,hp:g.MODULES[type].hp,level:1},cells=g.moduleCells(module),station=g.moduleStation(module);
     const occupied=new Set(cells.map(([x,y])=>`${x},${y}`));
     assert.ok(occupied.has(`${Math.floor(station.x)},${Math.floor(station.y)}`));
-    const clearance=g.moduleClearance(module);assert.ok(clearance.length>=2);
+    const clearance=g.moduleClearance(module);assert.equal(clearance.length,type==='heavyEngine'?4:2);
     assert.ok(clearance.every(([x,y])=>!occupied.has(`${x},${y}`)));
     // Put one core beside the front of the drive; exhaust must remain outside.
     const [dx,dy]=[[1,0],[0,1],[-1,0],[0,-1]][rotation];
@@ -47,6 +47,19 @@ test('engine sizes fit, rotate, and reserve their full exhaust edge',()=>{
     save.modules=[command,core(clearance[0][0],clearance[0][1])];
     assert.equal(g.canPlace(type,module.x,module.y,rotation),false);
   }
+});
+
+test('standard engines allow rooms beside the plume but keep its center lane and outer mount clear',()=>{
+  const g=game(),save=g.newSave();save.modules=[core(1,1)];g.setSave(save);
+  assert.equal(g.canPlace('engine',0,0,0),true);
+  const drive={id:2,type:'engine',x:0,y:0,rotation:0,hp:80,level:1};save.modules.push(drive);
+  assert.equal(g.canPlace('smallEngine',-1,0,0),true);
+  assert.equal(g.canPlace('smallEngine',-1,2,0),true);
+  assert.equal(g.canPlace('smallEngine',-1,1,0),false);
+  assert.equal(g.canPlace('smallEngine',-2,1,0),false);
+  assert.equal(g.canPlace('shield',-2,-1,0),true);
+  save.modules.push({id:3,type:'smallEngine',x:-1,y:0,rotation:0,hp:50,level:1});
+  assert.equal(g.moduleClearance(drive).length,2);
 });
 
 test('each drive produces its own thrust, with shared power, upgrades and crew bonuses',()=>{

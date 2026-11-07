@@ -120,13 +120,15 @@ test('old supply resources and market packs are removed without changing rounds,
   assert.ok(html.includes('Power → assembly → crew → magazine'));assert.ok(!/SUPPLIES|BUY 12/.test(html));
 });
 
-test('every starting ship has a connected non-overlapping hull, clear mounts and paired reverse thrust',()=>{
+test('every starting ship has a connected hull, clear mounts, a powered shield and forward-only thrust',()=>{
   const g=game();assert.equal(g.STARTER_SHIPS.length,3);
   for(const starter of g.STARTER_SHIPS){
     const save=g.newSave(starter.id);g.setSave(save);const cells=save.modules.flatMap(g.moduleCells),occupied=new Set(cells.map(([x,y])=>`${x},${y}`));
     assert.equal(occupied.size,cells.length,starter.id);assert.ok(g.connectedHull(save.modules),starter.id);assert.ok(g.weaponsHaveClearArc(save.modules),starter.id);
     for(const module of save.modules)for(const cell of g.moduleClearance(module))assert.ok(!occupied.has(cell.join(',')),`${starter.id}: ${module.type} blocked at ${cell}`);
-    const reverse=g.engineThrusters().filter((engine)=>engine.module.rotation===2);assert.equal(reverse.length,2);assert.ok(reverse.every((engine)=>engine.force>0));
+    const engines=g.engineThrusters();assert.equal(engines.length,2);assert.ok(engines.every((engine)=>engine.module.rotation===0&&engine.force>0));
+    const shields=save.modules.filter((module)=>module.type==='shield'&&module.hp>0);
+    assert.equal(shields.length,1);assert.equal(g.MODULES.shield.capacity,100);
     assert.equal(save.starterId,starter.id);assert.ok(save.nextId>Math.max(...save.modules.map((m)=>m.id)));
     if(starter.id!=='wayfarer'){const loader=save.crew.find((p)=>p.task==='load');for(const gun of save.modules.filter((m)=>g.MODULES[m.type].ammoType))gun.magazine=0;g.updateCrew(0);assert.ok(loader.workModuleId,starter.id);tick(g,20);assert.ok(save.modules.some((m)=>g.magazineCount(m)>0),starter.id);}
   }
