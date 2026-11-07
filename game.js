@@ -242,9 +242,10 @@
     delete data.reactorLevel;
     for(const module of data.modules)delete module.power;
   }
+  function canUpgradeCorePower(cost){return mode!=='combat'&&commandCore()?.hp>0&&save.metal>=cost;}
   function upgradeCorePower(){
     const core=commandCore(),cost=40+20*((core?.powerLevel||1)-1);
-    if(!core||core.hp<=0||!['hangar','trade'].includes(mode)||save.metal<cost)return false;
+    if(!canUpgradeCorePower(cost))return false;
     save.metal-=cost;core.powerLevel=(core.powerLevel||1)+1;persist();renderAll();toast('Command core upgraded · +2 shared power');return true;
   }
   function evasionChance(){
@@ -257,7 +258,7 @@
   function renderSystems(){
     const panel=$('systemsPanel'),scrollTop=panel.querySelector?.('.power-rows')?.scrollTop||0,core=commandCore();
     const count=poweredSystems().length,share=sharedPower(),cost=40+20*((core?.powerLevel||1)-1);
-    panel.innerHTML=`<div class="reactor-summary"><strong>SHIP POWER · ${totalPower()}</strong><span>COMMAND CORE ${coreOutput()} + GENERATORS ${auxiliaryOutput()}<br>AUTO SHARE · ${count} SYSTEMS · ${share.toFixed(2)} EACH<br>${Math.round(evasionChance()*100)}% EVADE</span></div><button id="upgradeCorePower" type="button" ${!['hangar','trade'].includes(mode)||save.metal<cost?'disabled':''}>UPGRADE CORE POWER +2 · ◆ ${cost}</button><div class="power-rows">${save.modules.filter((module)=>systemDemand(module)).map((module)=>{
+    panel.innerHTML=`<div class="reactor-summary"><strong>SHIP POWER · ${totalPower()}</strong><span>COMMAND CORE ${coreOutput()} + GENERATORS ${auxiliaryOutput()}<br>AUTO SHARE · ${count} SYSTEMS · ${share.toFixed(2)} EACH<br>${Math.round(evasionChance()*100)}% EVADE</span></div><button id="upgradeCorePower" type="button" ${!canUpgradeCorePower(cost)?'disabled':''}>UPGRADE CORE POWER +2 · ◆ ${cost}</button><div class="power-rows">${save.modules.filter((module)=>systemDemand(module)).map((module)=>{
       const performance=systemPower(module),shield=SHIELD_TYPES.includes(module.type),stats=shield?shieldStats(module):null;
       const strength=shield?(battle?shieldState(module).charge:module.hp>0?stats.capacity:0):0;
       return `<div class="power-row"><span title="Grid ${module.x}, ${module.y}">${MODULES[module.type].name} <small>(${module.x}, ${module.y})</small></span><strong>${module.hp>0?`${Math.round(performance*100)}% POWER`:'OFFLINE'}</strong><div class="power-meter" role="meter" aria-label="${MODULES[module.type].name} performance" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(performance*100)}"><span style="width:${performance*100}%"></span></div>${shield?`<span class="shield-strength">SHIELD ${Math.round(strength)} / ${stats.capacity}</span><div class="power-meter shield-meter"><span style="width:${strength/stats.capacity*100}%"></span></div>`:''}</div>`;
