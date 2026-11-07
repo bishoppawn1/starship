@@ -19,7 +19,7 @@ function game(){
       normalizeSystems,commandCore,coreOutput,generatorOutput,auxiliaryOutput,totalPower,powerUsed,systemDemand,sharedPower,systemSupply,systemPower,upgradeCorePower,engineThrusters,evasionChance,weaponWorld,renderSystems,
       shieldStats,shieldState,absorbShields,shieldInterception,updateShields,fireProjectile,updateBattle,
       setSave(value){save=value;},getSave(){return save;},setBattle(value){battle=value;},getBattle(){return battle;},
-      setMode(value){mode=value;},stubFlight(){navigatePlayer=()=>{};}};
+      filter(value){marketFilter=value;renderCatalog();},setMode(value){mode=value;},stubFlight(){navigatePlayer=()=>{};}};
   })();`);
   vm.runInNewContext(source,sandbox);return {...sandbox.game,elements,math,draws};
 }
@@ -77,7 +77,8 @@ test('artwork follows translated hulls and scales its backing texture without li
 
 test('trader draws can repeat, aggregate quantities, omit other types, and never restock on revisit',()=>{
   const g=game();g.math.random=()=>0;const stock=g.traderStock();
-  assert.equal(stock.length,1);assert.equal(stock[0].qty,4);
+  assert.equal(stock.length,3);assert.equal(stock[0].qty,4);
+  for(const type of ['droneControl','droneAssembly'])assert.equal(stock.find((offer)=>offer.type===type).qty,1);
   const save=g.newSave();save.metal=1000;g.setSave(save);const node={type:'trader',stockVersion:4,stock};g.openTrader(node);
   assert.equal(g.buyTraderItem(stock[0].type),true);assert.equal(stock[0].qty,3);
   const before=JSON.stringify(node);g.openTrader(node);assert.equal(JSON.stringify(node),before);
@@ -209,11 +210,11 @@ test('stacked generators raise equal system performance and lose output only whe
   g.persist();g.setSave(g.loadSave());assert.equal(g.totalPower(),14);
 });
 
-test('older traders keep sold-out stock without gaining guaranteed generator offers',()=>{
+test('older traders keep sold-out stock and gain only missing drone essentials',()=>{
   const g=game(),node={type:'trader',stockVersion:4,stock:[{type:'weapon',qty:0,price:51},{type:'shield',qty:0,price:53}]};
   g.upgradeTraderStock(node);assert.ok(node.stockVersion>=9);
   assert.deepEqual(node.stock[0],{type:'weapon',qty:0,price:51});assert.equal(node.stock[1].qty,0);
-  assert.equal(node.stock.length,2);
+  assert.equal(node.stock.length,4);
   const before=JSON.stringify(node);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node),before);
 });
 
@@ -225,4 +226,29 @@ test('a projectile stronger than full overlapping shields carries only the exces
   near(save.modules.reduce((sum,module)=>sum+module.hp,0),before-20);
   for(const module of save.modules.slice(1))assert.equal(g.shieldState(module).charge,0);
   assert.equal(b.projectiles.length,0);
+});
+
+
+test('saved shops add missing drone essentials once and never restock a sold drone offer',()=>{
+  const g=game(),save=g.newSave();save.metal=500;g.setSave(save);
+  const node=save.map.nodes.find((node)=>node.type==='trader');node.stockVersion=9;
+  node.stock=[{type:'weapon',qty:0,price:47},{type:'droneControl',qty:0,price:61}];g.openTrader(node);
+  assert.equal(node.stock.length,3);assert.equal(node.stockVersion,10);
+  assert.equal(node.stock[0].qty,0);assert.equal(node.stock[0].price,47);assert.equal(node.stock[1].qty,0);assert.equal(node.stock[1].price,61);
+  assert.equal(node.stock.find((offer)=>offer.type==='droneAssembly').qty,1);
+  assert.equal(g.buyTraderItem('droneAssembly'),true);assert.equal(g.buyTraderItem('droneAssembly'),false);
+  const before=JSON.stringify(node.stock);g.openTrader(node);assert.equal(JSON.stringify(node.stock),before);
+  g.persist();const loaded=g.loadSave();g.setSave(loaded);const market=loaded.map.nodes.find((item)=>item.id===node.id);g.openTrader(market);
+  assert.equal(JSON.stringify(market.stock),before);assert.equal(loaded.inventory.droneAssembly,1);
+});
+
+test('the drones shop filter shows the bay and assembly with purchases and no unrelated rooms',()=>{
+  const g=game(),save=g.newSave();save.metal=500;g.setSave(save);
+  const node={type:'trader',stock:[{type:'weapon',qty:1,price:45}]};g.openTrader(node);g.filter('drones');
+  const catalog=g.elements.get('catalog').innerHTML;
+  assert.match(catalog,/DRONE BAY/);assert.match(catalog,/DRONE ASSEMBLY/);
+  assert.match(catalog,/data-buy="droneControl"/);assert.match(catalog,/data-buy="droneAssembly"/);
+  assert.doesNotMatch(catalog,/PULSE CANNON|CREW|POWER GENERATOR/);
+  assert.equal(g.buyTraderItem('droneControl'),true);g.filter('drones');
+  assert.match(g.elements.get('catalog').innerHTML,/SOLD OUT/);assert.match(g.elements.get('catalog').innerHTML,/data-install="droneControl"/);
 });

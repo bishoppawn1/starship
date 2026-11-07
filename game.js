@@ -134,6 +134,10 @@
       const type=BUYABLE[Math.floor(Math.random()*BUYABLE.length)],existing=stock.find((offer)=>offer.type===type);
       if(existing)existing.qty++;else stock.push({type,qty:1,price:Math.max(1,MODULES[type].cost+Math.floor(rand(-5,11)))});
     }
+    return ensureDroneStock(stock);
+  }
+  function ensureDroneStock(stock){
+    for(const type of ['droneControl','droneAssembly'])if(!stock.some((offer)=>offer.type===type))stock.push({type,qty:1,price:MODULES[type].cost});
     return stock;
   }
   function crewAppearance(person){
@@ -174,7 +178,7 @@
       const type=col===2&&row===1?'trader':col===4&&row===1?'outpost':pool.pop();
       if(variantOffsets[type]===undefined)variantOffsets[type]=Math.floor(Math.random()*3);
       const variant=(variantOffsets[type]+(usedVariants[type]||0))%3;usedVariants[type]=(usedVariants[type]||0)+1;
-      nodes.push({id:`${col}-${row}`,col,row,mapX:80+col*168+rand(-16,16),mapY:110+row*190+rand(-31,31),type,variant,links:[],stockVersion:type==='trader'?9:undefined,stock:type==='trader'?traderStock():undefined});
+      nodes.push({id:`${col}-${row}`,col,row,mapX:80+col*168+rand(-16,16),mapY:110+row*190+rand(-31,31),type,variant,links:[],stockVersion:type==='trader'?10:undefined,stock:type==='trader'?traderStock():undefined});
     }
     nodes.push({id:'5-1',col:5,row:1,mapX:920,mapY:300,type:'exit',links:[]});
     return reshapeMap({version:2,base,nodes,current:'0-1',visited:['0-1'],resolved:['0-1']});
@@ -820,7 +824,7 @@
     if(mode!=='trade'||!tradeNode){$('catalog').innerHTML='';return;}
     $('marketFilters').querySelectorAll('button').forEach((button)=>button.setAttribute('aria-pressed',String(button.dataset.filter===marketFilter)));
     const stock=tradeNode.stock||[],types=BUYABLE.filter((type)=>stock.some((item)=>item.type===type)||(save.inventory[type]||0)>0);
-    const visible=types.filter((type)=>marketFilter==='all'||(marketFilter==='crew'?false:marketFilter==='shields'?SHIELD_TYPES.includes(type):(marketFilter==='weapons')===!!MODULES[type].range))
+    const visible=types.filter((type)=>marketFilter==='all'||(marketFilter==='crew'?false:marketFilter==='drones'?['droneControl','droneAssembly'].includes(type):marketFilter==='shields'?SHIELD_TYPES.includes(type):(marketFilter==='weapons')===!!MODULES[type].range))
       .sort((a,b)=>Number(SHIELD_TYPES.includes(b))-Number(SHIELD_TYPES.includes(a)));
     $('marketSummary').textContent=`${stock.filter((item)=>item.qty>0).length} PART OFFERS · ${(tradeNode.recruits||[]).filter((person)=>!person.hired).length} CREW FOR HIRE`;
     const partCards=visible.map((type)=>{
@@ -1818,9 +1822,9 @@
   }
   function upgradeTraderStock(node){
     delete node.supplyPacks;
-    node.stock??=traderStock();node.stock=node.stock.filter((item)=>item.type!=='cargo');delete node.dronePacks;
+    node.stock??=traderStock();node.stock=ensureDroneStock(node.stock.filter((item)=>item.type!=='cargo'));delete node.dronePacks;
     if(!Array.isArray(node.recruits))node.recruits=traderRecruits();
-    node.stockVersion=9;
+    node.stockVersion=10;
   }
 
   function openTrader(node){
@@ -1828,7 +1832,7 @@
   }
   function openOutpost(node){
     const choices=[];
-    if(save.passengers>0)choices.push({label:`DELIVER ${save.passengers} SURVIVOR${save.passengers===1?'':'S'} · +${save.passengers*20} METAL`,action:()=>{
+    if(save.passengers>0)choices.push({label:`DELIVER ${save.passengers} SURVIVOR${save.passengers===1?'':'S'}`,action:()=>{
       const count=save.passengers,reward=count*20;save.passengers=0;save.metal+=reward;
       concludeEvent('SURVIVORS DELIVERED',`${count} survivors brought safely to the outpost; ${reward} metal paid for the rescue.`,'⌂');
     }});
@@ -1881,9 +1885,9 @@
         {label:'LAUNCH DECOYS · −12 METAL',disabled:save.metal<12,action:()=>{save.metal+=8;log('The freighter paid 20 metal after your 12-metal decoy launch.');concludeEvent('FREIGHTER ESCAPES','Your decoys cost 12 metal. The captain transfers 20 metal once clear of the skiffs.','◇');}},
         {label:'LEAVE THE CHANNEL',action:()=>concludeEvent('DISTRESS LEFT BEHIND','You mark the channel and continue without engaging.','◇')}
       ]);
-      if(variant===1)eventScene(node,'DISABLED ORE HAULER','A hauler has lost its drive. Its mechanic offers to join your crew if you tow the vessel clear; the load will strain an engine.',[
-        {label:'TOW TO SAFETY · +CREW, ENGINE −12 HP',action:()=>{const engine=activeModules(...ENGINE_TYPES)[0];if(engine)engine.hp=Math.max(1,engine.hp-12);const recruit=awardCrew('TAMSIN','#91d6b5');concludeEvent('HAULER DELIVERED',`${recruit} joins your crew after the tow. The heavy load strains one engine for 12 damage. Assign a job in the crew panel.`,'◇');}},
-        {label:'TRANSFER REPAIR METAL · NET +12',disabled:save.metal<10,action:()=>{save.metal+=12;log('Hauler owner paid 22 metal for 10 metal of repairs.');concludeEvent('DRIVE RESTARTED','Your crew uses 10 metal to patch the drive; the owner pays 22 for the help.','◇');}},
+      if(variant===1)eventScene(node,'DISABLED ORE HAULER','A hauler has lost its drive near drifting wreckage. Its mechanic hails your ship, asking for help with the heavy vessel.',[
+        {label:'ATTACH A TOW LINE',action:()=>{const engine=activeModules(...ENGINE_TYPES)[0];if(engine)engine.hp=Math.max(1,engine.hp-12);const recruit=awardCrew('TAMSIN','#91d6b5');concludeEvent('HAULER DELIVERED',`${recruit} joins your crew after the tow. The heavy load strains one engine for 12 damage. Assign a job in the crew panel.`,'◇');}},
+        {label:'TRANSFER REPAIR METAL · ◆ 10',disabled:save.metal<10,action:()=>{save.metal+=12;log('Hauler owner paid 22 metal for 10 metal of repairs.');concludeEvent('DRIVE RESTARTED','Your crew uses 10 metal to patch the drive; the owner pays 22 for the help.','◇');}},
         {label:'CONTINUE ON YOUR ROUTE',action:()=>concludeEvent('HAULER MARKED','You send its coordinates to the nearest outpost.','◇')}
       ]);
       if(variant===2)eventScene(node,'CONVOY REARGUARD','A small ore convoy needs time to reach a jump beacon. Pirate skiffs are gaining on its last ship.',[
@@ -1895,57 +1899,57 @@
     }
     if(node.type==='salvage'){
       if(variant===0)eventScene(node,'LOOSE ALLOY PALLETS','A broken freight rack has scattered clean alloy plates. The outer pallets are easy to collect.',[
-        {label:'COLLECT OUTER PALLETS · +18 METAL',action:()=>{save.metal+=18;log('18 metal collected from loose pallets.');concludeEvent('ALLOY SECURED','The crew hauls the accessible plates aboard.','✧');}},
-        {label:'CUT OPEN THE INNER RACK · +30 METAL',action:()=>{save.metal+=30;const target=damageRandomModule(12);log('Inner rack yielded 30 metal but struck a room.');concludeEvent('RACK OPENED',`You gain 30 metal; tumbling cargo damages your ${MODULES[target.type].name.toLowerCase()} by 12.`,'✧');}}
+        {label:'COLLECT OUTER PALLETS',action:()=>{save.metal+=18;log('18 metal collected from loose pallets.');concludeEvent('ALLOY SECURED','The crew hauls the accessible plates aboard.','✧');}},
+        {label:'CUT OPEN THE INNER RACK',action:()=>{save.metal+=30;const target=damageRandomModule(12);log('Inner rack yielded 30 metal but struck a room.');concludeEvent('RACK OPENED',`You gain 30 metal; tumbling cargo damages your ${MODULES[target.type].name.toLowerCase()} by 12.`,'✧');}}
       ]);
       if(variant===1)eventScene(node,'SEALED MUNITIONS POD','A military supply pod still has an intact ammunition seal. Its metal casing can also be recycled.',[
-        {label:'KEEP THE AMMUNITION · +1 CRATE',action:()=>{recoverAmmoCrate();log('One ammo crate unpacked into persistent ammunition stores.');concludeEvent('AMMO STORED','8 heavy rounds and 4 missile rounds added to your stores.','✧');}},
-        {label:'RECYCLE THE CASING · +12 METAL',action:()=>{save.metal+=12;log('12 metal recycled from the pod.');concludeEvent('CASING RECYCLED','The crew strips the empty shell for usable alloy.','✧');}}
+        {label:'OPEN THE AMMUNITION POD',action:()=>{recoverAmmoCrate();log('One ammo crate unpacked into persistent ammunition stores.');concludeEvent('AMMO STORED','8 heavy rounds and 4 missile rounds added to your stores.','✧');}},
+        {label:'RECYCLE THE CASING',action:()=>{save.metal+=12;log('12 metal recycled from the pod.');concludeEvent('CASING RECYCLED','The crew strips the empty shell for usable alloy.','✧');}}
       ]);
       if(variant===2)eventScene(node,'REPAIR DRONE HULK','A damaged maintenance drone floats among cargo debris. Its repair arm still responds to commands.',[
-        {label:'USE THE DRONE · REPAIR 30 HULL',disabled:hullRatio()>=.999,action:()=>{repairAll(30);log('Salvaged drone repaired 30 hull.');concludeEvent('DRONE REPAIRS COMPLETE','The drone patches your most damaged rooms before its battery dies.','✧');}},
-        {label:'STRIP ITS PARTS · +16 METAL',action:()=>{save.metal+=16;log('16 metal stripped from a repair drone.');concludeEvent('PARTS RECOVERED','Its motors and chassis are broken down for metal.','✧');}}
+        {label:'ACTIVATE THE REPAIR DRONE',disabled:hullRatio()>=.999,action:()=>{repairAll(30);log('Salvaged drone repaired 30 hull.');concludeEvent('DRONE REPAIRS COMPLETE','The drone patches your most damaged rooms before its battery dies.','✧');}},
+        {label:'STRIP ITS PARTS',action:()=>{save.metal+=16;log('16 metal stripped from a repair drone.');concludeEvent('PARTS RECOVERED','Its motors and chassis are broken down for metal.','✧');}}
       ]);
       return;
     }
     if(node.type==='anomaly'){
-      if(variant===0)eventScene(node,'ION STORM','Charged dust sweeps across the route. Metallic fragments glitter inside the cloud, but engine coils will take a hit.',[
-        {label:'SCOOP FRAGMENTS · +25 METAL',action:()=>{save.metal+=25;const engine=activeModules(...ENGINE_TYPES)[0];if(engine)engine.hp=Math.max(1,engine.hp-14);log('Ion storm yielded 25 metal and strained an engine.');concludeEvent('FRAGMENTS RECOVERED','The crew secures 25 metal. An ion engine takes 14 damage.','◈');}},
+      if(variant===0)eventScene(node,'ION STORM','Charged dust sweeps across the route. Metallic fragments glitter inside the cloud as static crawls over your engine readouts.',[
+        {label:'SCOOP FRAGMENTS',action:()=>{save.metal+=25;const engine=activeModules(...ENGINE_TYPES)[0];if(engine)engine.hp=Math.max(1,engine.hp-14);log('Ion storm yielded 25 metal and strained an engine.');concludeEvent('FRAGMENTS RECOVERED','The crew secures 25 metal. An ion engine takes 14 damage.','◈');}},
         {label:'WAIT FOR THE STORM TO PASS',action:()=>concludeEvent('CLEAR SKIES','You hold position until the charged dust thins.','◈')}
       ]);
       if(variant===1)eventScene(node,'GRAVITY LENS','A stable gravity lens links this beacon to a distant lane. The crew can chart a shortcut or mine its trapped alloy.',[
-        {label:'CHART THE SHORTCUT',action:()=>{const target=chartShortcut(node);log('A gravity-lens shortcut was added to the sector chart.');concludeEvent('ROUTE OPENED',target?`A new two-way route to beacon ${beaconNumber(target)} appears on the chart.`:'The lens leads back to known space.','◈');}},
-        {label:'MINE TRAPPED ALLOY · +14 METAL',action:()=>{save.metal+=14;log('14 metal mined from the gravity lens.');concludeEvent('ALLOY MINED','The crew pries fragments from the lens instead of charting a route.','◈');}}
+        {label:'SURVEY THE LENS',action:()=>{const target=chartShortcut(node);log('A gravity-lens shortcut was added to the sector chart.');concludeEvent('ROUTE OPENED',target?`A new two-way route to beacon ${beaconNumber(target)} appears on the chart.`:'The lens leads back to known space.','◈');}},
+        {label:'MINE TRAPPED ALLOY',action:()=>{save.metal+=14;log('14 metal mined from the gravity lens.');concludeEvent('ALLOY MINED','The crew pries fragments from the lens instead of charting a route.','◈');}}
       ]);
       if(variant===2)eventScene(node,'MAGNETIC TIDE','A narrow magnetic tide is pulling scrap toward a dead satellite. Your crew can skim its edge or shut down and wait.',[
-        {label:'SKIM THE EDGE · +20 METAL',action:()=>{save.metal+=20;const target=damageRandomModule(10);log('Magnetic tide yielded 20 metal and damaged a room.');concludeEvent('SCRAP COLLECTED',`You recover 20 metal; the tide stresses your ${MODULES[target.type].name.toLowerCase()} by 10.`,'◈');}},
+        {label:'SKIM THE EDGE',action:()=>{save.metal+=20;const target=damageRandomModule(10);log('Magnetic tide yielded 20 metal and damaged a room.');concludeEvent('SCRAP COLLECTED',`You recover 20 metal; the tide stresses your ${MODULES[target.type].name.toLowerCase()} by 10.`,'◈');}},
         {label:'POWER DOWN AND WAIT',action:()=>concludeEvent('TIDE PASSED','The crew waits for the debris to drift clear.','◈')}
       ]);
       return;
     }
     if(node.type==='derelict'){
-      if(variant===0)eventScene(node,'RESEARCH VESSEL','An unpowered research ship still has a hot security grid. A working ion blaster is locked in its hold; the exterior alloy is easier to reach.',[
-        {label:'STRIP EXTERIOR · +12 METAL',action:()=>{save.metal+=12;log('12 metal stripped from research vessel exterior.');concludeEvent('EXTERIOR SALVAGED','The crew leaves the security grid untouched.','▣');}},
-        {label:'BREACH THE HOLD · +ION BLASTER, HULL −20 HP',action:()=>{const target=damageRandomModule(20);awardWeapon('ion');concludeEvent('ION BLASTER RECOVERED',`The weapon is in your hold for installation at a trader. A security charge hits your ${MODULES[target.type].name.toLowerCase()} for 20.`,'▣');}}
+      if(variant===0)eventScene(node,'RESEARCH VESSEL','An unpowered research ship still has a hot security grid. A sealed cargo hold sits behind the locked doors; exterior plating is easier to reach.',[
+        {label:'STRIP THE EXTERIOR',action:()=>{save.metal+=12;log('12 metal stripped from research vessel exterior.');concludeEvent('EXTERIOR SALVAGED','The crew leaves the security grid untouched.','▣');}},
+        {label:'BREACH THE HOLD',action:()=>{const target=damageRandomModule(20);awardWeapon('ion');concludeEvent('ION BLASTER RECOVERED',`The weapon is in your hold for installation at a trader. A security charge hits your ${MODULES[target.type].name.toLowerCase()} for 20.`,'▣');}}
       ]);
       if(variant===1)eventScene(node,'ABANDONED MEDICAL SHIP','A medic is sheltering aboard an abandoned hospital ship. Emergency repair drones still wait in their cradles.',[
-        {label:'DEPLOY REPAIR DRONES · REPAIR 35 HULL',disabled:hullRatio()>=.999,action:()=>{repairAll(35);log('Medical ship drones repaired 35 hull.');concludeEvent('REPAIRS COMPLETE','The drones weld damaged rooms before their batteries expire.','▣');}},
-        {label:'RESCUE THE MEDIC · +CREW',action:()=>{const recruit=awardCrew('MIRA','#bca8f1');concludeEvent('MEDIC RESCUED',`${recruit} joins your crew. Assign a repair job or another role in the crew panel.`,'▣');}}
+        {label:'DEPLOY REPAIR DRONES',disabled:hullRatio()>=.999,action:()=>{repairAll(35);log('Medical ship drones repaired 35 hull.');concludeEvent('REPAIRS COMPLETE','The drones weld damaged rooms before their batteries expire.','▣');}},
+        {label:'BRING THE MEDIC ABOARD',action:()=>{const recruit=awardCrew('MIRA','#bca8f1');concludeEvent('MEDIC RESCUED',`${recruit} joins your crew. Assign a repair job or another role in the crew panel.`,'▣');}}
       ]);
-      if(variant===2)eventScene(node,'SILENT GUNSHIP','The derelict gunship has intact ammunition lockers and a working laser repeater in its exterior mount.',[
-        {label:'TAKE AMMUNITION · +1 CRATE',action:()=>{recoverAmmoCrate();log('One ammo crate taken from a gunship.');concludeEvent('AMMUNITION RECOVERED','8 heavy rounds and 4 missile rounds added to your stores.','▣');}},
-        {label:'RECOVER LASER REPEATER · +WEAPON',action:()=>{awardWeapon('laser');concludeEvent('LASER REPEATER RECOVERED','The working weapon is secured in your hold. Visit a trader to install it on your ship.','▣');}}
+      if(variant===2)eventScene(node,'SILENT GUNSHIP','The derelict gunship has sealed ammunition lockers and a weapon still attached to its exterior mount.',[
+        {label:'SEARCH THE AMMUNITION LOCKERS',action:()=>{recoverAmmoCrate();log('One ammo crate taken from a gunship.');concludeEvent('AMMUNITION RECOVERED','8 heavy rounds and 4 missile rounds added to your stores.','▣');}},
+        {label:'SALVAGE THE WEAPON MOUNT',action:()=>{awardWeapon('laser');concludeEvent('LASER REPEATER RECOVERED','The working weapon is secured in your hold. Visit a trader to install it on your ship.','▣');}}
       ]);
       return;
     }
     if(node.type==='relay'){
       if(variant===0)eventScene(node,'BROKEN ROUTE RELAY','Its memory contains a route to a distant beacon. The copper antenna could instead be recycled.',[
-        {label:'RESTORE THE DISTANT ROUTE',action:()=>{const target=chartShortcut(node);log('A relay shortcut was added to the sector chart.');concludeEvent('RELAY RESTORED',target?`The chart now connects to beacon ${beaconNumber(target)}.`:'The relay points only to lanes you already know.','⌁');}},
-        {label:'RECYCLE THE ANTENNA · +14 METAL',action:()=>{save.metal+=14;log('14 metal recovered from a relay.');concludeEvent('ANTENNA RECYCLED','The relay goes dark as its copper is stowed aboard.','⌁');}}
+        {label:'REPAIR THE RELAY',action:()=>{const target=chartShortcut(node);log('A relay shortcut was added to the sector chart.');concludeEvent('RELAY RESTORED',target?`The chart now connects to beacon ${beaconNumber(target)}.`:'The relay points only to lanes you already know.','⌁');}},
+        {label:'RECYCLE THE ANTENNA',action:()=>{save.metal+=14;log('14 metal recovered from a relay.');concludeEvent('ANTENNA RECYCLED','The relay goes dark as its copper is stowed aboard.','⌁');}}
       ]);
       if(variant===1)eventScene(node,'OLD NAVIGATION BUOY','A retired patrol buoy has sealed emergency ammunition and a recyclable steel chassis.',[
-        {label:'TAKE EMERGENCY AMMO · +1 CRATE',action:()=>{recoverAmmoCrate();log('Patrol buoy supplied an ammo crate.');concludeEvent('AMMO RECOVERED','8 heavy rounds and 4 missile rounds added to your stores.','⌁');}},
-        {label:'RECYCLE THE CHASSIS · +11 METAL',action:()=>{save.metal+=11;log('11 metal recovered from a patrol buoy.');concludeEvent('CHASSIS RECYCLED','The buoy is broken down into useful steel.','⌁');}}
+        {label:'OPEN EMERGENCY STORAGE',action:()=>{recoverAmmoCrate();log('Patrol buoy supplied an ammo crate.');concludeEvent('AMMO RECOVERED','8 heavy rounds and 4 missile rounds added to your stores.','⌁');}},
+        {label:'RECYCLE THE CHASSIS',action:()=>{save.metal+=11;log('11 metal recovered from a patrol buoy.');concludeEvent('CHASSIS RECYCLED','The buoy is broken down into useful steel.','⌁');}}
       ]);
       if(variant===2)eventScene(node,'ABANDONED JUMP MARKER','A jump marker is out of alignment. Replacement couplers would reopen a distant two-way lane.',[
         {label:'REPLACE COUPLERS · −8 METAL',disabled:save.metal<8,action:()=>{save.metal-=8;const target=chartShortcut(node);log('A jump marker shortcut was restored for 8 metal.');concludeEvent('JUMP MARKER ONLINE',target?`The marker now connects to beacon ${beaconNumber(target)}.`:'The marker points only to known lanes.','⌁');}},
@@ -1954,26 +1958,26 @@
       return;
     }
     if(node.type==='minefield'){
-      if(variant===0)eventScene(node,'DRIFTING MINES','Old anti-ship mines drift across the route. Their cases contain recoverable metal, but sweeping them will strike your hull.',[
-        {label:'SWEEP AND SALVAGE · +22 METAL',action:()=>{save.metal+=22;const protectedShip=activeModules('shield','focusShield').length>0;const target=protectedShip?null:damageRandomModule(14);log('22 metal salvaged from a minefield.');concludeEvent('MINES CLEARED',target?`The mines yield 22 metal, but your ${MODULES[target.type].name.toLowerCase()} takes 14 damage.`:'Your shield holds while the crew collects 22 metal.','◌');}},
+      if(variant===0)eventScene(node,'DRIFTING MINES','Old anti-ship mines drift across the route. Their metal cases look salvageable, but several fuses are still blinking.',[
+        {label:'SWEEP AND SALVAGE',action:()=>{save.metal+=22;const protectedShip=activeModules('shield','focusShield').length>0;const target=protectedShip?null:damageRandomModule(14);log('22 metal salvaged from a minefield.');concludeEvent('MINES CLEARED',target?`The mines yield 22 metal, but your ${MODULES[target.type].name.toLowerCase()} takes 14 damage.`:'Your shield holds while the crew collects 22 metal.','◌');}},
         {label:'SKIRT THE FIELD',action:()=>concludeEvent('FIELD AVOIDED','The crew takes the long clear lane around the mines.','◌')}
       ]);
       if(variant===1)eventScene(node,'FREIGHT CONTAINER TRAP','A sealed container lies inside a mine perimeter. Remote cutters can free it, but replacement blades cost metal.',[
-        {label:'CUT IT FREE · PAY 8, GAIN 28 METAL',disabled:save.metal<8,action:()=>{save.metal+=20;log('Container salvage netted 20 metal after cutter costs.');concludeEvent('CONTAINER OPENED','The recovered cargo contains 28 metal; replacement cutters cost 8.','◌');}},
+        {label:'CUT IT FREE · ◆ 8',disabled:save.metal<8,action:()=>{save.metal+=20;log('Container salvage netted 20 metal after cutter costs.');concludeEvent('CONTAINER OPENED','The recovered cargo contains 28 metal; replacement cutters cost 8.','◌');}},
         {label:'LEAVE THE CONTAINER',action:()=>concludeEvent('TRAP BYPASSED','You pass the mine perimeter without touching the cargo.','◌')}
       ]);
       if(variant===2)eventScene(node,'DEACTIVATED TORPEDO NET','A line of failed torpedoes hangs in the current. Their propellant is gone, but the warheads can supply your guns.',[
-        {label:'RECOVER WARHEADS · +1 AMMO CRATE',action:()=>{recoverAmmoCrate();log('Torpedo net yielded one ammo crate.');concludeEvent('WARHEADS SECURED','8 heavy rounds and 4 missile rounds added to your stores.','◌');}},
-        {label:'RECYCLE CASINGS · +13 METAL',action:()=>{save.metal+=13;log('13 metal recycled from torpedo casings.');concludeEvent('CASINGS RECYCLED','The crew strips the empty housings for alloy.','◌');}}
+        {label:'RECOVER WARHEADS',action:()=>{recoverAmmoCrate();log('Torpedo net yielded one ammo crate.');concludeEvent('WARHEADS SECURED','8 heavy rounds and 4 missile rounds added to your stores.','◌');}},
+        {label:'RECYCLE CASINGS',action:()=>{save.metal+=13;log('13 metal recycled from torpedo casings.');concludeEvent('CASINGS RECYCLED','The crew strips the empty housings for alloy.','◌');}}
       ]);
       return;
     }
     if(node.type==='lifeboat'){
       const count=[2,1,3][variant],titles=['FREIGHTER LIFEBOAT','LONE ESCAPE POD','DRIFTING SHUTTLE'];
       const cost=[0,6,0][variant],strain=[0,0,8][variant];
-      const situation=['The lifeboat has air for a short journey.','A leaking escape pod needs six metal in sealant before its pilot can board.','A three-person shuttle is tangled in wreckage; pulling it free will strain an engine.'][variant];
-      eventScene(node,titles[variant],`${situation} An outpost pays 20 metal per survivor delivered.`,[
-        {label:`RESCUE ${count} SURVIVOR${count===1?'':'S'}${cost?' · −6 METAL':strain?' · ENGINE −8 HP':''}`,disabled:save.metal<cost,action:()=>{save.metal-=cost;save.passengers+=count;const engine=strain?activeModules(...ENGINE_TYPES)[0]:null;if(engine)engine.hp=Math.max(1,engine.hp-strain);log(`${count} survivors taken aboard for outpost delivery.`);concludeEvent('SURVIVORS ABOARD',`The ${count} survivor${count===1?' is':'s are'} safe aboard. An outpost will pay for their return.${cost?' Six metal was used to seal the pod.':''}${engine?' The tow strained an engine.':''}`,'♡');}},
+      const situation=['The lifeboat has air for a short journey.','A leaking escape pod needs six metal in sealant before its pilot can board.','A three-person shuttle is tangled in wreckage, its distress light blinking beneath the debris.'][variant];
+      eventScene(node,titles[variant],`${situation} The nearest outpost may be able to shelter anyone you take aboard.`,[
+        {label:`TAKE SURVIVORS ABOARD${cost?' · ◆ 6':''}`,disabled:save.metal<cost,action:()=>{save.metal-=cost;save.passengers+=count;const engine=strain?activeModules(...ENGINE_TYPES)[0]:null;if(engine)engine.hp=Math.max(1,engine.hp-strain);log(`${count} survivors taken aboard for outpost delivery.`);concludeEvent('SURVIVORS ABOARD',`The ${count} survivor${count===1?' is':'s are'} safe aboard. An outpost will pay for their return.${cost?' Six metal was used to seal the pod.':''}${engine?' The tow strained an engine.':''}`,'♡');}},
         {label:'TRANSMIT THEIR LOCATION',action:()=>concludeEvent('RESCUE SIGNAL SENT','You alert the outpost and leave the beacon transmitting.','♡')}
       ]);
     }
@@ -2317,7 +2321,7 @@
     const forwardOnly=driveDirections.size===1;
     const mass=Math.max(2,cellCount*.3),inertia=mass*p.r*p.r*(forwardOnly?.02:.42),lever=Math.max(20,p.r*.58);
     if(p.arrival&&p.dest&&(p.dest.x!==p.arrival.x||p.dest.y!==p.arrival.y))p.arrival=null;
-    if(p.turnOrderPending&&Math.abs(angleDifference(p.angle,p.targetAngle))<.06&&Math.abs(p.omega)<.1)p.turnOrderPending=false;
+    if(p.turnOrderPending&&Math.abs(angleDifference(p.angle,p.targetAngle))<.25&&Math.abs(p.omega)<.4)p.turnOrderPending=false;
     const orienting=!!p.dest&&!p.arrival&&!!p.turnOrderPending;
     let desiredX=orienting?0:-p.vx*1.6,desiredY=orienting?0:-p.vy*1.6,heading=p.dest&&!orienting?p.angle:p.targetAngle;
     if(p.dest&&!p.arrival&&!orienting){
@@ -2351,14 +2355,15 @@
         }
         heading=Math.atan2(dy,dx)-p.travel.rotation*Math.PI/2;
         const error=Math.abs(angleForAvailableTorque(p,heading,engines));
-        if(error>.18)p.travel.turning=true;
-        if(error<.025&&Math.abs(p.omega)<.025)p.travel.turning=false;
-        if(p.travel.turning){desiredX=-p.vx*2.4;desiredY=-p.vy*2.4;}
+        if(error>.35)p.travel.turning=true;
+        if(forwardOnly||error<.08&&Math.abs(p.omega)<.05)p.travel.turning=false;
+        if(p.travel.turning){desiredX*=.03;desiredY*=.03;}
       }
     }
     if(p.arrival){desiredX=0;desiredY=0;heading=p.targetAngle;}
     const turn=angleForAvailableTorque(p,heading,engines);
-    // Turning first prevents sustained sideways acceleration from becoming an orbit.
+    // Apply travel thrust while steering; only large turns on a reverse-drive
+    // hull use reduced thrust, rather than waiting motionless for exact alignment.
     if(p.dest&&!p.arrival&&!orienting){const alignment=Math.max(0,Math.cos(turn));desiredX*=alignment**4;desiredY*=alignment**4;}
     // Leave headroom for opposing engines to cancel translation during a turn.
     const positiveTorque=engines.reduce((sum,engine)=>sum+Math.max(0,engine.torque),0)*.45;
@@ -2368,7 +2373,7 @@
     const desiredTorque=clamp(inertia*(targetOmega-p.omega)*3,-Math.min(22000,negativeTorque),Math.min(22000,positiveTorque));
     const directions=new Set(engines.filter((engine)=>engine.force>0).map((engine)=>engine.module.rotation));
     // Without counterthrust, some translation is unavoidable; do not let position damping veto the turn.
-    const yawWeight=[...directions].some((rotation)=>directions.has((rotation+2)%4))?1.25:Math.abs(turn)>.08||Math.abs(p.omega)>.12?50:1.25;
+    const yawWeight=[...directions].some((rotation)=>directions.has((rotation+2)%4))?1.25:Math.abs(turn)>.3||Math.abs(p.omega)>.4?50:1.25;
     const desired=[mass*desiredX,mass*desiredY,desiredTorque/lever*yawWeight],coeff=engines.map((engine)=>{
       const direction=p.angle+engine.direction;
       return [Math.cos(direction)*engine.force,Math.sin(direction)*engine.force,engine.torque/lever*yawWeight];

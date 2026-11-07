@@ -72,12 +72,13 @@ test('exactly 22 distinct weapons support all room rotations, crew stations, and
   assert.equal(signatures.size,22);
 });
 
-test('traders draw limited random stock with repeats and no guaranteed module type',()=>{
+test('traders keep random stock and include the drone production pair',()=>{
   const g=game(),seen=new Set(),missingShields=[];
   for(let i=0;i<200;i++){
-    const stock=g.traderStock(),units=stock.reduce((sum,item)=>sum+item.qty,0);assert.ok(units>=4&&units<=8);
+    const stock=g.traderStock(),units=stock.reduce((sum,item)=>sum+item.qty,0);assert.ok(units>=4&&units<=10);
     assert.equal(new Set(stock.map(item=>item.type)).size,stock.length);
     missingShields.push(!stock.some(item=>item.type==='shield'));
+    for(const type of ['droneControl','droneAssembly'])assert.ok(stock.some(item=>item.type===type&&item.qty>0));
     for(const item of stock)seen.add(item.type);
   }
   assert.ok(missingShields.some(Boolean));assert.ok(seen.size>=25);
@@ -145,7 +146,7 @@ test('salvos stay inside the mounted firing arc even when the target is near an 
 
 test('older traders retain their stock and sold items without automatic restocking',()=>{
   const g=game(),node={stock:[{type:'weapon',qty:0,price:45},{type:'engine',qty:0,price:35}]};
-  g.upgradeTraderStock(node);assert.equal(node.stock.length,2);assert.ok(node.recruits.length>=1);assert.equal(node.stock[0].qty,0);assert.equal(node.stock[1].qty,0);
+  g.upgradeTraderStock(node);assert.equal(node.stock.length,4);assert.ok(node.recruits.length>=1);assert.equal(node.stock[0].qty,0);assert.equal(node.stock[1].qty,0);
   const before=JSON.stringify(node.stock);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node.stock),before);
   assert.equal(node.stock.filter((item)=>g.MODULES[item.type].range).length,1);
 });

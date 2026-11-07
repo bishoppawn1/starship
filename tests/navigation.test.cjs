@@ -31,7 +31,7 @@ test('bidirectional ships select the shortest clockwise and counterclockwise tur
     assert.ok(player.omega*targetAngle>0,`target ${targetAngle}, angular velocity ${player.omega}`);
   }
 });
-for(const starter of ['wayfarer','arsenal','bulwark'])test(`${starter} arrives and settles from destinations on both sides and behind`,()=>{
+for(const starter of ['wayfarer','arsenal','bulwark','drones'])test(`${starter} arrives and settles from destinations on both sides and behind`,()=>{
   for(const [dx,dy,targetAngle] of [[400,0,0],[200,300,.7],[200,-300,-.7],[-300,100,0],[50,30,Math.PI]]){
     const {g,player}=setup(starter,{targetAngle}),destination={x:player.x+dx,y:player.y+dy};player.dest={...destination};player.path=[{...destination}];
     const result=fly(g,player);
@@ -195,5 +195,34 @@ test('repeated angle changes during flight keep the latest selected angle at arr
     assert.equal(player.angle,selected);assert.equal(player.omega,0);
     for(let frame=0;frame<3/dt;frame++)g.navigatePlayer(dt);
     assert.equal(player.angle,selected);assert.equal(player.x,1400);assert.equal(player.y,1200);
+  }
+});
+
+
+test('small course errors allow immediate progress while the ship is still steering',()=>{
+  for(const starter of ['wayfarer','arsenal','bulwark','drones'])for(const error of [-.17,.17]){
+    const {g,player}=setup(starter,{angle:error,targetAngle:error});g.orderMove({x:1400,y:1000});
+    for(let frame=0;frame<60;frame++)g.navigatePlayer(1/60);
+    assert.ok(player.x>1010,`${starter}, error ${error}: only moved ${player.x-1000} in one second`);
+    assert.ok(player.dest);assert.equal(player.targetAngle,error);
+    fly(g,player);assert.equal(player.dest,null);assert.equal(player.x,1400);assert.equal(player.y,1000);assert.equal(player.angle,error);
+  }
+});
+
+test('a slight arrival-angle adjustment does not pause an active move',()=>{
+  const {g,player}=setup('wayfarer');g.orderMove({x:1600,y:1000});
+  for(let frame=0;frame<120;frame++)g.navigatePlayer(1/60);
+  player.targetAngle=player.angle+.12;player.turnOrderPending=true;
+  const before=Math.hypot(player.vx,player.vy);g.navigatePlayer(1/60);
+  assert.equal(player.turnOrderPending,false);assert.ok(Math.hypot(player.vx,player.vy)>=before-.1);
+  fly(g,player);assert.equal(player.dest,null);assert.equal(player.angle,player.targetAngle);
+});
+
+test('legacy reverse-drive ships accelerate through small heading and yaw corrections',()=>{
+  for(const starter of ['wayfarer','arsenal','bulwark']){
+    const {g,player}=withReverseThrusters(starter);player.angle=.06;player.omega=-.03;
+    g.orderMove({x:1400,y:1000});for(let frame=0;frame<60;frame++)g.navigatePlayer(1/60);
+    assert.ok(player.x>1010,`${starter}: waited for a perfect heading`);
+    fly(g,player);assert.equal(player.dest,null);assert.equal(player.x,1400);assert.equal(player.y,1000);assert.equal(player.angle,0);
   }
 });

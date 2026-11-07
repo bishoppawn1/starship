@@ -76,7 +76,7 @@ test('saved traders keep their shield selection and sold offers',()=>{
   const g=game();
   for(const stockVersion of [2,3]){
     const node={stockVersion,stock:[{type:'engine',qty:0,price:29},{type:'shield',qty:0,price:43}]};g.upgradeTraderStock(node);
-    assert.equal(node.stock.length,2);
+    assert.equal(node.stock.length,4);
     const before=JSON.stringify(node);g.upgradeTraderStock(node);assert.equal(JSON.stringify(node),before);assert.equal(node.stock[1].qty,0);assert.equal(node.stock[1].price,43);
   }
 });
