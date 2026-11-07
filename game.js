@@ -2314,16 +2314,22 @@
           const rx=p.x-rock.x,ry=p.y-rock.y,d=Math.hypot(rx,ry)||1,clearance=rock.r+p.r+WRECK_BERTH+12;
           if(d<clearance){const strength=(clearance-d)/clearance*105;desiredX+=rx/d*strength;desiredY+=ry/d*strength;}
         }
-        if(Math.hypot(desiredX,desiredY)>1){
-          // Forward and reverse engines can produce the same world force at different hull headings.
-          // Prefer the reachable heading with less turning, without assuming all engines face forward.
+        // Choose the drive direction once for this route leg. Braking must not
+        // reverse the hull's heading just because the desired force changes sign.
+        if(!p.travel||p.travel.x!==waypoint.x||p.travel.y!==waypoint.y){
           const directions=new Map();
           for(const engine of engines)if(engine.force>0)directions.set(engine.module.rotation,(directions.get(engine.module.rotation)||0)+engine.force);
-          const strongest=Math.max(...directions.values(),1),accelerationAngle=Math.atan2(desiredY,desiredX);
-          const options=[...directions].map(([rotation,force])=>({heading:accelerationAngle-rotation*Math.PI/2,force}));
+          const strongest=Math.max(...directions.values(),1),bearing=Math.atan2(dy,dx);
+          const options=[...directions].map(([rotation,force])=>({rotation,heading:bearing-rotation*Math.PI/2,force}));
           options.sort((a,b)=>(Math.abs(angleForAvailableTorque(p,a.heading,engines))+.2*strongest/a.force)-(Math.abs(angleForAvailableTorque(p,b.heading,engines))+.2*strongest/b.force));
-          if(options.length)heading=options[0].heading;
+          p.travel={x:waypoint.x,y:waypoint.y,rotation:options[0]?.rotation||0,turning:true};
         }
+        heading=Math.atan2(dy,dx)-p.travel.rotation*Math.PI/2;
+        const error=Math.abs(angleForAvailableTorque(p,heading,engines));
+        if(error>.18)p.travel.turning=true;
+        if(error<.025&&Math.abs(p.omega)<.025)p.travel.turning=false;
+        if(p.travel.turning){desiredX=-p.vx*2.4;desiredY=-p.vy*2.4;}
+
       }
     }
     if(p.arrival){desiredX=0;desiredY=0;heading=p.targetAngle;}
@@ -3010,7 +3016,7 @@
     const p=battle.player,goal=safePoint(point,p.r,battle.asteroids,battle.world);
     const path=routeAroundRocks(p,goal,p.r,battle.asteroids,battle.world);
     if(!path.length){toast('No clear route to that location.');return;}
-    p.arrival=null;p.dest=goal;p.path=path;p.turnOrderPending=p.turnOrderPending||Math.abs(angleDifference(p.angle,p.targetAngle))>.06;
+    p.arrival=null;p.travel=null;p.dest=goal;p.path=path;p.turnOrderPending=p.turnOrderPending||Math.abs(angleDifference(p.angle,p.targetAngle))>.06;
     $('combatHint').textContent='THRUSTERS STEERING TO WAYPOINT · RIGHT CLICK TO REDIRECT';
   }
   function rotateArrival(step){
