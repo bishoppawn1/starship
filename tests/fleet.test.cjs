@@ -191,7 +191,7 @@ test('local focused shield covers its own arc and recharges faster than a wide f
   const player={x:500,y:500,angle:0,r:70},battle={player,shields:{}};g.setBattle(battle);
   const front=g.shieldInterception({x:700,y:500},-1,0,player,300);
   const back=g.shieldInterception({x:300,y:500},1,0,player,300);
-  assert.ok(front.distance<back.distance,'the focused barrier extends ahead of the wide shell');
+  assert.equal(front.module.type,'shield');assert.equal(back.module.type,'shield');
   assert.equal(g.absorbShields(50,[save.modules.find((room)=>room.id===21)]),0);
   assert.equal(battle.shields[21].charge,110);
   assert.equal(g.absorbShields(50,[save.modules.find((room)=>room.id===20)]),0);

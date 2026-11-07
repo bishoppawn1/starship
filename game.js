@@ -22,7 +22,7 @@
     heavyEngine: { name: 'Heavy Ion Engine', short: 'E', color: '#a7c99b', shape: [[0,0],[1,0],[0,1],[1,1],[0,2],[1,2]], station: [0,1], hp: 125, cost: 70, thrust: 620, description: 'Six-cell drive with three exhaust nozzles. High force for heavy hulls. Keep the exhaust clear.' },
     weapon: { name: 'Pulse Cannon', short: 'W', color: C.weapon, shape: [[0,0],[1,0],[1,1]], station: [1,1], mount: [1,0], muzzle: [2,.5], hp: 75, cost: 45, range: 420, arc: 130, damage: 14, reload: 1.2, ammo: 1, description: 'A crewed pulse cannon with a 130° forward firing arc.' },
     railgun: { name: 'Railgun', short: 'R', color: C.railgun, shape: [[0,0],[1,0],[2,0],[3,0]], station: [1,0], mount: [3,0], muzzle: [4,.5], hp: 90, cost: 70, range: 580, arc: 50, damage: 30, reload: 2.4, ammo: 2, description: 'Long-range slug pierces two aligned rooms within a narrow 50° arc.' },
-    shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:100, recharge:10, shieldRadius:90, description: 'Projects a 100-strength local bubble 90 units (3 tiles) from this room. Distant hull sections remain exposed. Shared power and crew improve recharge.' },
+    shield: { name: 'Wide Shield Array', short: 'S', color: C.shield, shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 85, cost: 50, shield:'wide', capacity:100, recharge:10, description: 'A 100-strength shield around the entire hull, wherever this room is installed. Coverage grows with the ship. Shared power and crew improve recharge.' },
     focusShield: { name: 'Focused Shield', short: 'F', color: '#91e8e4', shape: [[0,0],[1,0],[0,1]], station: [0,0], hp: 75, cost: 62, shield:'focused', capacity:160, recharge:16, shieldRadius:120, arc:105, description: 'Projects a local 160-strength, 105° sector up to 120 units (4 tiles) from this room. Position and aim determine which hull sections are protected.' },
     generator: { name: 'Small Power Generator', short: 'G', color: '#e5be72', shape: [[0,0],[1,0]], station: [0,0], hp: 65, cost: 35, generation: 2, description: 'Compact two-cell generator. Adds 2 shared power; each upgrade adds 1 more. No crew or power required.' },
     teleporter: { name: 'Crew Teleporter', short: 'T', color: '#a5e2d7', shape: [[0,0],[1,0],[0,1],[1,1]], station: [0,0], hp: 80, cost: 75, description: 'Send selected crew from this pad to an enemy within 600 units. Recall them after a 12-second recharge. Requires shared power.' },
@@ -902,7 +902,7 @@
     if(!module){$('moduleInspector').innerHTML='<div class="empty-inspector">Click a ship room to inspect its station, firing arc, upgrade, or repair it.</div>';return;}
     const def=MODULES[module.type],maximum=maxHp(module),ratio=module.hp/maximum,upgradeCost=25*module.level+(module.type==='core'?10:0),repairCost=Math.ceil((maximum-module.hp)/10)*3;
     const direction=['RIGHT','DOWN','LEFT','UP'][def.range?weaponFacingQuarter(module):module.rotation];
-    const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'LOCAL BUBBLE':`${def.arc}° LOCAL ARC · AIM ${shieldDirection(module)}°`} · ${def.shieldRadius} RANGE FROM ROOM · ${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
+    const shieldInfo=SHIELD_TYPES.includes(module.type)?`<div class="inspector-detail">${module.type==='shield'?'FULL HULL COVERAGE':`${def.arc}° LOCAL ARC · AIM ${shieldDirection(module)}°`} · ${module.type==='focusShield'?`${def.shieldRadius} RANGE FROM ROOM · `:''}${Math.round(battle?shieldState(module).charge:module.hp>0?shieldStats(module).capacity:0)} / ${shieldStats(module).capacity} STRENGTH · +${shieldStats(module).recharge.toFixed(1)}/s</div>`:null;
     const shieldAim=module.type==='focusShield'?`<label class="weapon-range">AIM SHIELD<select id="shieldDirection" aria-label="Shield direction">${[...new Set([0,45,90,135,180,225,270,315,shieldDirection(module)])].sort((a,b)=>a-b).map((degrees)=>`<option value="${degrees}" ${degrees===shieldDirection(module)?'selected':''}>${degrees}°${({0:' · RIGHT',90:' · DOWN',180:' · LEFT',270:' · UP'})[degrees]||''}</option>`).join('')}</select></label><div class="shield-aim-controls"><button data-shield-turn="-15" type="button" aria-label="Aim shield counterclockwise">↶ 15°</button><button data-shield-turn="15" type="button" aria-label="Aim shield clockwise">15° ↷</button></div><p class="muted small">Field starts at this room. Move the room to relocate protection; aim follows the ship. Re-aim at any time.</p>`:'';
     const detail=shieldInfo|| (def.range?`<div class="inspector-detail">${def.guidance?'LAUNCH ARC':'FIRING ARC'} ${def.arc}°${def.guidance?' · AUTO TRACK':''} · ${def.guidance?'UNLIMITED RANGE':`RANGE ${weaponRange(module)}`} · ${direction}${module.flipped?' · MIRRORED':''} · ${ammoLabel(def)}</div>`:def.thrust?`<div class="inspector-detail">THRUST → ${direction} · <span id="engineForce">${Math.round(engineThrusters().find((engine)=>engine.module.id===module.id)?.force||0)}</span> FORCE · ${def.thrust} BASE</div><div class="weapon-fit">${footprintBadge(module.type,module.footprint)}</div>`:def.station?'<div class="inspector-detail">WALKABLE FLOOR · 1 SYSTEM STATION</div>':'<div class="inspector-detail">OPEN WALKABLE FLOOR · NO STATION</div>');
     const ammoDetail=def.ammoType?`<div id="magazineDetail" class="inspector-detail">${def.ammoType.toUpperCase()} MAGAZINE ${magazineCount(module)} / ${def.magazine}${magazineCount(module)<def.ammo?' · EMPTY · NEEDS LOADER':''}</div>`:module.type==='ammoAssembly'?`<label class="weapon-range">PRODUCE <select id="ammoRecipe"><option value="heavy" ${module.ammoRecipe!=='missile'?'selected':''}>Heavy · 4 rounds / batch</option><option value="missile" ${module.ammoRecipe==='missile'?'selected':''}>Missile · 2 rounds / batch</option></select></label><p class="muted small">Uses energy only. One batch every 4 seconds at full power. Finished rounds stay here until a loader collects them.</p>`:'';
@@ -1231,7 +1231,7 @@
     g.globalAlpha=.7;
     for(const [x,y] of moduleCells(module)){g.fillStyle=preview.valid?'#81e4bb':'#ed7783';g.fillRect(x*TILE+1,y*TILE+1,TILE-2,TILE-2);}
     g.globalAlpha=1;drawStation(g,module);drawExteriorHardware(g,module);
-    if(SHIELD_TYPES.includes(module.type))drawShieldCoverage(g,module,TILE);
+    if(SHIELD_TYPES.includes(module.type))drawShieldCoverage(g,module,TILE,[...save.modules.filter((part)=>part.id!==movingModuleId),module]);
     if(MODULES[module.type].range){
       const mount=weaponGeometry(module);g.fillStyle='#fff2bd';g.fillRect(mount.x*TILE-2,mount.y*TILE-2,4,4);
     }
@@ -2019,7 +2019,7 @@
   }
   function showStarterPicker(){
     $('menuConfirm').hidden=true;$('starterPicker').hidden=false;
-    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>100-strength local shield · ${ship.id==='wayfarer'?3:ship.id==='drones'?5:6} crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
+    $('starterLineup').innerHTML=STARTER_SHIPS.map((ship)=>`<button class="starter-card" type="button" data-starter="${ship.id}" aria-label="Start new game with ${ship.name}"><span class="eyebrow">${ship.role}</span><strong>${ship.name}</strong><canvas width="360" height="240" data-starter-preview="${ship.id}" aria-hidden="true"></canvas><span>${ship.description}</span><small>100-strength full-hull shield · ${ship.id==='wayfarer'?3:ship.id==='drones'?5:6} crew · 90 metal</small><b>CHOOSE ${ship.name.toUpperCase()} →</b></button>`).join('');
     const original=save;
     try{
       for(const preview of $('starterLineup').querySelectorAll('canvas[data-starter-preview]')){
@@ -2694,7 +2694,12 @@
     module.shieldFacing=((Math.round(degrees)%360)+360)%360;persist();renderInspector();
     if(mode==='hangar'||mode==='trade')drawHangar();return true;
   }
-  function shieldGeometry(module,player=null,tile=COMBAT_TILE){
+  function shieldGeometry(module,player=null,tile=COMBAT_TILE,modules=save.modules){
+    if(module.type==='shield'){
+      const cells=modules.flatMap(moduleCells),xs=cells.map(([x])=>x),ys=cells.map(([,y])=>y),minX=Math.min(...xs),minY=Math.min(...ys),width=Math.max(...xs)-minX+1,height=Math.max(...ys)-minY+1;
+      const hullRadius=Math.max(38,Math.hypot(width,height)*COMBAT_TILE*.54),radius=Math.max(hullRadius,player?.r||0)+17;
+      return {x:player?player.x:(minX+width/2)*tile,y:player?player.y:(minY+height/2)*tile,radius:radius*(player?1:tile/COMBAT_TILE),angle:player?.angle||0,span:TAU};
+    }
     const cells=moduleCells(module),origin={x:cells.reduce((sum,[x])=>sum+x+.5,0)/cells.length,y:cells.reduce((sum,[,y])=>sum+y+.5,0)/cells.length};
     const point=player?hullPointWorld(origin,player):{x:origin.x*tile,y:origin.y*tile};
     return {...point,radius:MODULES[module.type].shieldRadius*(player?1:tile/COMBAT_TILE),angle:(player?.angle||0)+shieldDirection(module)*Math.PI/180,span:module.type==='focusShield'?MODULES[module.type].arc*Math.PI/180:TAU};
@@ -2702,13 +2707,13 @@
   function shieldContains(field,point){
     return distance(field,point)<=field.radius+1e-7&&(field.span>=TAU||distance(field,point)<1e-7||Math.abs(angleDifference(field.angle,Math.atan2(point.y-field.y,point.x-field.x)))<=field.span/2+1e-7);
   }
-  function drawShieldCoverage(g,module,tile){
-    const field=shieldGeometry(module,null,tile),{x,y,radius,angle,span}=field,focused=module.type==='focusShield';
+  function drawShieldCoverage(g,module,tile,modules=save.modules){
+    const field=shieldGeometry(module,null,tile,modules),{x,y,radius,angle,span}=field,focused=module.type==='focusShield';
     g.save();g.strokeStyle=focused?'#92f9e9':'#b9a3f7';g.fillStyle=focused?'rgba(146,249,233,.07)':'rgba(185,163,247,.04)';g.lineWidth=1.5;
     g.beginPath();g.moveTo(x,y);g.arc(x,y,radius,angle-span/2,angle+span/2);g.closePath();g.fill();
     g.beginPath();g.arc(x,y,radius,angle-span/2,angle+span/2);g.stroke();
     if(focused){g.beginPath();for(const edge of [angle-span/2,angle+span/2]){g.moveTo(x,y);g.lineTo(x+Math.cos(edge)*radius,y+Math.sin(edge)*radius);}g.stroke();}
-    g.fillStyle=focused?'#92f9e9':'#b9a3f7';g.fillRect(x-2,y-2,4,4);g.restore();
+    if(focused){g.fillStyle='#92f9e9';g.fillRect(x-2,y-2,4,4);}g.restore();
   }
 
   function shieldState(module){
