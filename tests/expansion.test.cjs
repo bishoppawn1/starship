@@ -9,7 +9,7 @@ function game(){
   const element=()=>({dataset:{},width:0,height:0,style:{removeProperty(){},setProperty(){}},classList:{add(){},remove(){}},
     getContext:()=>context,addEventListener(){},querySelectorAll:()=>[],setAttribute(){},append(){},parentElement:{clientWidth:600,clientHeight:500}});
   const math=Object.create(Math);
-  const sandbox={Math:math,performance:{now:()=>0},setTimeout:()=>0,clearTimeout(){},requestAnimationFrame(){},window:{devicePixelRatio:1},
+  const sandbox={Math:math,innerWidth:1200,performance:{now:()=>0},setTimeout:()=>0,clearTimeout(){},requestAnimationFrame(){},window:{devicePixelRatio:1},
     localStorage:{getItem:(k)=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},
     document:{getElementById:(id)=>{if(!elements.has(id))elements.set(id,element());return elements.get(id);},createElement:element,querySelectorAll:()=>[]}};
   const source=fs.readFileSync(path.join(__dirname,'..','game.js'),'utf8').replace('  init();\n})();',`
@@ -105,6 +105,15 @@ test('the command core shares power evenly and upgrades improve every underpower
   extra.hp=1;near(g.systemSupply(extra),10/6);near(g.systemSupply(engine),10/6);
   extra.hp=0;assert.equal(g.systemSupply(extra),0);near(g.systemSupply(engine),2);
   save.modules[0].hp=1;assert.equal(g.coreOutput(),10);save.modules[0].hp=0;assert.equal(g.coreOutput(),0);assert.equal(g.systemPower(engine),0);
+});
+
+test('core power can be upgraded on the sector map but remains locked during combat',()=>{
+  const g=game(),save=g.newSave();g.setSave(save);g.setMode('map');
+  g.renderSystems();assert.doesNotMatch(g.elements.get('systemsPanel').innerHTML,/<button id="upgradeCorePower"[^>]*disabled/);
+  assert.equal(g.upgradeCorePower(),true);assert.equal(save.metal,50);assert.equal(g.coreOutput(),10);
+  assert.equal(g.loadSave().modules.find((module)=>module.type==='core').powerLevel,2);
+  g.setMode('combat');g.renderSystems();assert.match(g.elements.get('systemsPanel').innerHTML,/<button id="upgradeCorePower"[^>]*disabled/);
+  assert.equal(g.upgradeCorePower(),false);assert.equal(save.metal,50);
 });
 
 test('old reactor upgrades migrate into the core and manual allocations no longer restrict systems',()=>{
