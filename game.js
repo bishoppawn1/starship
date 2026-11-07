@@ -1626,25 +1626,24 @@
       if(assemblies.length){
         const loaded=(save.drones||[]).filter((drone)=>drone.phase==='ready'||drone.phase==='active').length;
         const waiting=(save.drones||[]).filter((drone)=>drone.phase==='stored'||drone.phase==='carried').length;
-        const producing=assemblies.filter((assembly)=>assembly.hp>0&&!assembly.buildPaused&&systemPower(assembly)>0).length;
-        mapStatus.textContent=`DRONES ${loaded} LOADED · ${waiting} WAITING · ${producing}/${assemblies.length} ASSEMBLIES PRODUCING`;
+        mapStatus.textContent=`DRONES ${loaded} LOADED · ${waiting} WAITING · ASSEMBLIES & DELIVERY PAUSED ON MAP`;
       }
     }
     const bays=save.modules.filter((module)=>module.type==='droneControl'),assemblies=save.modules.filter((module)=>module.type==='droneAssembly'),drones=save.drones||[];
-    panel.innerHTML=`<strong>${bays.length} BAYS · ${assemblies.length} ASSEMBLIES · ${drones.filter((drone)=>drone.hp>0).length} DRONES</strong><p class="muted small">Assemblies build continuously, including while exploring. Assign Deliver drones or Deliver ammo / drones to carry them to a clear bay. Bays have no drone limit; loaded drones launch automatically in combat. Pause an assembly when you have enough.</p>${bays.map((bay)=>`<div class="drone-row">BAY (${bay.x}, ${bay.y}) · ${bay.hp<=0?'OFFLINE':!droneBayClear(bay)?'BLOCKED LAUNCH LANE':`${droneCount(bay)} DRONES · NO SLOT LIMIT · CLEAR EXIT`}</div>`).join('')}${assemblies.map((assembly)=>{
+    panel.innerHTML=`<strong>${bays.length} BAYS · ${assemblies.length} ASSEMBLIES · ${drones.filter((drone)=>drone.hp>0).length} DRONES</strong><p class="muted small">Assemblies build in the ship view, at traders, and in combat. Drone work pauses on the sector map. Assign Deliver drones or Deliver ammo / drones to carry them to a clear bay. Bays have no drone limit; loaded drones launch automatically in combat.</p>${bays.map((bay)=>`<div class="drone-row">BAY (${bay.x}, ${bay.y}) · ${bay.hp<=0?'OFFLINE':!droneBayClear(bay)?'BLOCKED LAUNCH LANE':`${droneCount(bay)} DRONES · NO SLOT LIMIT · CLEAR EXIT`}</div>`).join('')}${assemblies.map((assembly)=>{
       const built=drones.filter((drone)=>drone.assembly===assembly.id&&drone.hp>0),stored=built.filter((drone)=>drone.phase==='stored').length,loaded=built.filter((drone)=>drone.phase==='ready').length,type=DRONE_PROGRAMS[assembly.droneType]?assembly.droneType:'combat';
-      return `<div class="drone-assembly"><label>${MODULES.droneAssembly.name.toUpperCase()} (${assembly.x}, ${assembly.y})<select data-drone-design="${assembly.id}" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===type?'selected':''}>${def.name}</option>`).join('')}</select></label><small>${built.length} BUILT · ${stored} WAITING FOR CREW · ${loaded} LOADED · ${assembly.hp<=0?'OFFLINE':assembly.buildPaused?'PRODUCTION PAUSED':systemPower(assembly)<=0?'NO POWER':`${Math.min(100,Math.floor((assembly.buildProgress||0)/assemblyTime(assembly)*100))}% NEXT DRONE`}</small><button type="button" data-drone-production="${assembly.id}">${assembly.buildPaused?'RESUME':'PAUSE'} PRODUCTION</button></div>`;
+      return `<div class="drone-assembly"><label>${MODULES.droneAssembly.name.toUpperCase()} (${assembly.x}, ${assembly.y})<select data-drone-design="${assembly.id}" ${mode==='combat'?'disabled':''}>${Object.entries(DRONE_PROGRAMS).map(([id,def])=>`<option value="${id}" ${id===type?'selected':''}>${def.name}</option>`).join('')}</select></label><small>${built.length} BUILT · ${stored} WAITING FOR CREW · ${loaded} LOADED · ${assembly.hp<=0?'OFFLINE':mode==='map'?'PAUSED ON MAP':assembly.buildPaused?'PRODUCTION PAUSED':systemPower(assembly)<=0?'NO POWER':`${Math.min(100,Math.floor((assembly.buildProgress||0)/assemblyTime(assembly)*100))}% NEXT DRONE`}</small><button type="button" data-drone-production="${assembly.id}" ${mode==='map'?'disabled':''}>${mode==='map'?'PAUSED ON MAP':assembly.buildPaused?'RESUME PRODUCTION':'PAUSE PRODUCTION'}</button></div>`;
     }).join('')}${!assemblies.length?'<p class="muted small">Build a Drone Assembly and an exterior Drone Bay at a trader.</p>':''}${battle?`<p class="muted small">TELEPORTER ${boardingPad()?`${Math.ceil(battle.teleportCooldown||0)}s RECHARGE · 600 RANGE`:'NOT INSTALLED / OFFLINE'}</p>${battle.enemies.map((enemy,i)=>enemyAlive(enemy)?`<button data-drone-target="${i}" aria-pressed="${(battle.droneTarget??0)===i}">TARGET ${enemy.name} ${i+1}</button>`:'').join('')}`:''}`;
     panel.querySelectorAll('[data-drone-design]').forEach((select)=>select.addEventListener('change',()=>setDroneDesign(+select.dataset.droneDesign,select.value)));
     panel.querySelectorAll('[data-drone-production]').forEach((button)=>button.addEventListener('click',()=>toggleDroneProduction(+button.dataset.droneProduction)));
     panel.querySelectorAll('[data-drone-target]').forEach((button)=>button.addEventListener('click',()=>{battle.droneTarget=+button.dataset.droneTarget;renderOperations();}));
   }
 
-  function crewWorkPlan(extraPerson=null){
-    const people=save.crew.filter((person)=>crewHome(person)&&!person.manualGoal&&!person.boardOrder);
+  function crewWorkPlan(extraPerson=null,allowDrones=mode!=='map'){
+    const people=save.crew.filter((person)=>crewHome(person)&&!person.manualGoal&&!person.boardOrder&&(allowDrones||!(person.task==='drone'||person.droneJob||person.droneCargo!==undefined)));
     if(extraPerson&&crewHome(extraPerson)&&!extraPerson.manualGoal&&!extraPerson.boardOrder&&!people.includes(extraPerson))people.push(extraPerson);
     const assignments=new Map(),occupied=occupancy(),components=new Map();
-    planDroneDeliveries(people,assignments);
+    if(allowDrones)planDroneDeliveries(people,assignments);
     // Crew may only reserve consoles in their connected floor component.
     function component(point){
       const key=`${Math.floor(point.x)},${Math.floor(point.y)}`;
@@ -1717,12 +1716,13 @@
     return route?.working===false?'WAITING':'AT STATION';
   }
   function updateCrew(dt){
-    const plan=crewWorkPlan();
+    const allowDrones=mode!=='map',plan=crewWorkPlan(null,allowDrones);
     for(const person of save.crew){
       if(!crewAlive(person))continue;
       const healingTime=Math.max(0,dt-(person.hurtTime||0));person.hurtTime=Math.max(0,(person.hurtTime||0)-dt);
       if(person.aboard)continue;
       person.hp=Math.min(100,(person.hp??100)+healingTime*3);
+      if(!allowDrones&&(person.task==='drone'||person.droneJob||person.droneCargo!==undefined))continue;
       let route=crewRoutes[person.id];
       if(!route){route={path:[],target:'',phase:'pickup'};crewRoutes[person.id]=route;}
       if(['load','drone'].includes(person.task))route.phase=person.carrying||person.droneCargo!==undefined?'drop':'pickup';
@@ -3171,7 +3171,8 @@
     const dt=clamp((time-lastFrame)/1000||0,0,.05);lastFrame=time;
     if(screen==='playing'){
       if(!eventOpen)updateAmmoProduction(dt);
-      if(!eventOpen||mode==='map'){updateCrew(dt);if(mode!=='combat')updateDrones(dt);}
+      if(!eventOpen||mode==='map')updateCrew(dt);
+      if(!eventOpen&&(mode==='hangar'||mode==='trade'))updateDrones(dt);
       if(mode==='combat'&&battle){updateBattle(dt,time);drawArena(time);}
       if(mode==='hangar'||mode==='trade')drawHangar();
       if(time-lastHudRefresh>700){lastHudRefresh=time;refreshCrewStatus();renderAmmo();const selected=selectedModule();if(selected&&MODULES[selected.type].ammoType){const detail=$('magazineDetail');if(detail)detail.textContent=`${MODULES[selected.type].ammoType.toUpperCase()} MAGAZINE ${magazineCount(selected)} / ${MODULES[selected.type].magazine}${magazineCount(selected)<MODULES[selected.type].ammo?' · EMPTY · NEEDS LOADER':''}`;}if(mode!=='combat'){renderSystems();renderOperations();}}
