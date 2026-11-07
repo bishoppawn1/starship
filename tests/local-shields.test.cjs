@@ -106,9 +106,10 @@ test('minefield shielding also protects only the local part selected for the imp
   const g=game();setup(g);g.setBattle(null);g.setMode('hangar');g.math.random=()=>.1;assert.equal(g.damageRandomModule(14,true),null);g.math.random=()=>.7;const damaged=g.damageRandomModule(14,true);assert.ok(damaged);near(damaged.hp,101);
 });
 
-test('a missile stopped by a local field still explodes against nearby wreckage without leaking into hull',()=>{
+test('a missile crosses a local field and explodes at the hull rather than the shield boundary',()=>{
   const g=game(),{save,b,shield}=setup(g);save.modules=[room(1,'core',0,0),shield];shield.x=2;shield.y=0;shield.shieldFacing=0;g.shieldState(shield).delay=100;const field=g.shieldGeometry(shield,b.player),impact={x:field.x+field.radius,y:field.y},rock={x:impact.x+10,y:impact.y+25,r:8,hp:100,maxHp:100};b.asteroids=[rock];
-  g.fireProjectile('enemy',field.x+field.radius+40,field.y,field,20,1000,600,{splash:38,family:'missile',color:'#fff'});g.updateBattle(.2,0);near(rock.hp,89);near(shield.hp,85);near(g.shieldState(shield).charge,140);assert.equal(b.projectiles.length,0);
+  g.fireProjectile('enemy',field.x+field.radius+40,field.y,field,20,1000,600,{splash:38,family:'missile',color:'#fff'});g.updateBattle(.2,0);near(rock.hp,100);near(shield.hp,65);near(g.shieldState(shield).charge,160);assert.equal(b.projectiles.length,0);
+  assert.ok(b.effects.some((effect)=>effect.r===38&&effect.x<field.x+field.radius-1));
 });
 
 test('a shield boundary coinciding with an outer hull face absorbs before the hull takes damage',()=>{

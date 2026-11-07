@@ -98,8 +98,9 @@
   MODULES.gatling.burstInterval=.09;MODULES.gauss.burstInterval=.12;MODULES.swarm.burstInterval=.1;
   MODULES.gatling.description='Three rounds fire in a timed burst, tracking the target between shots.';
   MODULES.gauss.description='Two magnetic slugs fire in sequence; each can pierce two aligned rooms.';
-  MODULES.missile.description='Launches through a clear hull lane, then homes toward an enemy ship and explodes.';
-  MODULES.swarm.description='Four guided rockets launch in sequence, then track an enemy ship.';
+  MODULES.missile.description='Launches through a clear hull lane, then homes toward an enemy ship. Bypasses shields and explodes against the hull.';
+  MODULES.swarm.description='Four guided rockets launch in sequence, track an enemy ship, and bypass shields.';
+  MODULES.torpedo.description='Heavy unguided torpedoes bypass shields and cause a broad hull explosion.';
   function copyFootprint(def){return {shape:def.shape.map((cell)=>[...cell]),station:def.station&&[...def.station],mount:def.mount&&[...def.mount],muzzle:def.muzzle&&[...def.muzzle]};}
   function migrateWeaponFootprints(data){
     if(data.weaponFootprintsVersion===2)return;
@@ -797,6 +798,7 @@
     else if(d.salvo>1)rules.push(`${d.salvo}-shot spread`);
     if(d.guidance)rules.push('Unlimited range · Homing after hull clearance');
     else if(d.family==='missile')rules.push('Unguided explosive');
+    if(d.family==='missile')rules.push('Bypasses shields');
     if(d.splash)rules.push(`Blast radius ${d.splash}`);
     if(d.ion)rules.push(`${d.systemPulse?'Nearby systems':'Struck system'} ${Math.round(d.ion*100)}% for ${d.ionDuration}s`);
     if(d.systemPulse)rules.push(`System pulse radius ${d.systemPulse}`);
@@ -2175,8 +2177,11 @@
     }
     return amount;
   }
+  function absorbEnemyProjectile(enemy,shot,amount=shot.damage){
+    return shot.family==='missile'?amount:absorbEnemyShields(enemy,amount);
+  }
   function enemyShieldInterception(enemy,shot,dx,dy,limit){
-    if(enemyShieldStrength(enemy)<=1e-7)return null;
+    if(shot.family==='missile'||enemyShieldStrength(enemy)<=1e-7)return null;
     const entry=rayCircle(shot,dx,dy,enemy,enemy.r+17);
     return entry<=limit?{distance:entry,room:rayEnemyRoom(shot,dx,dy,enemy,Infinity).room}:null;
   }
@@ -2667,7 +2672,7 @@
     }
   }
   function weaponImpact(shot,target,hitRock=null,hitRoom=null) {
-    const directDamage=target?absorbEnemyShields(target,shot.damage):0;
+    const directDamage=target?absorbEnemyProjectile(target,shot):0;
     if(shot.chainSystems&&target){if(directDamage>0)teslaImpact({...shot,damage:directDamage},target,hitRoom);return directDamage>0;}
     if(shot.systemPulse){
       if(!target||directDamage>0)disruptSystems(shot);
@@ -2688,7 +2693,7 @@
       else if(shot.splash&&distance(rock,shot)<=shot.splash+rock.r)damageAsteroid(rock,shot.damage*.55);
     }
     for(const enemy of affected){
-      const damage=enemy===target?directDamage:absorbEnemyShields(enemy,shot.damage*.55);if(damage<=0)continue;
+      const damage=enemy===target?directDamage:absorbEnemyProjectile(enemy,shot,shot.damage*.55);if(damage<=0)continue;
       const room=enemy===target?hitRoom:nearestEnemyRoom(enemy,shot);
       if(shot.ion)ionizeSystem(enemy,shot,room);
       hurtEnemy(enemy,damage,room,shot);
@@ -2701,7 +2706,7 @@
         const dist=distance(other,target)/COMBAT_TILE,angle=Math.atan2(other.y-target.y,other.x-target.x)-battle.player.angle;
         return hullRay(worldToHull(target,battle.player),angle,save.modules.flatMap(moduleCells),dist)>=dist;
       }).sort((a,b)=>distance(a,target)-distance(b,target))[0];
-      if(chained){hurtEnemy(chained,absorbEnemyShields(chained,shot.damage*.5),nearestEnemyRoom(chained,target),target);(battle.effects??=[]).push({x:target.x,y:target.y,to:{x:chained.x,y:chained.y},color:shot.color,time:.2,duration:.2});}
+      if(chained){hurtEnemy(chained,absorbEnemyProjectile(chained,shot,shot.damage*.5),nearestEnemyRoom(chained,target),target);(battle.effects??=[]).push({x:target.x,y:target.y,to:{x:chained.x,y:chained.y},color:shot.color,time:.2,duration:.2});}
     }
     return directDamage>0;
   }
@@ -2776,6 +2781,7 @@
     return nearest;
   }
   function shieldContacts(shot,dx,dy,player,limit){
+    if(shot.family==='missile')return [];
     return activeModules(...SHIELD_TYPES).filter((module)=>shieldState(module).charge>1e-7).map((module)=>{
       const field=shieldGeometry(module,player),entry=rayShield(shot,dx,dy,field,limit);
       return {distance:entry,module,point:{x:shot.x+dx*entry,y:shot.y+dy*entry}};

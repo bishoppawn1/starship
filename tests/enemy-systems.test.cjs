@@ -125,10 +125,10 @@ test('enemy barrels turn toward their target before firing and their shots match
   g.draws.length=0;g.drawEnemy(enemy);assert.ok(g.draws.some(([fn,angle])=>fn==='rotate'&&angle===room.aimOffset));
 });
 
-test('enemy missiles can hit player shields, be evaded, intercepted by drones, or explode on wrecks',()=>{
+test('enemy missiles bypass player shields but can still be evaded, intercepted by drones, or hit wrecks',()=>{
   const g=game(),{b,save,enemy}=setup(g,'missile'),room=enemy.modules.find(m=>m.type==='weapon');
-  save.modules.push({id:2,type:'shield',x:2,y:0,rotation:0,level:1,hp:85});const state=g.shieldState(save.modules[1]);room.cooldown=0;g.fireEnemyWeapons(enemy,0);room.cooldown=1000;
-  for(let i=0;i<100&&b.projectiles.length;i++)g.updateBattle(.02,0);assert.ok(state.charge<100);assert.equal(save.modules[0].hp,170);
+  save.modules.push({id:2,type:'shield',x:2,y:0,rotation:0,level:1,hp:85});const state=g.shieldState(save.modules[1]),hull=save.modules.reduce((sum,part)=>sum+part.hp,0);room.cooldown=0;g.fireEnemyWeapons(enemy,0);room.cooldown=1000;
+  for(let i=0;i<100&&b.projectiles.length;i++)g.updateBattle(.02,0);assert.equal(state.charge,100);near(save.modules.reduce((sum,part)=>sum+part.hp,0),hull-g.enemyWeaponStats(room).damage);
   state.charge=100;g.setEvasion(1);room.cooldown=0;g.fireEnemyWeapons(enemy,0);room.cooldown=1000;const evaded=b.projectiles[0];
   for(let i=0;i<100&&!evaded.evasionChecked;i++)g.updateBattle(.02,0);assert.equal(evaded.evaded,true);assert.equal(evaded.guidance,0);assert.equal(state.charge,100);
   g.setEvasion(0);b.projectiles=[];const bay={id:3,type:'droneControl',x:5,y:0,rotation:0,level:1,hp:85},assembly={id:4,type:'droneAssembly',x:5,y:3,rotation:0,level:1,hp:85};save.modules.push(bay,assembly);
